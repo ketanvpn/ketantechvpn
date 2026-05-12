@@ -1390,14 +1390,7 @@ function rupiah(n) {
   return `Rp${Number(n || 0).toLocaleString('id-ID')}`;
 }
 
-async function getUserSaldo(db, userId) {
-  return await new Promise((resolve) => {
-    db.get('SELECT saldo FROM users WHERE user_id = ?', [userId], (e, r) => {
-      if (e) return resolve(null);
-      resolve(r ? Number(r.saldo || 0) : null);
-    });
-  });
-}
+// --- Fase 4 split: getUserSaldo dipindah ke accounts/
 
 
 async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'qris_auto_topup', transactionRef = null }) {
@@ -2103,6 +2096,23 @@ const db = createConnection(null, logger);
 const { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe } = createDdlHelpers(db, logger);
 runMigrations(db, logger, { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe });
 
+// --- Fase 4 split: account service (accounts/service.js)
+const { createAccountService } = require('./accounts/service');
+const accountService = createAccountService({ db, logger });
+const {
+  getUserSaldo: _accountGetUserSaldo,
+  recordSaldoTransaction,
+  recordAccountTransaction,
+  processAccountPayment,
+  refundAccountPayment,
+  upsertAccount,
+} = accountService;
+// Wrapper getUserSaldo tetap menerima (db, userId) untuk kompatibilitas call-site lama.
+async function getUserSaldo(dbArg, userId) {
+  return _accountGetUserSaldo(userId);
+}
+
+
 
 
 // --- Fase 3 split: fungsi markDepositExpired / creditDeposit / pollMutasi / startAutoTopupMutasi
@@ -2114,25 +2124,31 @@ global.pendingDeposits = global.pendingDeposits || {};
 // ============================================================================
 
 
-function recordSaldoTransaction(userId, amount, type, referenceId) {
-  db.run(
-    `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
-     VALUES (?, ?, ?, ?, ?)`,
-    [userId, amount, type, referenceId || null, Date.now()],
-    (err) => {
-      if (err) {
-        logger.error(
-          'Kesalahan mencatat transaksi saldo:',
-          err.message
-        );
-      }
-    }
-  );
-}
+// --- Fase 4 split: recordSaldoTransaction dipindah ke accounts/
 
 const adminTrialTemp = {}; // key: adminId, value: config trial sementara
 
 const userState = {};
+
+// --- Fase 4 split: handler 'Akun Saya' dipindah ke accounts/my-accounts.js
+const { createMyAccountsHandlers } = require('./accounts/my-accounts');
+const myAccountsHandlers = createMyAccountsHandlers({
+  bot,
+  db,
+  logger,
+  userState,
+  sendCleanMenu,
+  recordAccountTransaction,
+  getAccountDaysLeft,
+  typeCode,
+  shortStatus,
+  delHandlers: { vmess: delvmess, vless: delvless, trojan: deltrojan, shadowsocks: delshadowsocks, ssh: delssh },
+  lockHandlers: { vmess: lockvmess, vless: lockvless, trojan: locktrojan, shadowsocks: lockshadowsocks, ssh: lockssh },
+  unlockHandlers: { vmess: unlockvmess, vless: unlockvless, trojan: unlocktrojan, shadowsocks: unlockshadowsocks, ssh: unlockssh },
+});
+const showMyAccounts = myAccountsHandlers.showMyAccounts;
+myAccountsHandlers.register();
+
 logger.info('User state initialized');
 // Pesan standar untuk akses ditolak
 const NO_ACCESS_MESSAGE = 'ðŸš« Kamu tidak punya akses untuk perintah ini.';
@@ -10126,216 +10142,14 @@ bot.action(/(trial)_username_(vmess|vless|trojan|shadowsocks|ssh)_(\d+)/, async 
 
 
 // ========= ðŸ“‚ AKUN SAYA â€“ LIST AKUN MILIK USER (AKTIF / EXPIRED / SEMUA) =========
-async function showMyAccounts(ctx, filter = 'active', page = 0) {
-  try {
-    // Tutup "loading" di tombol, kalau dipanggil dari callback
-    try {
-      await ctx.answerCbQuery().catch(() => {});
-    } catch (e) {}
-
-    if (!ctx.from) {
-      return ctx.reply('âŒ Tidak bisa membaca data pengguna.');
-    }
-
-    const userId = ctx.from.id;
-
-    // Hitung awal hari (00:00) dalam bentuk timestamp (ms)
-    const now = new Date();
-    const todayStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      0,
-      0,
-      0,
-      0
-    ).getTime();
-
-    // Tentukan filter & SQL
-    let whereClause = 'a.user_id = ?';
-    const params = [userId];
-    let filterText;
-    let filterNormalized;
-
-    switch (filter) {
-      case 'expired':
-        // Expired = tanggal expire sebelum hari ini
-        whereClause += ' AND a.expires_at IS NOT NULL AND a.expires_at < ?';
-        params.push(todayStart);
-        filterText = 'Menampilkan hanya akun <b>EXPIRED</b>.';
-        filterNormalized = 'expired';
-        break;
-
-      case 'all':
-        filterText = 'Menampilkan semua akun (aktif & expired).';
-        filterNormalized = 'all';
-        break;
-
-      case 'active':
-      default:
-        // Aktif = belum ada expire ATAU tanggal expire hari ini atau sesudahnya
-        whereClause += ' AND (a.expires_at IS NULL OR a.expires_at >= ?)';
-        params.push(todayStart);
-        filterText = 'Menampilkan hanya akun <b>AKTIF</b>.';
-        filterNormalized = 'active';
-        break;
-    }
-    const pageSize = 10;
-    const safePage = Math.max(0, parseInt(page, 10) || 0);
-    const offset = safePage * pageSize;
-
-    db.all(
-      `SELECT a.id, a.username, a.type, a.server_id, a.expires_at, s.nama_server
-       FROM accounts a
-       LEFT JOIN Server s ON a.server_id = s.id
-       WHERE ${whereClause}
-       ORDER BY a.created_at DESC
-       LIMIT ? OFFSET ?`,
-       [...params, pageSize + 1, offset],
-       async (err, rows) => {
-        if (err) {
-          logger.error('âŒ Gagal mengambil data akun:', err.message);
-          try {
-            await sendCleanMenu(ctx, 'âŒ Terjadi kesalahan saat mengambil data akun.', {
-              parse_mode: 'HTML',
-            });
-          } catch (e) {
-            logger.error('âŒ Gagal kirim pesan error showMyAccounts:', e);
-          }
-          return;
-        }
-
-        // Tombol filter di atas daftar
-        const activeLabel = filterNormalized === 'active' ? 'âœ… Aktif â€¢' : 'âœ… Aktif';
-        const expiredLabel = filterNormalized === 'expired' ? 'âŒ Expired â€¢' : 'âŒ Expired';
-        const allLabel = filterNormalized === 'all' ? 'ðŸ“‹ Semua â€¢' : 'ðŸ“‹ Semua';
-
-        const keyboard = [
-          [
-            { text: activeLabel, callback_data: 'my_accounts_active' },
-            { text: expiredLabel, callback_data: 'my_accounts_expired' },
-          ],
-          [
-            { text: allLabel, callback_data: 'my_accounts_all' },
-          ],
-        ];
-
-        // Tidak ada data
-        if (!rows || rows.length === 0) {
-          let noDataMsg = 'Belum ada akun yang cocok dengan filter ini.';
-
-          if (filterNormalized === 'active') {
-            noDataMsg =
-              'Belum ada akun aktif yang tercatat untuk kamu.\n' +
-              'Coba lihat tab "ðŸ“‹ Semua" atau buat akun baru dari menu utama.';
-          } else if (filterNormalized === 'expired') {
-            noDataMsg =
-              'Belum ada akun expired yang tercatat untuk kamu.\n' +
-              'Coba lihat tab "âœ… Aktif" atau "ðŸ“‹ Semua".';
-          }
-
-          const text =
-            'ðŸ“‚ <b>Akun Saya</b>\n\n' +
-            filterText + '\n\n' +
-            noDataMsg;
-
-          try {
-            await sendCleanMenu(ctx, text, {
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: keyboard },
-            });
-          } catch (e) {
-            logger.error('âŒ Gagal kirim menu Akun Saya (no data):', e);
-          }
-
-          return;
-        }
-
-        // Ada data
-        let text = 'ðŸ“‚ <b>Akun Saya</b>\n\n' + filterText + '\n\n';
-        text += `Tipe: VM=vmess, VL=vless, SH=ssh, TJ=trojan, SS=shadowsocks\n`;
-        text += `Status: âœ…A#=aktif, âš ï¸A0=habis hari ini, âŒX=expired\n\n`;
-  const hasNext = rows.length > pageSize;
-  const pageRows = hasNext ? rows.slice(0, pageSize) : rows;
-        pageRows.forEach((row, index) => {
-  const nomor = offset + index + 1;
-  const serverName =
-    row.nama_server || (row.server_id ? `Server ${row.server_id}` : 'Server ?');
-
-  let status = 'â³ Tidak diketahui';
-  if (row.expires_at) {
-    const daysLeft = getAccountDaysLeft(row.expires_at);
-
-    if (daysLeft > 0) {
-      status = `âœ… Aktif (~${daysLeft} hari lagi)`;
-    } else if (daysLeft === 0) {
-      status = 'âš ï¸ Aktif (habis HARI INI)';
-    } else if (daysLeft < 0) {
-      status = 'âŒ Sudah expired';
-    }
-  }
-
-  // Tambah ke teks daftar (lebih ringkas)
-  const tcode = typeCode(row.type);
-  const st = shortStatus(row.expires_at);
-  text += `${nomor}. [${tcode}] <b>${row.username}</b> â€¢ ${serverName} â€¢ ${st}\n`;
-
-// ðŸ”˜ Tombol pilih akun: hanya untuk tab "active"
-if (filterNormalized === 'active') {
-  keyboard.push([
-    {
-      text: `${nomor}. ${row.username} [${row.type}]`,
-      callback_data: `accsel:${row.id}`,
-    },
-  ]);
-}
-});
-  const navRow = [];
-      if (safePage > 0) {
-        navRow.push({ text: 'â¬…ï¸ Sebelumnya', callback_data: `myacc_page:${filterNormalized}:${safePage - 1}` });
-      }
-      if (hasNext) {
-        navRow.push({ text: 'Berikutnya âž¡ï¸', callback_data: `myacc_page:${filterNormalized}:${safePage + 1}` });
-      }
-      if (navRow.length) keyboard.push(navRow);
-keyboard.push([{ text: 'ðŸ”™ Menu Utama', callback_data: 'send_main_menu' }]);
-
-        try {
-          await sendCleanMenu(ctx, text, {
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: keyboard },
-          });
-        } catch (e) {
-          logger.error('âŒ Gagal kirim menu Akun Saya (ada data):', e);
-        }
-      }
-    );
-  } catch (err) {
-    logger.error('âŒ Error di showMyAccounts:', err);
-    try {
-      await sendCleanMenu(ctx, 'âŒ Terjadi kesalahan saat menampilkan akun.', {
-        parse_mode: 'HTML',
-      });
-    } catch (e) {
-      logger.error('âŒ Gagal kirim pesan error luar showMyAccounts:', e);
-    }
-  }
-}
+// --- Fase 4 split: showMyAccounts dipindah ke accounts/
 
 // Default dari tombol ðŸ“‚ Akun Saya â†’ tampilkan akun AKTIF
-bot.action('my_accounts', async (ctx) => {
-  return showMyAccounts(ctx, 'active');
-});
+// --- Fase 4 split: my_accounts action dipindah ke accounts/
 
 // Tombol filter
-bot.action('my_accounts_active', async (ctx) => showMyAccounts(ctx, 'active', 0));
-bot.action('my_accounts_expired', async (ctx) => showMyAccounts(ctx, 'expired', 0));
-bot.action('my_accounts_all', async (ctx) => showMyAccounts(ctx, 'all', 0));
-bot.action(/^myacc_page:(active|expired|all):(\d+)$/, async (ctx) => {
-     const filter = ctx.match[1];
-     const page = parseInt(ctx.match[2], 10) || 0;
-     return showMyAccounts(ctx, filter, page);
-   });
+// --- Fase 4 split: my_accounts_active/expired/all dipindah ke accounts/
+// --- Fase 4 split: myacc_page dipindah ke accounts/
 
 // ========= ðŸ“Š RIWAYAT / LAPORAN SAYA (VERSI DETAIL + PAGING) =========
 const MY_STATS_PAGE_SIZE = 10; // ðŸ”§ ganti ke 15 / 20 kalau mau
@@ -10548,334 +10362,16 @@ bot.action(/my_stats:(\d+)/, async (ctx) => {
 });
 
 // ========= DETAIL AKUN â€“ SAAT SATU AKUN DIPILIH =========
-bot.action(/accsel:(\d+)/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-  } catch (e) {}
-
-  if (!ctx.from) {
-    return ctx.reply('âŒ Tidak bisa membaca data pengguna.');
-  }
-
-  const userId = ctx.from.id;
-  const accountId = parseInt(ctx.match[1], 10);
-  if (!accountId) {
-    return ctx.reply('âŒ ID akun tidak valid.');
-  }
-
-  db.get(
-    `SELECT a.id, a.user_id, a.username, a.type, a.server_id, a.expires_at, s.nama_server
-     FROM accounts a
-     LEFT JOIN Server s ON a.server_id = s.id
-     WHERE a.id = ?`,
-    [accountId],
-    (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat mengambil detail akun:', err.message);
-        return ctx.reply('âŒ Terjadi kesalahan saat membaca detail akun.');
-      }
-
-      if (!row || row.user_id !== userId) {
-        return ctx.reply('âŒ Akun ini tidak ditemukan atau bukan milik kamu.');
-      }
-
-            const serverName =
-        row.nama_server || (row.server_id ? `Server ${row.server_id}` : 'Server ?');
-
-      let status = 'â³ Tidak diketahui';
-      if (row.expires_at) {
-        const daysLeft = getAccountDaysLeft(row.expires_at);
-
-        if (daysLeft > 0) {
-          status = `âœ… Aktif (~${daysLeft} hari lagi)`;
-        } else if (daysLeft === 0) {
-          status = 'âš ï¸ Aktif (habis HARI INI)';
-        } else {
-          status = 'âŒ Sudah expired';
-        }
-      }
-
-      const detail =
-        'ðŸ“„ <b>Detail Akun</b>\n\n' +
-        `Tipe    : <b>${row.type}</b>\n` +
-        `Username: <b>${row.username}</b>\n` +
-        `Server  : ${serverName}\n` +
-        `Status  : ${status}\n\n` +
-        'Pilih aksi yang ingin kamu lakukan:';
-
-      const keyboard = [
-        [
-          { text: 'â™»ï¸ Perpanjang Akun', callback_data: `accrenew:${row.id}` }
-        ],
-        [
-          { text: 'âŒ Hapus Akun', callback_data: `accdel:${row.id}` }
-        ],
-        [
-          { text: 'ðŸ—ï¸ Kunci Akun', callback_data: `acclock:${row.id}` },
-          { text: 'ðŸ” Buka Kunci', callback_data: `accunlock:${row.id}` }
-        ],
-        [
-          { text: 'ðŸ”™ Kembali ke daftar', callback_data: 'my_accounts' }
-        ]
-      ];
-
-            return sendCleanMenu(ctx, detail, {
-        parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: keyboard }
-      });
-    }
-  );
-});
+// --- Fase 4 split: accsel dipindah ke accounts/
 // ========= âŒ HAPUS AKUN DARI "AKUN SAYA" =========
-bot.action(/accdel:(\d+)/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-  } catch (e) {}
-
-  if (!ctx.from) {
-    return ctx.reply('âŒ Tidak bisa membaca data pengguna.');
-  }
-
-  const userId = ctx.from.id;
-  const accountId = parseInt(ctx.match[1], 10);
-  if (!accountId) {
-    return ctx.reply('âŒ ID akun tidak valid.');
-  }
-
-  db.get(
-    'SELECT id, user_id, username, type, server_id FROM accounts WHERE id = ?',
-    [accountId],
-    async (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat mengambil akun untuk hapus:', err.message);
-        return ctx.reply('âŒ Terjadi kesalahan saat membaca data akun.');
-      }
-
-      if (!row || row.user_id !== userId) {
-        return ctx.reply('âŒ Akun ini tidak ditemukan atau bukan milik kamu.');
-      }
-
-      const delFunctions = {
-        vmess: delvmess,
-        vless: delvless,
-        trojan: deltrojan,
-        shadowsocks: delshadowsocks,
-        ssh: delssh
-      };
-
-      const fn = delFunctions[row.type];
-      if (!fn) {
-        return ctx.reply('âŒ Tipe akun tidak dikenal, tidak bisa dihapus.');
-      }
-
-      try {
-        const password = 'none', exp = 'none', iplimit = 'none';
-        const msg = await fn(row.username, password, exp, iplimit, row.server_id);
-        await recordAccountTransaction(userId, row.type);
-
-        // Hapus dari tabel accounts agar tidak muncul di "Akun Saya" lagi
-        db.run('DELETE FROM accounts WHERE id = ?', [accountId], (err2) => {
-          if (err2) {
-            logger.error('Kesalahan menghapus record dari tabel accounts:', err2.message);
-          }
-        });
-
-        await ctx.reply(msg, { parse_mode: 'Markdown' });
-        logger.info(`âœ… Akun ${row.type} (${row.username}) dihapus lewat Akun Saya oleh ${userId}`);
-      } catch (e2) {
-        logger.error('âŒ Gagal hapus akun dari menu Akun Saya:', e2.message);
-        await ctx.reply('âŒ *Terjadi kesalahan saat menghapus akun.*', { parse_mode: 'Markdown' });
-      }
-    }
-  );
-});
+// --- Fase 4 split: accdel dipindah ke accounts/
 // ========= ðŸ—ï¸ KUNCI AKUN DARI "AKUN SAYA" =========
-bot.action(/acclock:(\d+)/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-  } catch (e) {}
-
-  if (!ctx.from) {
-    return ctx.reply('âŒ Tidak bisa membaca data pengguna.');
-  }
-
-  const userId = ctx.from.id;
-  const accountId = parseInt(ctx.match[1], 10);
-  if (!accountId) {
-    return ctx.reply('âŒ ID akun tidak valid.');
-  }
-
-  db.get(
-    'SELECT id, user_id, username, type, server_id FROM accounts WHERE id = ?',
-    [accountId],
-    async (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat mengambil akun untuk lock:', err.message);
-        return ctx.reply('âŒ Terjadi kesalahan saat membaca data akun.');
-      }
-
-      if (!row || row.user_id !== userId) {
-        return ctx.reply('âŒ Akun ini tidak ditemukan atau bukan milik kamu.');
-      }
-
-      const lockFunctions = {
-        vmess: lockvmess,
-        vless: lockvless,
-        trojan: locktrojan,
-        shadowsocks: lockshadowsocks,
-        ssh: lockssh
-      };
-
-      const fn = lockFunctions[row.type];
-      if (!fn) {
-        return ctx.reply('âŒ Tipe akun tidak dikenal, tidak bisa dikunci.');
-      }
-
-      try {
-        const password = 'none', exp = 'none', iplimit = 'none';
-        const msg = await fn(row.username, password, exp, iplimit, row.server_id);
-        await recordAccountTransaction(userId, row.type);
-
-        await ctx.reply(msg, { parse_mode: 'Markdown' });
-        logger.info(`âœ… Akun ${row.type} (${row.username}) dikunci lewat Akun Saya oleh ${userId}`);
-      } catch (e2) {
-        logger.error('âŒ Gagal lock akun dari menu Akun Saya:', e2.message);
-        await ctx.reply('âŒ *Terjadi kesalahan saat mengunci akun.*', { parse_mode: 'Markdown' });
-      }
-    }
-  );
-});
+// --- Fase 4 split: acclock dipindah ke accounts/
 // ========= ðŸ” BUKA KUNCI AKUN DARI "AKUN SAYA" =========
-bot.action(/accunlock:(\d+)/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-  } catch (e) {}
-
-  if (!ctx.from) {
-    return ctx.reply('âŒ Tidak bisa membaca data pengguna.');
-  }
-
-  const userId = ctx.from.id;
-  const accountId = parseInt(ctx.match[1], 10);
-  if (!accountId) {
-    return ctx.reply('âŒ ID akun tidak valid.');
-  }
-
-  db.get(
-    'SELECT id, user_id, username, type, server_id FROM accounts WHERE id = ?',
-    [accountId],
-    async (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat mengambil akun untuk unlock:', err.message);
-        return ctx.reply('âŒ Terjadi kesalahan saat membaca data akun.');
-      }
-
-      if (!row || row.user_id !== userId) {
-        return ctx.reply('âŒ Akun ini tidak ditemukan atau bukan milik kamu.');
-      }
-
-      const unlockFunctions = {
-        vmess: unlockvmess,
-        vless: unlockvless,
-        trojan: unlocktrojan,
-        shadowsocks: unlockshadowsocks,
-        ssh: unlockssh
-      };
-
-      const fn = unlockFunctions[row.type];
-      if (!fn) {
-        return ctx.reply('âŒ Tipe akun tidak dikenal, tidak bisa dibuka kuncinya.');
-      }
-
-      try {
-        const password = 'none', exp = 'none', iplimit = 'none';
-        const msg = await fn(row.username, password, exp, iplimit, row.server_id);
-        await recordAccountTransaction(userId, row.type);
-
-        await ctx.reply(msg, { parse_mode: 'Markdown' });
-        logger.info(`âœ… Akun ${row.type} (${row.username}) di-unlock lewat Akun Saya oleh ${userId}`);
-      } catch (e2) {
-        logger.error('âŒ Gagal unlock akun dari menu Akun Saya:', e2.message);
-        await ctx.reply('âŒ *Terjadi kesalahan saat membuka kunci akun.*', { parse_mode: 'Markdown' });
-      }
-    }
-  );
-});
+// --- Fase 4 split: accunlock dipindah ke accounts/
 
 // ========= â™»ï¸ PERPANJANG AKUN DARI "AKUN SAYA" =========
-bot.action(/accrenew:(\d+)/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-  } catch (e) {}
-
-  if (!ctx.from) {
-    return ctx.reply('âŒ Tidak bisa membaca data pengguna.');
-  }
-
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-  const accountId = parseInt(ctx.match[1], 10);
-  if (!accountId) {
-    return ctx.reply('âŒ ID akun tidak valid.');
-  }
-
-  db.get(
-    `SELECT a.id, a.user_id, a.username, a.type, a.server_id, a.expires_at, s.nama_server
-     FROM accounts a
-     LEFT JOIN Server s ON a.server_id = s.id
-     WHERE a.id = ?`,
-    [accountId],
-    async (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat mengambil data akun untuk perpanjang:', err.message);
-        return ctx.reply('âŒ Terjadi kesalahan saat membaca data akun.');
-      }
-
-      if (!row || row.user_id !== userId) {
-        return ctx.reply('âŒ Akun ini tidak ditemukan atau bukan milik kamu.');
-      }
-
-      const serverName = row.nama_server || (row.server_id ? `Server ${row.server_id}` : 'Server ?');
-
-      let status = 'â³ Tidak diketahui';
-      if (row.expires_at) {
-        const daysLeft = getAccountDaysLeft(row.expires_at);
-
-        if (daysLeft > 0) {
-          status = `âœ… Aktif (~${daysLeft} hari lagi)`;
-        } else if (daysLeft === 0) {
-          status = 'âš ï¸ Aktif (habis HARI INI)';
-        } else {
-          status = 'âŒ Sudah expired';
-        }
-      }
-
-      // âœ… Set state langsung ke langkah "exp_renew_*"
-      userState[chatId] = {
-        action: 'renew',
-        type: row.type,           // vmess / vless / trojan / shadowsocks / ssh
-        username: row.username,
-        serverId: row.server_id,
-        password: 'none',         // renew biasanya tidak pakai password baru
-        step: `exp_renew_${row.type}`
-      };
-
-      const infoText =
-        'â™»ï¸ <b>PERPANJANG AKUN</b>\n\n' +
-        `Tipe    : <b>${row.type}</b>\n` +
-        `Username: <b>${row.username}</b>\n` +
-        `Server  : ${serverName}\n` +
-        `Status  : ${status}\n\n` +
-        'Silakan kirim <b>masa aktif tambahan</b> dalam hari.\n' +
-        'Contoh: <code>30</code>';
-
-            await sendCleanMenu(ctx, infoText, {
-        parse_mode: 'HTML'
-      });
-
-    }
-  );
-});
+// --- Fase 4 split: accrenew dipindah ke accounts/
 
 bot.action(/(del)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, async (ctx) => {
   const [action, type, serverId] = [ctx.match[1], ctx.match[2], ctx.match[3]];
@@ -13925,104 +13421,9 @@ async function updateUserSaldo(userId, saldo) {
   });
 }
 // ðŸ” Helper: proses pengurangan saldo + catat transaksi pembelian akun
-async function processAccountPayment(userId, amount, type, action, serverId, username) {
-  // type: vmess/vless/trojan/ssh/shadowsocks
-  // action: 'create' atau 'renew'
+// --- Fase 4 split: processAccountPayment dipindah ke accounts/
 
-  const trxType = (action === 'create')
-    ? `buy_create_${type}`
-    : `buy_renew_${type}`;
-
-  const refId = `buy-${serverId}-${username}-${Date.now()}`;
-
-  return new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN IMMEDIATE TRANSACTION', (beginErr) => {
-        if (beginErr) {
-          logger.error('Gagal memulai transaksi pembayaran akun:', beginErr.message);
-          return reject(beginErr);
-        }
-
-        db.run(
-          'UPDATE users SET saldo = saldo - ? WHERE user_id = ? AND saldo >= ?',
-          [amount, userId, amount],
-          function (err) {
-            if (err) {
-              return db.run('ROLLBACK', () => {
-                logger.error('Kesalahan saat mengurangi saldo pengguna:', err.message);
-                reject(err);
-              });
-            }
-
-            if (this.changes === 0) {
-              const warnMsg = `Gagal mengurangi saldo (saldo tidak cukup) untuk user ${userId} saat proses pembelian.`;
-              return db.run('ROLLBACK', () => {
-                logger.warn(warnMsg);
-                reject(new Error(warnMsg));
-              });
-            }
-
-            db.run(
-              'INSERT INTO transactions (user_id, amount, type, reference_id, timestamp) VALUES (?, ?, ?, ?, ?)',
-              [userId, -amount, trxType, refId, Date.now()],
-              (err2) => {
-                if (err2) {
-                  return db.run('ROLLBACK', () => {
-                    logger.error('Gagal mencatat transaksi saldo pembelian akun:', err2.message);
-                    reject(err2);
-                  });
-                }
-
-                db.run('COMMIT', (commitErr) => {
-                  if (commitErr) {
-                    logger.error('Gagal commit transaksi pembayaran akun:', commitErr.message);
-                    return reject(commitErr);
-                  }
-                  resolve({ refId, trxType });
-                });
-              }
-            );
-          }
-        );
-      });
-    });
-  });
-}
-
-async function refundAccountPayment(userId, amount, type, action, serverId, username, reason = 'rollback_create_failed') {
-  const trxType = (action === 'create')
-    ? `refund_create_${type}`
-    : `refund_renew_${type}`;
-  const refId = `refund-${serverId}-${username}-${Date.now()}`;
-
-  return new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN IMMEDIATE TRANSACTION', (beginErr) => {
-        if (beginErr) return reject(beginErr);
-
-        db.run(
-          'UPDATE users SET saldo = saldo + ? WHERE user_id = ?',
-          [amount, userId],
-          function (err) {
-            if (err) return db.run('ROLLBACK', () => reject(err));
-            if ((this.changes || 0) === 0) {
-              return db.run('ROLLBACK', () => reject(new Error('User refund tidak ditemukan')));
-            }
-
-            db.run(
-              'INSERT INTO transactions (user_id, amount, type, reference_id, timestamp) VALUES (?, ?, ?, ?, ?)',
-              [userId, amount, trxType, `${refId}:${reason}`, Date.now()],
-              (err2) => {
-                if (err2) return db.run('ROLLBACK', () => reject(err2));
-                db.run('COMMIT', (commitErr) => (commitErr ? reject(commitErr) : resolve(true)));
-              }
-            );
-          }
-        );
-      });
-    });
-  });
-}
+// --- Fase 4 split: refundAccountPayment dipindah ke accounts/
 
 async function updateServerField(serverId, value, query) {
   return new Promise((resolve, reject) => {
@@ -14201,83 +13602,8 @@ async function createQrisInvoice(baseAmount, noteOrReference, forcedUniqueSuffix
   };
 }
 
-async function recordAccountTransaction(userId, type) {
-  return new Promise((resolve, reject) => {
-    const referenceId = `account-${type}-${userId}-${Date.now()}`;
-    db.run(
-      'INSERT INTO transactions (user_id, type, reference_id, timestamp) VALUES (?, ?, ?, ?)',
-      [userId, type, referenceId, Date.now()],
-      (err) => {
-        if (err) {
-          logger.error('Error recording account transaction:', err.message);
-          reject(err);
-        } else {
-          resolve();
-        }
-      }
-    );
-  });
-}
-function upsertAccount(userId, username, type, serverId, expDays) {
-  const nowTs  = Date.now();
-  const dayMs  = 24 * 60 * 60 * 1000;
-
-  // Ubah exp (hari) jadi mili detik yang mau DITAMBAHKAN
-  let addMs = 0;
-  if (expDays && Number.isFinite(expDays) && expDays > 0) {
-    addMs = expDays * dayMs;
-  }
-
-  db.get(
-    'SELECT id, created_at, expires_at FROM accounts WHERE user_id = ? AND username = ? AND type = ? AND server_id = ? ORDER BY id DESC LIMIT 1',
-    [userId, username, type, serverId],
-    (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat membaca tabel accounts:', err.message);
-        return;
-      }
-
-      if (row) {
-        // ==== RENEW: akun sudah ada, kita TAMBAH hari ====
-        const oldCreated  = row.created_at || nowTs;
-        const oldExpires  = row.expires_at || nowTs;
-
-        // Kalau expired lama masih di depan, tambah dari sana.
-        // Kalau sudah lewat, mulai dari sekarang.
-        const baseTs      = oldExpires > nowTs ? oldExpires : nowTs;
-        const newExpires  = baseTs + addMs;
-
-        db.run(
-          'UPDATE accounts SET created_at = ?, expires_at = ? WHERE id = ?',
-          [oldCreated, newExpires, row.id],
-          (err2) => {
-            if (err2) {
-              logger.error('Kesalahan memperbarui data akun di tabel accounts:', err2.message);
-            } else {
-              logger.info(`Accounts updated untuk user ${userId}, ${type}:${username} di server ${serverId}`);
-            }
-          }
-        );
-      } else {
-        // ==== CREATE: belum ada, buat record baru ====
-        const createdAt = nowTs;
-        const expiresAt = addMs ? nowTs + addMs : null;
-
-        db.run(
-          'INSERT INTO accounts (user_id, username, type, server_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [userId, username, type, serverId, createdAt, expiresAt],
-          (err2) => {
-            if (err2) {
-              logger.error('Kesalahan menyimpan data akun ke tabel accounts:', err2.message);
-            } else {
-              logger.info(`Accounts inserted untuk user ${userId}, ${type}:${username} di server ${serverId}`);
-            }
-          }
-        );
-      }
-    }
-  );
-}
+// --- Fase 4 split: recordAccountTransaction dipindah ke accounts/
+// --- Fase 4 split: upsertAccount dipindah ke accounts/
 
 if (EXPIRE_DATE) {
   const now = new Date();

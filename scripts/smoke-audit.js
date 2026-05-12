@@ -53,10 +53,11 @@ assertRegex(
   'cekQRISGopayHistory belum memakai spawn shell:false'
 );
 
-// 6) BEGIN IMMEDIATE TRANSACTION harus cek beginErr
+// 6) BEGIN IMMEDIATE TRANSACTION di app.js harus menangani error begin
+// (nama variable boleh `err` / `beginErr` selama langsung reject).
 assertRegex(
-  /BEGIN IMMEDIATE TRANSACTION',\s*\(beginErr\)\s*=>\s*\{\s*if\s*\(beginErr\)\s*return\s+reject\(beginErr\)/,
-  'BEGIN IMMEDIATE TRANSACTION belum menangani beginErr'
+  /BEGIN IMMEDIATE TRANSACTION',\s*\((err|beginErr)\)\s*=>\s*\{\s*if\s*\(\1\)\s*return\s+reject\(\1\)/,
+  'BEGIN IMMEDIATE TRANSACTION belum menangani error begin'
 );
 
 if (failures.length) {

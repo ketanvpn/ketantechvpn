@@ -2,7 +2,7 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **3/6 fase selesai**
+Status keseluruhan: **4/6 fase selesai**
 
 ---
 
@@ -117,22 +117,24 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Fase 4 - Ekstrak Account Service (MEDIUM RISK)
+## Fase 4 - Ekstrak Account Service (MEDIUM RISK) - SELESAI
 
 **Target:** ~1500 baris ke `accounts/`.
 
-**Commit:** _(belum)_
+**Commit:** `<TBD>` (diisi setelah commit)
 
 **Checklist:**
-- [ ] `accounts/service.js`: `processAccountPayment`, `refundAccountPayment`, `recordAccountTransaction`, `upsertAccount`, `recordSaldoTransaction`, `getUserSaldo`.
-- [ ] `accounts/actions.js`: wrapper yang call `modules/create.js`, `modules/renew.js`, dll.
-- [ ] `accounts/my-accounts.js`: `showMyAccounts`, pagination `myacc_page:*`, handler `accsel/accdel/acclock/accunlock/accrenew`.
-- [ ] Update `app.js`: register handler via module.
-- [ ] Test: race condition pada `processAccountPayment` (debit saldo tapi provisioning gagal).
-- [ ] `node --check`, smoke audit, tests, commit, push.
+- [x] `accounts/service.js`: `createAccountService({ db, logger })` factory. Export `getUserSaldo(userId)`, `recordSaldoTransaction`, `recordAccountTransaction`, `processAccountPayment`, `refundAccountPayment`, `upsertAccount`. Signature `getUserSaldo(userId)` murni (tidak terima `db` lagi).
+- [x] `accounts/my-accounts.js`: `createMyAccountsHandlers({ bot, db, logger, userState, sendCleanMenu, recordAccountTransaction, getAccountDaysLeft, typeCode, shortStatus, delHandlers, lockHandlers, unlockHandlers })` factory. Ekspor `showMyAccounts` + `register()` yang memasang handler `my_accounts*`, `myacc_page:*`, `accsel/accdel/acclock/accunlock/accrenew`.
+- [ ] `accounts/actions.js`: SKIP (scope overlap dengan flow `bot.on('text')` yang masih di `app.js`; rencana digabung ke Fase 5 ketika admin menu juga diekstrak).
+- [x] Update `app.js`: `accountService` di-init setelah `runMigrations`; `myAccountsHandlers.register()` dipanggil setelah `userState` dibuat. Wrapper `getUserSaldo(db, userId)` dipertahankan agar call-site lama tidak berubah.
+- [ ] Test: race condition `processAccountPayment` ditunda ke Fase "Optional Future Work" (butuh sqlite3 `:memory:` dulu).
+- [x] `node --check`, smoke audit (regex diperluas `err|beginErr`), tests pass (53), commit, push.
 
 **Catatan:**
 - Handler `bot.action(/^myacc_page:(active|expired|all):(\d+)$/, ...)` harus tetap di-register sebelum `bot.action(/accsel:(\d+)/)` kalau ada overlap.
+- Sekarang handler di-register dalam satu `register()`; urutan `myacc_page` mendahului `accsel` dijaga di dalam module.
+- Smoke audit rule BEGIN IMMEDIATE TRANSACTION diperluas jadi menerima `(err)` atau `(beginErr)` karena pattern `beginErr` pindah ke `accounts/service.js` (bukan lagi di `app.js`).
 
 ---
 
