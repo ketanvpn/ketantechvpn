@@ -707,11 +707,21 @@ function findMatchingSettlementTransaction(transactions, expectedAmount, options
   const expected = Number(expectedAmount || 0);
   if (!Array.isArray(transactions) || expected <= 0) return null;
 
+  const { createdAt = 0, windowBeforeMs = 5 * 60 * 1000, windowAfterMs = 60 * 60 * 1000 } = options || {};
+  const minTime = createdAt > 0 ? createdAt - windowBeforeMs : 0;
+  const maxTime = createdAt > 0 ? createdAt + windowAfterMs : Infinity;
+
   return (
     transactions.find((trx) => {
       const amount = Number(trx?.amount || 0);
       const status = String(trx?.status || '').toLowerCase();
-      return amount === expected && status === 'settlement';
+      if (amount !== expected || status !== 'settlement') return false;
+      if (createdAt <= 0) return true;
+      const trxTime = parseProviderTransactionTime(
+        trx?.transaction_time || trx?.time || trx?.paid_at || trx?.created_at || trx?.updated_at
+      );
+      if (!trxTime) return true;
+      return trxTime >= minTime && trxTime <= maxTime;
     }) || null
   );
 }
@@ -738,8 +748,9 @@ async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
   const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
   const expiresAt = Number(paymentRow.created_at || createdAt || 0) + timeoutMin * 60 * 1000;
 
+  const graceMs = 2 * 60 * 1000; // beri 2 menit grace period sebelum mark EXPIRED
   if (!providerTransactionId) {
-    if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt) {
+    if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt + graceMs) {
       return { status: 'EXPIRED', paid_at: null, transaction: null };
     }
     return { status: 'PENDING', paid_at: null, transaction: null };
@@ -780,7 +791,7 @@ async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
     };
   }
 
-  if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt) {
+  if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt + graceMs) {
     return {
       status: 'EXPIRED',
       paid_at: null,
@@ -908,8 +919,8 @@ let DAILY_REPORT_ENABLED =
 let DAILY_REPORT_HOUR = Number(vars.DAILY_REPORT_HOUR || 23); // jam 23
 let DAILY_REPORT_MINUTE = Number(vars.DAILY_REPORT_MINUTE || 0); // menit 00
 
-// Supaya laporan hanya sekali per hari
-let lastDailyReportDateKey = null;
+// Supaya laporan hanya sekali per hari. Persist ke .vars.json agar survive restart.
+let lastDailyReportDateKey = (vars && vars.LAST_DAILY_REPORT_DATE) || null;
 
 logger.info(
   `Daily report init: enabled=${DAILY_REPORT_ENABLED}, time=${DAILY_REPORT_HOUR}:${String(
@@ -930,8 +941,8 @@ let EXPIRY_REMINDER_DAYS_BEFORE = Number(
   vars.EXPIRY_REMINDER_DAYS_BEFORE || 1
 );
 
-// Supaya reminder hanya sekali per hari
-let lastExpiryReminderDateKey = null;
+// Supaya reminder hanya sekali per hari. Persist ke .vars.json agar survive restart.
+let lastExpiryReminderDateKey = (vars && vars.LAST_EXPIRY_REMINDER_DATE) || null;
 
 logger.info(
   `Expiry reminder init: enabled=${EXPIRY_REMINDER_ENABLED}, daysBefore=${EXPIRY_REMINDER_DAYS_BEFORE}, time=${EXPIRY_REMINDER_HOUR}:${String(
@@ -7726,6 +7737,7 @@ function startDailyReportScheduler() {
         logger.info('Waktu laporan harian tercapai, mengirim laporan...');
         await sendDailyReport(false);
         lastDailyReportDateKey = dateKey;
+        try { writeVarsPartial({ LAST_DAILY_REPORT_DATE: dateKey }); } catch (e) { logger.warn('Gagal persist LAST_DAILY_REPORT_DATE: ' + (e && e.message ? e.message : e)); }
       }
     } catch (err) {
       logger.error('âŒ Error di scheduler laporan harian:', err);
@@ -7773,6 +7785,7 @@ function startExpiryReminderScheduler() {
         );
         await sendExpiryReminders();
         lastExpiryReminderDateKey = dateKey;
+        try { writeVarsPartial({ LAST_EXPIRY_REMINDER_DATE: dateKey }); } catch (e) { logger.warn('Gagal persist LAST_EXPIRY_REMINDER_DATE: ' + (e && e.message ? e.message : e)); }
       }
     } catch (err) {
       logger.error('âŒ Error di scheduler reminder expired:', err);
@@ -15450,7 +15463,7 @@ async function checkQRISStatus() {
         continue;
       }
 
-      const matched = findMatchingSettlementTransaction(transactions, deposit.amount);
+      const matched = findMatchingSettlementTransaction(transactions, deposit.amount, { createdAt: Number(deposit.timestamp || 0) });
       if (matched) {
         await creditDeposit(uniqueCode, bot, db, logger);
         logger.info(`âœ… QRIS paid: ${uniqueCode} amount=${deposit.amount}`);
@@ -15615,8 +15628,18 @@ function startQrisPaymentPolling(bot, db, logger) {
   }
 
   async function pollQrisPaymentsStartup() {
-    if (global.__pollQrisRunning) return;
+    const pollStartedAt = Number(global.__pollQrisStartedAt || 0);
+    if (global.__pollQrisRunning) {
+      // Guard: kalau polling stuck >90 detik, anggap crashed dan reset flag.
+      if (pollStartedAt && Date.now() - pollStartedAt > 90 * 1000) {
+        logger.warn('Polling QRIS sebelumnya stuck >90s, reset flag dan mulai ulang.');
+        global.__pollQrisRunning = false;
+      } else {
+        return;
+      }
+    }
     global.__pollQrisRunning = true;
+    global.__pollQrisStartedAt = Date.now();
     try {
       const now = Date.now();
       const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
@@ -15757,6 +15780,7 @@ function startQrisPaymentPolling(bot, db, logger) {
       logger.error(`âŒ pollQrisPayments fatal: ${e?.message || e}`);
     } finally {
       global.__pollQrisRunning = false;
+      global.__pollQrisStartedAt = 0;
     }
   }
 
