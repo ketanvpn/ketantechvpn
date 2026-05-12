@@ -44,7 +44,7 @@ Status keseluruhan: **1/6 fase selesai**
 
 **Target:** keluarkan ~500 baris ke `lib/`. No runtime behavior change.
 
-**Commit:** `f6c0a95`
+**Commit:** `c9484f4`
 
 **Checklist:**
 - [x] `lib/qris.js`: `crc16Ccitt`, `removeTag54`, `buildEmvTag`, `buildDynamicQrisPayload`, `buildStaticQrisImageUrl`, `parseProviderTransactionTime`, `buildProviderTransactionFingerprint`, `findMatchingSettlementTransaction`
