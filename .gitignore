@@ -1,0 +1,16 @@
+node_modules/
+logs/
+*.log
+bot-*.log
+.env
+.env.local
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+trial_config.json
+trial_settings.json
+app.js.bak
+.DS_Store
+Thumbs.db
+.vars.json
