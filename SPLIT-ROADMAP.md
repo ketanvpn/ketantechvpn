@@ -66,7 +66,7 @@ Status keseluruhan: **2/6 fase selesai**
 
 **Target:** ~800 baris ke `db/`. Tetap satu connection SQLite.
 
-**Commit:** `9280573`
+**Commit:** `4f563bf`
 
 **Checklist:**
 - [x] `db/connection.js`: factory `createConnection(filePath, logger)` return sqlite3 instance.
