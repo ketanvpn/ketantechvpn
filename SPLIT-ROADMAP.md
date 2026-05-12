@@ -121,7 +121,7 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 **Target:** ~1500 baris ke `accounts/`.
 
-**Commit:** `<TBD>` (diisi setelah commit)
+**Commit:** `ac18d91`
 
 **Checklist:**
 - [x] `accounts/service.js`: `createAccountService({ db, logger })` factory. Export `getUserSaldo(userId)`, `recordSaldoTransaction`, `recordAccountTransaction`, `processAccountPayment`, `refundAccountPayment`, `upsertAccount`. Signature `getUserSaldo(userId)` murni (tidak terima `db` lagi).
