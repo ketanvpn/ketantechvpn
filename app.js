@@ -2056,29 +2056,69 @@ function saveExpiryReminderConfig() {
 
 
 // Start / restart scheduler auto-backup
-function restartAutoBackupScheduler() {
-  if (autoBackupTimer) {
-    clearInterval(autoBackupTimer);
-    autoBackupTimer = null;
-  }
 
-  if (!AUTO_BACKUP_ENABLED || AUTO_BACKUP_INTERVAL_HOURS <= 0) {
-    logger.info('Auto-backup nonaktif atau interval tidak valid, scheduler tidak jalan.');
-    return;
-  }
+// --- Fase 6 split: scheduler factory (scheduler/*.js)
+const { createAutoBackupScheduler } = require('./scheduler/auto-backup');
+const { createDailyReportScheduler } = require('./scheduler/daily-report');
+const { createExpiryReminderScheduler } = require('./scheduler/expiry-reminder');
+const { createResellerTargetScheduler } = require('./scheduler/reseller-target');
 
-  const intervalMs = AUTO_BACKUP_INTERVAL_HOURS * 60 * 60 * 1000;
+const __autoBackupScheduler = createAutoBackupScheduler({
+  logger,
+  isEnabled: () => AUTO_BACKUP_ENABLED,
+  getIntervalHours: () => AUTO_BACKUP_INTERVAL_HOURS,
+  sendAutoBackup: (...args) => sendAutoBackup(...args),
+});
+function restartAutoBackupScheduler() { __autoBackupScheduler.restart(); }
 
-  autoBackupTimer = setInterval(() => {
-    sendAutoBackup(`backup otomatis tiap ${AUTO_BACKUP_INTERVAL_HOURS} jam`).catch((err) => {
-      logger.error('âŒ Gagal menjalankan backup otomatis:', err);
-    });
-  }, intervalMs);
+const __dailyReportScheduler = createDailyReportScheduler({
+  logger,
+  getTimeInConfiguredTimeZone: () => getTimeInConfiguredTimeZone(),
+  getTimeZone: () => TIME_ZONE,
+  isEnabled: () => DAILY_REPORT_ENABLED,
+  getHour: () => DAILY_REPORT_HOUR,
+  getMinute: () => DAILY_REPORT_MINUTE,
+  sendDailyReport: (...args) => sendDailyReport(...args),
+  getLastSentDateKey: () => lastDailyReportDateKey,
+  setLastSentDateKey: (v) => {
+    lastDailyReportDateKey = v;
+    try { writeVarsPartial({ LAST_DAILY_REPORT_DATE: v }); }
+    catch (e) { logger.warn('Gagal persist LAST_DAILY_REPORT_DATE: ' + (e && e.message ? e.message : e)); }
+  },
+});
+function startDailyReportScheduler() { __dailyReportScheduler.start(); }
 
-  logger.info(
-    `Auto-backup aktif setiap ${AUTO_BACKUP_INTERVAL_HOURS} jam (~${intervalMs / 1000} detik).`
-  );
-}
+const __expiryReminderScheduler = createExpiryReminderScheduler({
+  logger,
+  getTimeInConfiguredTimeZone: () => getTimeInConfiguredTimeZone(),
+  getTimeZone: () => TIME_ZONE,
+  isEnabled: () => EXPIRY_REMINDER_ENABLED,
+  getHour: () => EXPIRY_REMINDER_HOUR,
+  getMinute: () => EXPIRY_REMINDER_MINUTE,
+  sendExpiryReminders: (...args) => sendExpiryReminders(...args),
+  getLastSentDateKey: () => lastExpiryReminderDateKey,
+  setLastSentDateKey: (v) => {
+    lastExpiryReminderDateKey = v;
+    try { writeVarsPartial({ LAST_EXPIRY_REMINDER_DATE: v }); }
+    catch (e) { logger.warn('Gagal persist LAST_EXPIRY_REMINDER_DATE: ' + (e && e.message ? e.message : e)); }
+  },
+});
+function startExpiryReminderScheduler() { __expiryReminderScheduler.start(); }
+
+const __resellerTargetScheduler = createResellerTargetScheduler({
+  logger,
+  getTimeInConfiguredTimeZone: () => getTimeInConfiguredTimeZone(),
+  getTimeZone: () => TIME_ZONE,
+  isEnabled: () => RESELLER_TARGET_ENABLED,
+  getCheckHour: () => RESELLER_TARGET_CHECK_HOUR,
+  getCheckMinute: () => RESELLER_TARGET_CHECK_MINUTE,
+  runCheck: () => checkAndDowngradeResellersForPreviousMonth(),
+  getLastProcessedMonthKey: () => lastResellerTargetMonthKey,
+  setLastProcessedMonthKey: (v) => { lastResellerTargetMonthKey = v; },
+});
+function startResellerTargetScheduler() { __resellerTargetScheduler.start(); }
+
+// --- Fase 6 split: function restartAutoBackupScheduler() dipindah ke scheduler/
 
 (async () => {
   try {
@@ -6657,77 +6697,10 @@ const text =
     logger.error('âŒ Error di sendExpiryReminders:', err);
   }
 }
-function startDailyReportScheduler() {
-  const CHECK_INTERVAL_MS = 60 * 1000; // cek tiap 1 menit
-
-  setInterval(async () => {
-    try {
-      // Kalau dimatikan dari menu admin, jangan kirim apa-apa
-      if (!DAILY_REPORT_ENABLED) return;
-
-      const { dateKey, hour, minute } = getTimeInConfiguredTimeZone();
-
-      if (dateKey === lastDailyReportDateKey) return;
-
-      if (hour === DAILY_REPORT_HOUR && minute === DAILY_REPORT_MINUTE) {
-        logger.info('Waktu laporan harian tercapai, mengirim laporan...');
-        await sendDailyReport(false);
-        lastDailyReportDateKey = dateKey;
-        try { writeVarsPartial({ LAST_DAILY_REPORT_DATE: dateKey }); } catch (e) { logger.warn('Gagal persist LAST_DAILY_REPORT_DATE: ' + (e && e.message ? e.message : e)); }
-      }
-    } catch (err) {
-      logger.error('âŒ Error di scheduler laporan harian:', err);
-    }
-  }, CHECK_INTERVAL_MS);
-
-    logger.info(
-    `Scheduler laporan harian aktif: jam ${DAILY_REPORT_HOUR}:${String(
-      DAILY_REPORT_MINUTE
-    ).padStart(2, '0')} (zona ${TIME_ZONE}, cek tiap 1 menit)`
-  );
-}
+// --- Fase 6 split: function startDailyReportScheduler() dipindah ke scheduler/
 
 
-function startExpiryReminderScheduler() {
-  const CHECK_INTERVAL_MS = 60 * 1000; // cek tiap 1 menit
-
-  logger.info(
-    `Scheduler pengingat expired aktif: jam ${EXPIRY_REMINDER_HOUR}:${String(
-      EXPIRY_REMINDER_MINUTE
-    ).padStart(2, '0')} (zona ${TIME_ZONE}, cek tiap 1 menit)`
-  );
-
-  setInterval(async () => {
-    try {
-      // Kalau OFF dari menu admin, jangan kirim apa-apa
-      if (!EXPIRY_REMINDER_ENABLED) return;
-
-      const { dateKey, hour, minute } = getTimeInConfiguredTimeZone();
-
-      // Biar sehari cuma sekali per tanggal
-      if (dateKey === lastExpiryReminderDateKey) return;
-
-      // Konversi ke total menit
-      const nowTotalMinutes = hour * 60 + minute;
-      const targetTotalMinutes =
-        Number(EXPIRY_REMINDER_HOUR) * 60 +
-        Number(EXPIRY_REMINDER_MINUTE);
-
-      // Kalau jam sekarang SUDAH lewat jam target dan
-      // hari ini belum pernah kirim â†’ kirim sekali
-      if (nowTotalMinutes >= targetTotalMinutes) {
-        logger.info(
-          'Waktu reminder expired tercapai (atau sudah lewat dikit), mulai kirim pengingat...'
-        );
-        await sendExpiryReminders();
-        lastExpiryReminderDateKey = dateKey;
-        try { writeVarsPartial({ LAST_EXPIRY_REMINDER_DATE: dateKey }); } catch (e) { logger.warn('Gagal persist LAST_EXPIRY_REMINDER_DATE: ' + (e && e.message ? e.message : e)); }
-      }
-    } catch (err) {
-      logger.error('âŒ Error di scheduler reminder expired:', err);
-    }
-  }, CHECK_INTERVAL_MS);
-}
+// --- Fase 6 split: function startExpiryReminderScheduler() dipindah ke scheduler/
 
 // === CEK TARGET RESELLER & AUTO-DOWNGRADE BULANAN ===
 async function checkAndDowngradeResellersForPreviousMonth() {
@@ -6867,55 +6840,7 @@ async function checkAndDowngradeResellersForPreviousMonth() {
   }
 }
 
-function startResellerTargetScheduler() {
-  const CHECK_INTERVAL_MS = 60 * 1000; // cek tiap 1 menit
-
-  logger.info(
-    `Scheduler target reseller aktif: jam ${RESELLER_TARGET_CHECK_HOUR}:${String(
-      RESELLER_TARGET_CHECK_MINUTE
-    ).padStart(2, '0')} (zona ${TIME_ZONE}, cek tiap 1 menit)`
-  );
-
-  setInterval(async () => {
-    try {
-      if (!RESELLER_TARGET_ENABLED) return;
-
-      const { dateKey, hour, minute } = getTimeInConfiguredTimeZone();
-      if (
-        hour !== RESELLER_TARGET_CHECK_HOUR ||
-        minute !== RESELLER_TARGET_CHECK_MINUTE
-      ) {
-        return;
-      }
-
-      const [yearStr, monthStr, dayStr] = dateKey.split('-');
-      const day = Number(dayStr);
-
-      // hanya jalan di hari pertama tiap bulan
-      if (day !== 1) return;
-
-      let year = Number(yearStr);
-      let month = Number(monthStr) - 1; // periode yang dicek = bulan sebelumnya
-      if (month === 0) {
-        month = 12;
-        year -= 1;
-      }
-
-      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
-
-      if (lastResellerTargetMonthKey === monthKey) {
-        // sudah pernah diproses untuk bulan ini
-        return;
-      }
-
-      lastResellerTargetMonthKey = monthKey;
-
-      await checkAndDowngradeResellersForPreviousMonth();
-    } catch (err) {
-      logger.error('[ResellerTarget] Error di scheduler target reseller:', err);
-    }
-  }, CHECK_INTERVAL_MS);
-}
+// --- Fase 6 split: function startResellerTargetScheduler() dipindah ke scheduler/
 
 
 // === ðŸ—‚ï¸ BACKUP DATABASE DAN KIRIM KE ADMIN ===

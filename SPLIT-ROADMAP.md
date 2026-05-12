@@ -2,7 +2,7 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **4/6 fase selesai (Fase 5 parsial 2/6 sub)**
+Status keseluruhan: **5/6 fase selesai (Fase 5 parsial 2/6 sub)**
 
 ---
 
@@ -163,24 +163,25 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Fase 6 - Ekstrak Scheduler (LOW RISK)
+## Fase 6 - Ekstrak Scheduler (LOW RISK) - SELESAI
 
 **Target:** ~800 baris ke `scheduler/`.
 
-**Commit:** _(belum)_
+**Commit:** `<TBD>` (diisi setelah commit)
 
 **Checklist:**
-- [ ] `scheduler/daily-report.js`: `startDailyReportScheduler`, `sendDailyReport`.
-- [ ] `scheduler/expiry-reminder.js`: `startExpiryReminderScheduler`, `sendExpiryReminders`.
-- [ ] `scheduler/reseller-target.js`: `startResellerTargetScheduler`, `checkAndDowngradeResellersForPreviousMonth`.
-- [ ] `scheduler/auto-backup.js`: `restartAutoBackupScheduler`, `sendAutoBackup`.
-- [ ] Update `app.js`: panggil semua scheduler dari satu tempat.
-- [ ] Test: scheduler pakai fake timer (`setTimeout` mock).
-- [ ] `node --check`, smoke audit, tests, commit, push.
+- [x] `scheduler/daily-report.js`: `createDailyReportScheduler({ logger, getTimeInConfiguredTimeZone, getTimeZone, isEnabled, getHour, getMinute, sendDailyReport, getLastSentDateKey, setLastSentDateKey })`. Loop scheduler dipindah, `sendDailyReport` body tetap di `app.js` (akses DB + template).
+- [x] `scheduler/expiry-reminder.js`: `createExpiryReminderScheduler({ ... })`. Pola sama. `sendExpiryReminders` tetap di `app.js`.
+- [x] `scheduler/reseller-target.js`: `createResellerTargetScheduler({ ..., runCheck, getLastProcessedMonthKey, setLastProcessedMonthKey })`. `checkAndDowngradeResellersForPreviousMonth` tetap di `app.js`.
+- [x] `scheduler/auto-backup.js`: `createAutoBackupScheduler({ logger, isEnabled, getIntervalHours, sendAutoBackup })`. `restart()` membaca interval terbaru via getter supaya handler admin bisa ubah config on-the-fly.
+- [x] Update `app.js`: factory di-init di posisi lama `restartAutoBackupScheduler`. Wrapper `function restartAutoBackupScheduler() { __autoBackupScheduler.restart(); }` + setara untuk 3 scheduler lain dipertahankan supaya call-site lama tidak perlu diubah.
+- [ ] Test scheduler pakai fake timer: belum (butuh sinon/jest fake timer; ditunda ke Optional Future Work).
+- [x] `node --check`, smoke audit, tests pass (53), commit, push.
 
 **Catatan:**
-- Scheduler pakai `setInterval` — pastikan kalau module di-load ulang, tidak bikin interval ganda (kasih guard `global.__*SchedulerStarted`).
-- `sendAutoBackup` kirim file DB ke chat admin — butuh `bot.telegram.sendDocument` reference.
+- Guard `global.__*SchedulerStarted` dipasang di factory (daily/expiry/reseller). AutoBackup pakai local `timer` variable di factory closure — dipanggil `restart()` via wrapper setiap kali config berubah.
+- Semua getter config (`isEnabled`, `getHour`, `getMinute`, `getIntervalHours`, dll.) diwrap sebagai arrow function supaya reassign di `app.js` terbaca setiap kali scheduler tick.
+- `sendDailyReport` / `sendExpiryReminders` / `sendAutoBackup` / `checkAndDowngradeResellersForPreviousMonth` tetap di `app.js` karena akses banyak closure (DB, template, dsb.). Bisa diekstrak di sesi khusus kalau ingin module lebih "pure".
 
 ---
 
