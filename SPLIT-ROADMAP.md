@@ -230,10 +230,12 @@ Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dik
 
 ### Integration test & CI
 
-- [ ] `tests/integration/` dengan sqlite3 `:memory:`:
-  - [ ] Race condition `processAccountPayment` (debit saldo + provisioning fail → refund).
-  - [ ] `creditDeposit` double-process guard (dua call parallel → hanya satu update).
-  - [ ] `findAvailableTopupAmount` collision (10 retry habis).
+- [x] `tests/integration/` dengan sqlite3 `:memory:` — helper bootstrap (migrations otomatis) di `tests/integration/helpers.js`. Commit: `<TBD>`.
+  - [x] `account-service.test.js` (4 test): race condition `processAccountPayment` saldo tipis, `refundAccountPayment` balikin saldo, pembelian sequential, kontrak paralel (SQLITE_BUSY acceptable).
+  - [x] `deposit-manager.test.js` (3 test): `creditDeposit` double-process guard (hanya 1 kredit saldo), `findAvailableTopupAmount` collision fallback, suffix tersedia → non-bentrok.
+  - [x] `smoke.test.js` (1 test): verifikasi semua table utama ter-migrate.
+  - Total: **8 integration test, semua PASS.**
+  - Script npm: `npm run test:integration` (tests/integration/*.test.js) + `npm run test:all` (unit + integration).
 - [ ] Scheduler fake-timer test (`sinon.useFakeTimers()` atau `node:test` mock timer) untuk 4 scheduler.
 - [ ] GitHub Actions matrix: tambah smoke boot test (spawn bot dengan dummy token & dummy DB, cek exit 0 dalam 5 detik).
 

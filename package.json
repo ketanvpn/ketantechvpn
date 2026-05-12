@@ -3,7 +3,9 @@
     "smoke:audit": "node scripts/smoke-audit.js",
     "smoke:syntax": "node --check app.js",
     "smoke:all": "npm run smoke:syntax && npm run smoke:audit && npm test",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js",
+    "test:all": "npm test && npm run test:integration"
   },
   "dependencies": {
     "autoft-orkut": "^0.0.2",
