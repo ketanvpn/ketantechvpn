@@ -230,7 +230,7 @@ Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dik
 
 ### Integration test & CI
 
-- [x] `tests/integration/` dengan sqlite3 `:memory:` — helper bootstrap (migrations otomatis) di `tests/integration/helpers.js`. Commit: `<TBD>`.
+- [x] `tests/integration/` dengan sqlite3 `:memory:` — helper bootstrap (migrations otomatis) di `tests/integration/helpers.js`. Commit: `0753437`.
   - [x] `account-service.test.js` (4 test): race condition `processAccountPayment` saldo tipis, `refundAccountPayment` balikin saldo, pembelian sequential, kontrak paralel (SQLITE_BUSY acceptable).
   - [x] `deposit-manager.test.js` (3 test): `creditDeposit` double-process guard (hanya 1 kredit saldo), `findAvailableTopupAmount` collision fallback, suffix tersedia → non-bentrok.
   - [x] `smoke.test.js` (1 test): verifikasi semua table utama ter-migrate.
