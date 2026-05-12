@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { httpGet, httpPost, httpPatch, httpDelete } = require('./http-client');
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('./sellvpn.db');
 
@@ -27,7 +28,7 @@ async function renewssh(username, exp, limitip, serverId) {
       }
 
       try {
-        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": 0}, {
+        const response = await httpPatch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": 0}, {
         headers: {
           Authorization: AUTH_TOKEN,
           Accept: 'application/json',
@@ -94,7 +95,7 @@ async function renewvmess(username, exp, quota, limitip, serverId) {
       const KUOTA = quota;
 
       try {
-        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": KUOTA}, {
+        const response = await httpPatch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": KUOTA}, {
         headers: {
           Authorization: AUTH_TOKEN,
           Accept: 'application/json',
@@ -162,7 +163,7 @@ async function renewvless(username, exp, quota, limitip, serverId) {
       const KUOTA = quota;
 
       try {
-        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": KUOTA}, {
+        const response = await httpPatch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": KUOTA}, {
         headers: {
           Authorization: AUTH_TOKEN,
           Accept: 'application/json',
@@ -230,7 +231,7 @@ async function renewtrojan(username, exp, quota, limitip, serverId) {
       const KUOTA = quota;
 
       try {
-        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": KUOTA}, {
+        const response = await httpPatch(`${web_URL}/${encodeURIComponent(username)}/${encodeURIComponent(String(days))}`, {"kuota": KUOTA}, {
         headers: {
           Authorization: AUTH_TOKEN,
           Accept: 'application/json',
@@ -295,8 +296,7 @@ async function renewtrojan(username, exp, quota, limitip, serverId) {
         const auth = server.auth;
         const param = `:5888/renewshadowsocks?user=${username}&exp=${exp}&quota=${quota}&iplimit=${limitip}&auth=${auth}`;
         const url = `http://${domain}${param}`;
-        axios.get(url)
-          .then(response => {
+        httpGet(url).then(response => {
             if (response.data.status === "success") {
               const shadowsocksData = response.data.data;
               const msg = `

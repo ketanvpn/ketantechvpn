@@ -1528,6 +1528,17 @@ let lastBroadcastInfo = null;
 const bot = new Telegraf(BOT_TOKEN);
 
 // ==== Helper: konversi Markdown lama -> HTML aman ====
+// Escape aman untuk interpolasi manual ke HTML Telegram
+function htmlEscape(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function mdToHtml(text) {
   if (text == null) return '';
   let escaped = String(text)
@@ -2647,6 +2658,23 @@ ensureSqliteColumn('qris_payments', 'provider_issuer', 'TEXT');
 ensureSqliteColumn('qris_payments', 'provider_status', 'TEXT');
 ensureSqliteColumn('qris_payments', 'provider_payload_json', 'TEXT');
 createUniqueIndexIfSafe('idx_qris_payments_invoice_unique', 'qris_payments', 'invoice_id');
+
+// Index non-unique untuk polling/query pending_deposits & qris_payments
+db.run("CREATE INDEX IF NOT EXISTS idx_pending_deposits_status_time ON pending_deposits(status, timestamp)", (err) => {
+  if (err) logger.warn('Gagal bikin idx_pending_deposits_status_time: ' + err.message);
+});
+db.run("CREATE INDEX IF NOT EXISTS idx_pending_deposits_user ON pending_deposits(user_id, status)", (err) => {
+  if (err) logger.warn('Gagal bikin idx_pending_deposits_user: ' + err.message);
+});
+db.run("CREATE INDEX IF NOT EXISTS idx_qris_payments_status_created ON qris_payments(status, created_at)", (err) => {
+  if (err) logger.warn('Gagal bikin idx_qris_payments_status_created: ' + err.message);
+});
+db.run("CREATE INDEX IF NOT EXISTS idx_qris_payments_user ON qris_payments(user_id, status)", (err) => {
+  if (err) logger.warn('Gagal bikin idx_qris_payments_user: ' + err.message);
+});
+db.run("CREATE INDEX IF NOT EXISTS idx_pending_deposits_amount ON pending_deposits(amount, status)", (err) => {
+  if (err) logger.warn('Gagal bikin idx_pending_deposits_amount: ' + err.message);
+});
 
 // =================== AUTO TOPUP QRIS (MODEL MUTASI: pending_deposits) ===================
 
@@ -13681,12 +13709,12 @@ try {
       '<code>â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”</code>\n' +
       '<b>ACCOUNT CREATED</b>\n' +
       '<code>â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”</code>\n' +
-      '<b>' + serverName + '</b>\n' +
+      '<b>' + htmlEscape(serverName) + '</b>\n' +
       '<code>\n' + // <-- MULAI BLOK MONOSPACE
-      '-> Client  : ' + userDisplay + '\n' +
-      '-> Role    : ' + roleLabel + '\n' +
-      '-> User    : <code>' + username + '</code>\n' +
-      '-> Type    : ' + type.toUpperCase() + '\n' +
+      '-> Client  : ' + htmlEscape(userDisplay) + '\n' +
+      '-> Role    : ' + htmlEscape(roleLabel) + '\n' +
+      '-> User    : <code>' + htmlEscape(username) + '</code>\n' +
+      '-> Type    : ' + htmlEscape(type).toUpperCase() + '\n' +
       '-> Durasi  : ' + exp + ' Hari\n' +       // durasi paket yang dipilih
      // '-> Sisa    : ' + sisaHari + ' Hari\n' +  // sisa sekarang (harusnya = exp kalau baru dibuat)
       '-> Expired : ' + expiredDateOnly + '\n' +
@@ -13702,12 +13730,12 @@ try {
       '<code>â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”</code>\n' +
       '<b>ACCOUNT RENEWED</b>\n' +
       '<code>â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”</code>\n' +
-      '<b>' + serverName + '</b>\n' +
+      '<b>' + htmlEscape(serverName) + '</b>\n' +
       '<code>\n' + // <-- MULAI BLOK MONOSPACE
-      '-> Client  : ' + userDisplay + '\n' +
-      '-> Role    : ' + roleLabel + '\n' +
-      '-> User    : <code>' + username + '</code>\n' +
-      '-> Type    : ' + type.toUpperCase() + '\n' +
+      '-> Client  : ' + htmlEscape(userDisplay) + '\n' +
+      '-> Role    : ' + htmlEscape(roleLabel) + '\n' +
+      '-> User    : <code>' + htmlEscape(username) + '</code>\n' +
+      '-> Type    : ' + htmlEscape(type).toUpperCase() + '\n' +
       '-> Sisa sebelum : ' + sisaSebelum + ' Hari\n' +
       '-> Perpanjang   : +' + exp + ' Hari\n' +
       '-> Sisa sekarang: ' + sisaHari + ' Hari\n' +
@@ -15078,17 +15106,42 @@ db.all('SELECT * FROM pending_deposits WHERE status = "pending"', [], (err, rows
     logger.error('Gagal load pending_deposits:', err.message);
     return;
   }
-  rows.forEach(row => {
+  const timeoutMinOnBoot = Number(QRIS_PAYMENT_TIMEOUT_MIN || 5);
+  const nowBoot = Date.now();
+  let restored = 0;
+  let expiredOnBoot = 0;
+  rows.forEach((row) => {
+    const amount = Number(row.amount || 0);
+    const originalAmount = Number(row.original_amount || 0);
+    const adminFee = amount > originalAmount ? amount - originalAmount : 0;
+    const ts = Number(row.timestamp || nowBoot);
+    const expiresAt = ts + timeoutMinOnBoot * 60 * 1000;
+    if (nowBoot > expiresAt) {
+      // Sudah expired saat startup: tandai di DB dan jangan masukkan ke memori
+      db.run(
+        'UPDATE pending_deposits SET status = ? WHERE unique_code = ? AND status = ?',
+        ['expired', row.unique_code, 'pending'],
+        (uerr) => {
+          if (uerr) logger.warn('Gagal tandai expired saat boot: ' + uerr.message);
+        }
+      );
+      expiredOnBoot++;
+      return;
+    }
     global.pendingDeposits[row.unique_code] = {
-      amount: row.amount,
-      originalAmount: row.original_amount,
+      amount,
+      originalAmount,
+      adminFee,
       userId: row.user_id,
-      timestamp: row.timestamp,
+      timestamp: ts,
       status: row.status,
-      qrMessageId: row.qr_message_id
+      qrMessageId: row.qr_message_id,
+      expiresAt,
+      restoredFromDb: true,
     };
+    restored++;
   });
-  logger.info('Pending deposit loaded:', Object.keys(global.pendingDeposits).length);
+  logger.info(`Pending deposit restored: ${restored} aktif, ${expiredOnBoot} di-expired saat boot`);
 });
 
 // ============================================================================
@@ -15142,6 +15195,36 @@ function _randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// Cari unique suffix yang tidak bentrok dengan pending_deposits aktif (status = 'pending')
+// untuk window waktu konfigurasi. Return { amount, uniqueSuffix }.
+async function findAvailableTopupAmount(baseAmount, minSuffix, maxSuffix, maxAttempts) {
+  const min = Number.isFinite(Number(minSuffix)) ? Number(minSuffix) : 1;
+  const max = Number.isFinite(Number(maxSuffix)) ? Number(maxSuffix) : 300;
+  const attempts = Number(maxAttempts) > 0 ? Number(maxAttempts) : 10;
+  const tried = new Set();
+  for (let i = 0; i < attempts; i++) {
+    const suffix = _randomInt(min, max);
+    if (tried.has(suffix)) continue;
+    tried.add(suffix);
+    const candidate = Number(baseAmount) + suffix;
+    const clash = await new Promise((resolve) => {
+      db.get(
+        'SELECT 1 FROM pending_deposits WHERE amount = ? AND status = ? LIMIT 1',
+        [candidate, 'pending'],
+        (err, row) => {
+          if (err) { logger.warn('findAvailableTopupAmount db error: ' + err.message); return resolve(false); }
+          resolve(!!row);
+        }
+      );
+    });
+    if (!clash) return { amount: candidate, uniqueSuffix: suffix };
+  }
+  // Fallback: pakai attempt terakhir walaupun mungkin clash. Polling tetap pakai uniqueCode.
+  const lastSuffix = _randomInt(min, max);
+  return { amount: Number(baseAmount) + lastSuffix, uniqueSuffix: lastSuffix };
+}
+
+
 async function processDeposit(ctx, amount) {
   const currentTime = Date.now();
 
@@ -15189,9 +15272,8 @@ async function processDeposit(ctx, amount) {
     return;
   }
 
-  // Buat nominal unik (biar match pas cek status)
-  const uniqueSuffix = _randomInt(1, 300);
-  const finalAmount = amountNum + uniqueSuffix;
+  // Buat nominal unik anti-collision (coba 10x hindari bentrok dengan pending_deposits aktif)
+  const { amount: finalAmount, uniqueSuffix } = await findAvailableTopupAmount(amountNum, 1, 300, 10);
   const adminFee = uniqueSuffix;
 
   // kode unik internal + reference (buat info)

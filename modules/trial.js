@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { httpGet, httpPost, httpPatch, httpDelete } = require('./http-client');
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('./sellvpn.db');
 
@@ -49,7 +50,7 @@ async function trialssh(username, password, exp, iplimit, serverId) {
       const LIMIT_IP = iplimit;
 
       try {
-        const response = await axios.post(
+        const response = await httpPost(
           web_URL,
           { timelimit: '1h' },
           {
@@ -166,7 +167,7 @@ async function trialvmess(username, exp, quota, limitip, serverId) {
       const LIMIT_IP = limitip;
 
       try {
-        const response = await axios.post(
+        const response = await httpPost(
           web_URL,
           { timelimit: '1h' },
           {
@@ -275,7 +276,7 @@ async function trialvless(username, exp, quota, limitip, serverId) {
       const LIMIT_IP = limitip;
 
       try {
-        const response = await axios.post(
+        const response = await httpPost(
           web_URL,
           { timelimit: '1h' },
           {
@@ -383,7 +384,7 @@ async function trialtrojan(username, exp, quota, limitip, serverId) {
       const LIMIT_IP = limitip;
 
       try {
-        const response = await axios.post(
+        const response = await httpPost(
           web_URL,
           { timelimit: '1h' },
           {
@@ -489,7 +490,7 @@ async function trialshadowsocks(username, exp, quota, limitip, serverId) {
       const param = `:5888/createshadowsocks?user=${username}&exp=${exp}&quota=${quota}&iplimit=${limitip}&auth=${auth}`;
       const url = `http://${domain}${param}`;
       try {
-        const response = await axios.get(url, {
+        const response = await httpGet(url, {
           headers: {
             Authorization: auth,
             Accept: 'application/json',
