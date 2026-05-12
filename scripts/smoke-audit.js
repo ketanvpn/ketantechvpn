@@ -1,8 +1,20 @@
 const fs = require('fs');
 const path = require('path');
 
-const APP_PATH = path.resolve(__dirname, '..', 'app.js');
-const src = fs.readFileSync(APP_PATH, 'utf8');
+const ROOT = path.resolve(__dirname, '..');
+const APP_PATH = path.join(ROOT, 'app.js');
+// Smoke audit sekarang juga mencakup module yang dipisah dari app.js
+// (admin/, accounts/, payment/, dsb) supaya guard tetap ter-verifikasi walau
+// handler-nya sudah berpindah file.
+const AUDIT_FILES = [
+  APP_PATH,
+  path.join(ROOT, 'admin', 'menu.js'),
+  path.join(ROOT, 'admin', 'promo.js'),
+];
+const src = AUDIT_FILES
+  .filter((f) => fs.existsSync(f))
+  .map((f) => fs.readFileSync(f, 'utf8'))
+  .join('\n\n');
 
 const failures = [];
 

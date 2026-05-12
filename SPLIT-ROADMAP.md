@@ -2,7 +2,7 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **4/6 fase selesai**
+Status keseluruhan: **4/6 fase selesai (Fase 5 parsial 2/6 sub)**
 
 ---
 
@@ -138,27 +138,28 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Fase 5 - Ekstrak Admin Menu (HIGH RISK)
+## Fase 5 - Ekstrak Admin Menu (HIGH RISK) - PARSIAL (2/6 sub)
 
 **Target:** ~3000 baris ke `admin/`.
 
-**Commit:** _(belum)_
+**Commit:** `<TBD>` (diisi setelah commit)
 
 **Checklist:**
-- [ ] `admin/menu.js`: `sendAdminMenu`, `admin_menu` handler, guard helper.
-- [ ] `admin/reseller.js`: target menu, bonus menu, `admin_res_*` handler, `renderResellerTargetMenu`, `renderResellerBonusMenu`.
-- [ ] `admin/broadcast.js`: `broadcastSessions`, `broadcast_menu` flow, `sendBroadcastFromMenu`, template (manual, maintenance, promo).
-- [ ] `admin/server.js`: `addserver`, `editharga`, `editnama`, `editauth`, `editlimitquota`, `editlimitip`, `editlimitcreate`, `edittotalcreate`, detail/delete.
-- [ ] `admin/user.js`: `cek_saldo_user`, `riwayat_saldo_user`, `flag_user_start`, `addsaldo`, `minsaldo`, `deluser`, `listuser`, `setflag`, `list_all_users`.
-- [ ] `admin/promo.js`: `promo_template_menu`, template catalog/reseller/short/kaisar.
-- [ ] Update `app.js`: register semua admin module.
-- [ ] Test: admin guard (non-admin tidak boleh akses).
-- [ ] `node --check`, smoke audit, tests, commit, push.
+- [x] `admin/menu.js`: `createAdminMenuHandlers({ bot, logger, adminIds, ADMIN_IDS, sendAdminMenu })`. Register `admin_menu` + `admin_reseller_menu`. `sendAdminMenu` sendiri masih di `app.js` (karena mengakses banyak variabel module-level).
+- [x] `admin/promo.js`: `createPromoHandlers({ bot, logger, adminIds })`. Register `promo_template_menu` + 4 template (`promo_tpl_catalog/reseller/short/kaisar`). `getBotTagForPromo` helper pindah ke module.
+- [ ] `admin/reseller.js`: SKIP di sesi ini. Semua handler `admin_res_target_*` & `admin_res_bonus_*` mengakses (reassign) variabel module-level (`RESELLER_TARGET_ENABLED`, `RESELLER_ACTIVE_BONUS_TIER1_DAYS`, dll.) yang juga dibaca oleh `renderResellerTargetMenu`/`renderResellerBonusMenu` di `app.js`. Pindah ke module = reassign hanya mempengaruhi scope modul, bukan closure di `app.js`. Butuh wrapper state object (invasif) — tunda ke sesi khusus.
+- [ ] `admin/broadcast.js`: SKIP. Flow `broadcast_menu` + `broadcastSessions` nested di dalam `bot.on('text')` handler (step machine), tidak bisa dicabut sepotong.
+- [ ] `admin/server.js`: SKIP. Handler `addserver`/`editharga`/dsb tersebar di banyak titik + share flow dengan `userState`.
+- [ ] `admin/user.js`: SKIP. Sama seperti server — command `addsaldo`/`minsaldo`/`deluser` + state flow.
+- [x] Update `app.js`: `createAdminMenuHandlers({...}).register()` + `createPromoHandlers({...}).register()` dipanggil setelah `bot`, `sendAdminMenu`, `adminIds` siap.
+- [x] Smoke audit diperluas: sekarang membaca `app.js` + `admin/menu.js` + `admin/promo.js` digabung supaya regex `admin_menu` tetap ketemu meski handler pindah.
+- [ ] Test admin guard (non-admin): belum otomatis, masih manual.
+- [x] `node --check`, smoke audit, tests pass (53), commit, push.
 
 **Catatan:**
-- Banyak handler share `userState`/`broadcastSessions`/`flow`. Keluarkan ke module `state.js` global.
-- Urutan register sensitif: generic `/flag_user_set_..._(\d+)/` harus sebelum handler yang lebih spesifik.
-- Smoke audit regex pada `admin_res_bonus_*` dan `admin_menu` harus tetap pass (jangan ubah struktur guard).
+- Sesi berikut untuk `admin/reseller.js`: strategi = bungkus `RESELLER_TARGET_*` & `RESELLER_ACTIVE_BONUS_*` jadi satu object state (`resellerState.targetEnabled`, dst.), pass reference ke module + `render*Menu` sekaligus. Atau pindahkan kedua `render*Menu` ke module yang sama.
+- Urutan register sensitif tetap dijaga: module admin di-register duluan supaya generic handler yang lebih umum tidak menelan callback admin.
+- Smoke audit regex `admin_res_bonus_*` masih pass karena handler-nya belum dipindah (masih di `app.js`).
 
 ---
 

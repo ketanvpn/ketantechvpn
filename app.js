@@ -7666,75 +7666,16 @@ bot.action('list_res_mem', async (ctx) => {
 });
 
 // Tombol balik ke menu admin
-bot.action('admin_menu', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('âŒ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-  }
-  await sendAdminMenu(ctx);
-});
+
+// --- Fase 5 split: register handler admin/menu + admin/promo
+const { createAdminMenuHandlers } = require('./admin/menu');
+const { createPromoHandlers } = require('./admin/promo');
+createAdminMenuHandlers({ bot, logger, adminIds, ADMIN_IDS, sendAdminMenu }).register();
+createPromoHandlers({ bot, logger, adminIds }).register();
+
+// --- Fase 5 split: bot.action('admin_menu', async dipindah ke admin/
 // === SUBMENU: RESELLER & SALDO ===
-bot.action('admin_reseller_menu', async (ctx) => {
-  const adminId = ctx.from.id;
-
-  // Pastikan cuma admin yang bisa buka
-  if (!adminIds.includes(adminId)) {
-    return ctx
-      .answerCbQuery('ðŸš« Khusus admin.', { show_alert: true })
-      .catch(() => {});
-  }
-
-  await ctx.answerCbQuery().catch(() => {});
-
-  const text =
-    '<b>ðŸ§¾ MENU RESELLER & SALDO</b>\n\n' +
-    'Semua pengaturan yang berhubungan dengan reseller & saldo:\n\n' +
-    'â€¢ Tambah server reseller\n' +
-    'â€¢ Tambah saldo user / reseller\n' +
-    'â€¢ Lihat riwayat saldo\n' +
-    'â€¢ Lihat daftar reseller & member\n' +
-    'â€¢ Upload QRIS untuk topup manual\n';
-
-  const keyboard = [
-    [
-      { text: 'ðŸ¤ Tambah Server Reseller', callback_data: 'addserver_reseller' }
-    ],
-    [
-      { text: 'ðŸ’µ Tambah Saldo User',      callback_data: 'tambah_saldo' },
-      { text: 'ðŸ“œ Riwayat Saldo User',    callback_data: 'riwayat_saldo_user' }
-    ],
-    [
-      { text: 'ðŸ‘¥ List Res & Member',      callback_data: 'list_res_mem' }
-    ],
-	[
-      { text: 'ðŸŽ¯ Target Reseller',        callback_data: 'admin_reseller_target' }
-    ],
-    [
-      { text: 'ðŸŽ Bonus Reseller Aktif',   callback_data: 'admin_reseller_bonus_menu' }
-    ],
-    [
-      { text: 'ðŸ–¼ï¸ Upload Gambar QRIS',     callback_data: 'upload_qris' }
-    ],
-    [
-      { text: 'ðŸ”™ Kembali ke Menu Admin',  callback_data: 'admin_menu' }
-    ]
-  ];
-
-  try {
-    // Coba edit pesan inline yang sebelumnya (lebih rapi)
-    await ctx.editMessageText(text, {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: keyboard }
-    });
-  } catch (err) {
-    logger.error('Error saat buka submenu reseller:', err.message || err);
-    // Fallback: kalau nggak bisa edit (misal pesan lama), kirim pesan baru
-    await ctx.reply(text, {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: keyboard }
-    });
-  }
-});
+// --- Fase 5 split: bot.action('admin_reseller_menu', async dipindah ke admin/
 
 // Buka menu "ðŸŽ¯ Target Reseller"
 bot.action('admin_reseller_target', async (ctx) => {
@@ -8233,204 +8174,21 @@ bot.action('admin_server_menu', async (ctx) => {
 });
 
 // === SUBMENU: TEMPLATE PROMOSI ===
-bot.action('promo_template_menu', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-  } catch (e) {}
-
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) {
-    return ctx.reply('ðŸš« Menu ini khusus admin.');
-  }
-
-  const keyboard = [
-    [
-      { text: 'ðŸ“œ Katalog Paket VPN', callback_data: 'promo_tpl_catalog' }
-    ],
-    [
-      { text: 'ðŸ’Ž Open Reseller', callback_data: 'promo_tpl_reseller' }
-    ],
-    [
-      { text: 'âš¡ Promo Singkat Bot', callback_data: 'promo_tpl_short' }
-    ],
-    [
-      { text: 'ðŸ‘‘ Template Kaisar', callback_data: 'promo_tpl_kaisar' }
-    ],
-    [
-      { text: 'ðŸ”™ Kembali ke Menu Admin', callback_data: 'admin_menu' }
-    ]
-  ];
-
-  const text =
-    '<b>ðŸ“¢ TEMPLATE PROMOSI</b>\n\n' +
-    'Pilih template yang ingin dipakai.\n' +
-    'Bot akan kirim teks iklan siap copas, ' +
-    'bisa kamu edit dulu sebelum dikirim ke channel / grup.';
-
-  try {
-    await ctx.editMessageText(text, {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: keyboard }
-    });
-  } catch (err) {
-    await ctx.reply(text, {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: keyboard }
-    });
-  }
-});
+// --- Fase 5 split: bot.action('promo_template_menu', async dipindah ke admin/
 // Helper kecil untuk ambil username bot
-async function getBotTagForPromo() {
-  let botTag = '@BOT_KAMU';
-  try {
-    const me = await bot.telegram.getMe();
-    if (me && me.username) {
-      botTag = '@' + me.username;
-    }
-  } catch (e) {
-    logger.error('Gagal ambil info bot untuk template promosi:', e.message);
-  }
-  return botTag;
-}
+// --- Fase 5 split: getBotTagForPromo dipindah ke admin/
 
 // ðŸ“œ Template 1: Katalog Paket VPN
-bot.action('promo_tpl_catalog', async (ctx) => {
-  try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
-
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
-
-  const botTag = await getBotTagForPromo();
-
-  const text =
-    'â•­â”€â–  N A M A  S T O R E  â–\n' +
-    'â”‚ ðŸ” Pasti Aman âš¡ Anti Ngebug\n' +
-    'â•°â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•®\n' +
-    '   âœ¨ READY CONFIG PREMIUM âœ¨\n' +
-    'â•­â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•¯\n' +
-    'â”‚ ðŸ”° SSH WS / UDP\n' +
-    'â”‚ ðŸ”° XRAY VMESS WS & GRPC\n' +
-    'â”‚ ðŸ”° XRAY VLESS WS & GRPC\n' +
-    'â”‚ ðŸ”° TROJAN WS & GRPC\n' +
-    'â•°â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•®\n' +
-    '   ðŸŒ PILIH LOKASI SERVER\n' +
-    'â•­â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•¯\n' +
-    'â”‚ ðŸ‡¸ðŸ‡¬ SG DIGITALOCEAN\n' +
-    'â”‚   Rp. 10.000 / 30 Hari â€¢ 2 Device\n' +
-    'â”‚ ðŸ‡®ðŸ‡© ID NUSA\n' +
-    'â”‚   Rp. 12.000 / 30 Hari â€¢ 2 Device\n' +
-    'â”‚ ðŸ‡®ðŸ‡© ID RAJASA\n' +
-    'â”‚   Rp. 13.000 / 30 Hari â€¢ 2 Device\n' +
-    'â”‚ ðŸ‡®ðŸ‡© ID MSA\n' +
-    'â”‚   Rp. 12.000 / 30 Hari â€¢ 2 Device\n' +
-    'â”‚ ðŸŒ Lokasi lain bisa request\n' +
-    'â•°â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”ˆâ\n' +
-    '\n' +
-    'âœ… Anti Lag â€¢ Stabil Harian\n' +
-    'âœ… Cocok Game / Streaming / Zoom\n' +
-    'âœ… Bisa Trial dulu sebelum beli\n' +
-    '\n' +
-    'ðŸ“© Order via bot:\n' +
-    'ðŸ‘‰ ' + botTag;
-
-  await ctx.reply(text);
-});
+// --- Fase 5 split: bot.action('promo_tpl_catalog', async dipindah ke admin/
 
 // ðŸ’Ž Template 2: Open Reseller
-bot.action('promo_tpl_reseller', async (ctx) => {
-  try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
-
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
-
-  const botTag = await getBotTagForPromo();
-
-  const text =
-    'â•­â”â”â”â–  OPEN RESELLER VPN  â–â”â”â”â•®\n' +
-    'â”ƒ  Saatnya cuan dari jualan akun ðŸ’¸\n' +
-    'â•°â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•¯\n\n' +
-    'âœ¨ HARGA RESELLER MULAI:\n' +
-    'â€¢ Dari Rp. 4.500 / akun\n' +
-    'â€¢ Bot auto create akun 24 jam\n' +
-    'â€¢ Banyak pilihan server premium\n' +
-    'â€¢ Trial bisa kapan saja\n\n' +
-    'ðŸ’³ HARGA MEMBER MULAI:\n' +
-    'â€¢ Rp. 10.000 / bulan\n' +
-    'â€¢ Support 2 Device\n\n' +
-    'ðŸ§¾ JOIN RESELLER:\n' +
-    'â€¢ Minimal deposit: Rp. 25.000\n' +
-    'â€¢ Sistem saldo, tinggal klik akun jadi\n\n' +
-    'ðŸŽ¯ KEUNGGULAN:\n' +
-    'â€¢ Panel dan bot mudah dipahami\n' +
-    'â€¢ Bebas tentukan harga jual sendiri\n\n' +
-    'ðŸ“² Minat daftar reseller?\n' +
-    'Order langsung via bot:\n' +
-    'ðŸ‘‰ ' + botTag;
-
-  await ctx.reply(text);
-});
+// --- Fase 5 split: bot.action('promo_tpl_reseller', async dipindah ke admin/
 
 // âš¡ Template 3: Promo Singkat Bot Auto Order
-bot.action('promo_tpl_short', async (ctx) => {
-  try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
-
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
-
-  const botTag = await getBotTagForPromo();
-
-  const text =
-    'â•­â”€â”€â”€â”€â”€â”€â”€â”€â–  VPN AUTO ORDER  â–â”€â”€â”€â”€â”€â”€â”€â”€â•®\n' +
-    'â”‚   Bot siap melayani 24 jam non-stop âš¡\n' +
-    'â•°â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•¯\n\n' +
-    'ðŸš€ PROTOKOL:\n' +
-    'â€¢ SSH & UDP\n' +
-    'â€¢ VMESS â€¢ VLESS â€¢ TROJAN\n\n' +
-    'ðŸŒ SERVER:\n' +
-    'â€¢ ðŸ‡¸ðŸ‡¬ Singapore\n' +
-    'â€¢ ðŸ‡®ðŸ‡© Indonesia\n\n' +
-    'ðŸ’Ž KEUNGGULAN:\n' +
-    'â€¢ Banyak promo menarik\n' +
-    'â€¢ Speed kencang dan stabil\n' +
-    'â€¢ Akun langsung jadi tanpa tunggu admin\n' +
-    'â€¢ Garansi sesuai masa aktif\n\n' +
-    'ðŸ¤– Order otomatis di bot:\n' +
-    'ðŸ‘‰ ' + botTag;
-
-  await ctx.reply(text);
-});
+// --- Fase 5 split: bot.action('promo_tpl_short', async dipindah ke admin/
 
 // ðŸ‘‘ Template 4: Style â€œKaisar Storeâ€
-bot.action('promo_tpl_kaisar', async (ctx) => {
-  try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
-
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
-
-  const botTag = await getBotTagForPromo();
-
-  const text =
-    'ðŸ‘‘ NAMA STORE KAMU ðŸ‘‘\n' +
-    'â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n' +
-    'AKUN PREMIUM INDONESIA ðŸ‡®ðŸ‡©\n\n' +
-    'ðŸ‡®ðŸ‡© ID CLOUD 1  :  Rp. 8K\n' +
-    'ðŸ‡®ðŸ‡© ID CLOUD 2  :  Rp. 8K\n' +
-    'ðŸ‡®ðŸ‡© ID CLOUD 3  :  Rp. 8K\n' +
-    'ðŸ‡®ðŸ‡© ID HERZA 1  :  Rp. 8K\n' +
-    'ðŸ‡®ðŸ‡© ID HERZA 2  :  Rp. 8K\n' +
-    'â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n' +
-    'TERSEDIA:\n' +
-    'ðŸ›° SSH\n' +
-    'ðŸ›° VMESS\n' +
-    'ðŸ›° SSH UDP\n' +
-    'â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n' +
-    'âœ… Wajib trial dulu biar makin yakin\n' +
-    'âœ… Support 2 device\n' +
-    'âœ… Support STB / HP / Laptop\n\n' +
-    'ðŸ’³ Pembayaran:\n' +
-    'âœ… DANA\n' +
-    'âœ… OVO\n' +
-    'âœ… QRIS (All Payment)\n\n' +
-    'ðŸ“ž Order / tanya tanya via bot:\n' +
-    'ðŸ‘‰ ' + botTag;
-
-  await ctx.reply(text);
-});
+// --- Fase 5 split: bot.action('promo_tpl_kaisar', async dipindah ke admin/
 
 // === ðŸ“‹ LIST RESELLER ===
 bot.action('list_reseller', async (ctx) => {
