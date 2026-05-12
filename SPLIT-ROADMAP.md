@@ -85,7 +85,7 @@ Status keseluruhan: **2/6 fase selesai**
 
 **Target:** ~1500 baris ke `payment/`. Extract bertahap karena deep coupling dengan bot/vars/state.
 
-**Commit:** `9ffcd3e`
+**Commit:** `045160e`
 
 **Checklist:**
 - [x] `payment/gopay.js`: `createGopayClient({ getApiKey, baseUrl })` factory dengan `fetchTransactions`, `generateQris`, `fetchQrisStatus`. `getGopayApiKey` tetap di `app.js` (pakai `readVarsFresh` dari closure).
