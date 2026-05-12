@@ -185,22 +185,65 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Setelah 6 Fase
+## Kondisi Setelah 6 Fase (Aktual)
 
-- `app.js` tinggal ~3000-4000 baris: bot init, middleware, `text` handler (user input flow), callback middleware, entry point.
-- Struktur akhir:
+- `app.js` sekarang **~11.562 baris** (dari ~13.600 pra-split) — turun ~15%. Target awal ~3.500 baris belum tercapai karena banyak sub-item di Fase 5 di-SKIP dan body fungsi `send*Report`/`send*Reminders`/`sendAutoBackup`/`checkAndDowngradeResellersForPreviousMonth` sengaja ditinggal di `app.js` (akses closure DB + template + render menu).
+- Struktur folder aktual:
   ```
-  app.js                  ~3500 baris (bot core + text flow)
-  lib/                    helper pure (qris, html, validators, bonus, time, masker, licence)
+  app.js                  ~11.562 baris (bot core + text flow + body scheduler + admin/reseller/broadcast/server/user handler)
+  lib/                    helper pure: qris, html, validators, bonus, time, masker, licence
   db/                     connection, migrations, ddl-safe
-  modules/                provider API (create, trial, renew, del, lock, unlock, reseller, http-client)
+  modules/                provider API: create, trial, renew, del, lock, unlock, reseller, http-client
   payment/                gopay, qris-invoice, polling, deposit
-  accounts/               service, actions, my-accounts
-  admin/                  menu, reseller, broadcast, server, user, promo
+  accounts/               service, my-accounts                  (actions: SKIP)
+  admin/                  menu, promo                           (reseller/broadcast/server/user: SKIP)
   scheduler/              daily-report, expiry-reminder, reseller-target, auto-backup
-  tests/                  unit test per modul
-  scripts/                smoke-audit
+  tests/                  8 file, 53 test (bonus, ddl-safe, html, licence, masker, qris, time, validators)
+  scripts/                smoke-audit (multi-file scan: app.js + admin/menu.js + admin/promo.js)
   ```
+
+---
+
+## Pasca 6 Fase — Sisa Pekerjaan Opsional
+
+Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dikerjakan hanya kalau mau menurunkan `app.js` lebih jauh atau menambah coverage test.
+
+### Fase 5 lanjutan (admin tersisa)
+
+**Risiko: HIGH.** Semua item di bawah butuh refactor state wrapper supaya reassign module-level bisa reflect di factory module.
+
+- [ ] `admin/reseller.js`: handler `admin_res_target_*` + `admin_res_bonus_*` + `renderResellerTargetMenu` + `renderResellerBonusMenu` + `adjustResellerBonusVar`. Strategi: bungkus `RESELLER_TARGET_*` & `RESELLER_ACTIVE_BONUS_*` ke satu object `resellerState` (`resellerState.targetEnabled`, dst.) lalu pass reference ke module. Atau pindahkan `render*Menu` bareng handler-nya ke satu module.
+- [ ] `admin/broadcast.js`: `broadcastSessions` + flow `broadcast_menu`. Masalahnya step machine nested di `bot.on('text')` handler — perlu ekstrak flow sessions jadi state machine module (`state/broadcast.js`) terpisah, baru handler-nya bisa pindah.
+- [ ] `admin/server.js`: `addserver`, `editharga`, `editnama`, `editauth`, `editlimitquota`, `editlimitip`, `editlimitcreate`, `edittotalcreate`, detail/delete. Banyak share flow dengan `userState`.
+- [ ] `admin/user.js`: `cek_saldo_user`, `riwayat_saldo_user`, `flag_user_start`, `addsaldo`, `minsaldo`, `deluser`, `listuser`, `setflag`, `list_all_users`. Sama kendalanya seperti `admin/server.js`.
+- [ ] Test admin guard (non-admin tidak boleh akses): otomatis, belum dibuat.
+
+### Body function ke module
+
+**Risiko: MEDIUM.** Body fungsi ini masih di `app.js` karena banyak closure. Bisa dipindah ke module yang sudah ada kalau closure-nya di-pass eksplisit.
+
+- [ ] Pindah body `sendDailyReport` ke `scheduler/daily-report.js` (butuh akses DB, `getMonthRange`, `ADMIN_USERNAME`, `MASTER_ID`, `TIME_ZONE`).
+- [ ] Pindah body `sendExpiryReminders` ke `scheduler/expiry-reminder.js` (akses DB accounts, `EXPIRY_REMINDER_DAYS_BEFORE`, `bot.telegram.sendMessage`).
+- [ ] Pindah body `sendAutoBackup` ke `scheduler/auto-backup.js` (akses `BACKUP_CHAT_ID`, list file DB, `TIME_ZONE`, `bot.telegram.sendDocument`).
+- [ ] Pindah body `checkAndDowngradeResellersForPreviousMonth` ke `scheduler/reseller-target.js` (akses DB + `removeReseller` + `bot.telegram`).
+- [ ] Pindah `createQrisInvoice` ke `payment/qris-invoice.js` (butuh `getGopayApiKey`, `QRIS_AUTO_TOPUP_MAX`, `generateUniqueSuffix`, `gopayClient`).
+
+### Integration test & CI
+
+- [ ] `tests/integration/` dengan sqlite3 `:memory:`:
+  - [ ] Race condition `processAccountPayment` (debit saldo + provisioning fail → refund).
+  - [ ] `creditDeposit` double-process guard (dua call parallel → hanya satu update).
+  - [ ] `findAvailableTopupAmount` collision (10 retry habis).
+- [ ] Scheduler fake-timer test (`sinon.useFakeTimers()` atau `node:test` mock timer) untuk 4 scheduler.
+- [ ] GitHub Actions matrix: tambah smoke boot test (spawn bot dengan dummy token & dummy DB, cek exit 0 dalam 5 detik).
+
+### Nice-to-have (bukan refactor)
+
+- [ ] Fork internal `autoft-orkut` dan `autoft-qris` (versi 0.0.x alpha, risiko maintenance pihak ketiga).
+- [ ] Refactor callback hell `db.*` ke pattern async/promise (util wrapper `dbAll`, `dbGet`, `dbRun` berbasis Promise).
+- [ ] Monitoring: kirim metrics ke endpoint eksternal (total topup, error rate, scheduler last-run timestamp).
+- [ ] Admin panel web sederhana untuk cek status (tanpa perlu Telegram).
+- [ ] Middleware rate-limit per user di Telegraf (anti spam tombol).
 
 ---
 
@@ -215,11 +258,3 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 7. **Urutan register sensitif**: Telegraf jalan top-down, regex yang generic harus di-register setelah yang spesifik.
 
 ---
-
-## Optional Future Work (tidak urgent)
-
-- [ ] Fork internal `autoft-orkut` dan `autoft-qris` (versi 0.0.x alpha, risiko maintenance).
-- [ ] Refactor callback hell `db.*` ke pattern async/promise.
-- [ ] Tambah integration test pakai sqlite3 in-memory (`:memory:`).
-- [ ] Monitoring: kirim metrics ke endpoint eksternal (total topup, error rate).
-- [ ] Admin panel web sederhana untuk cek status + tanpa perlu Telegram.
