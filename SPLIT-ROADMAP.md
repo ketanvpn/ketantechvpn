@@ -96,7 +96,7 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 **Target:** ~1500 baris ke `payment/`. Extract bertahap karena deep coupling dengan bot/vars/state.
 
-**Commit:** `045160e` (Fase 3 parsial, gopay/qris-invoice) + `edd64a2` (Fase 3 lanjutan, polling/deposit)
+**Commit:** `045160e` (Fase 3 parsial, gopay/qris-invoice) + `7f07008` (Fase 3 lanjutan, polling/deposit)
 
 **Checklist:**
 - [x] `payment/gopay.js`: `createGopayClient({ getApiKey, baseUrl })` factory dengan `fetchTransactions`, `generateQris`, `fetchQrisStatus`. `getGopayApiKey` tetap di `app.js` (pakai `readVarsFresh` dari closure).
