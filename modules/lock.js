@@ -1,5 +1,4 @@
 const axios = require('axios');
-const { exec } = require('child_process');
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('./sellvpn.db');
 
@@ -12,7 +11,7 @@ async function lockssh(username, password, exp, iplimit, serverId) {
   }
 
   return new Promise((resolve) => {
-    db.get('SELECT * FROM Server WHERE id = ?', [serverId], (err, server) => {
+    db.get('SELECT * FROM Server WHERE id = ?', [serverId], async (err, server) => {
       if (err || !server) {
         console.error('❌ Error fetching server:', err?.message || 'server null');
         return resolve('❌ Server tidak ditemukan. Silakan coba lagi.');
@@ -23,19 +22,15 @@ async function lockssh(username, password, exp, iplimit, serverId) {
       const web_URL = `http://${domain}${param}`; // Contoh: http://domainmu.com/vps/sshvpn
       const AUTH_TOKEN = server.auth;
 
-      const curlCommand = `curl -s -X PATCH "${web_URL}/${username}" \
--H "Authorization: ${AUTH_TOKEN}" \
--H "accept: application/json"`;
-
-      exec(curlCommand, (_, stdout) => {
-        let d;
-        try {
-          d = JSON.parse(stdout);
-        } catch (e) {
-          console.error('❌ Gagal parsing JSON:', e.message);
-          console.error('🪵 Output:', stdout);
-          return resolve('❌ Format respon dari server tidak valid.');
-        }
+      try {
+        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}`, null, {
+        headers: {
+          Authorization: AUTH_TOKEN,
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+        const d = response.data;
 
         if (d?.meta?.code !== 200 || !d.data) {
           console.error('❌ Respons error:', d);
@@ -55,7 +50,13 @@ async function lockssh(username, password, exp, iplimit, serverId) {
 *© Telegram Bots - 2025*`;
 
         return resolve(msg);
-      });
+      } catch (err) {
+        console.error('❌ Gagal request API server:', err.message || err);
+        if (err.response?.data) {
+          return resolve(`❌ Respons error:\n${JSON.stringify(err.response.data, null, 2)}`);
+        }
+        return resolve('❌ Gagal terhubung ke server VPN. Coba lagi nanti.');
+      }
     });
   });
 }
@@ -68,7 +69,7 @@ async function lockvmess(username, exp, quota, limitip, serverId) {
   }
 
   return new Promise((resolve) => {
-    db.get('SELECT * FROM Server WHERE id = ?', [serverId], (err, server) => {
+    db.get('SELECT * FROM Server WHERE id = ?', [serverId], async (err, server) => {
       if (err || !server) {
         console.error('❌ Error fetching server:', err?.message || 'server null');
         return resolve('❌ Server tidak ditemukan. Silakan coba lagi.');
@@ -79,19 +80,15 @@ async function lockvmess(username, exp, quota, limitip, serverId) {
       const web_URL = `http://${domain}${param}`; // contoh: http://domain.com/vps/vmess
       const AUTH_TOKEN = server.auth;
 
-      const curlCommand = `curl -s -X PATCH "${web_URL}/${username}" \
--H "Authorization: ${AUTH_TOKEN}" \
--H "accept: application/json"`;
-
-      exec(curlCommand, (_, stdout) => {
-        let d;
-        try {
-          d = JSON.parse(stdout);
-        } catch (e) {
-          console.error('❌ Gagal parsing JSON:', e.message);
-          console.error('🪵 Output:', stdout);
-          return resolve('❌ Format respon dari server tidak valid.');
-        }
+      try {
+        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}`, null, {
+        headers: {
+          Authorization: AUTH_TOKEN,
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+        const d = response.data;
 
         if (d?.meta?.code !== 200 || !d.data) {
           console.error('❌ Respons error:', d);
@@ -111,7 +108,13 @@ async function lockvmess(username, exp, quota, limitip, serverId) {
 *© Telegram Bots - 2025*`;
 
         return resolve(msg);
-      });
+      } catch (err) {
+        console.error('❌ Gagal request API server:', err.message || err);
+        if (err.response?.data) {
+          return resolve(`❌ Respons error:\n${JSON.stringify(err.response.data, null, 2)}`);
+        }
+        return resolve('❌ Gagal terhubung ke server VPN. Coba lagi nanti.');
+      }
     });
   });
 }
@@ -124,7 +127,7 @@ async function lockvless(username, exp, quota, limitip, serverId) {
   }
 
   return new Promise((resolve) => {
-    db.get('SELECT * FROM Server WHERE id = ?', [serverId], (err, server) => {
+    db.get('SELECT * FROM Server WHERE id = ?', [serverId], async (err, server) => {
       if (err || !server) {
         console.error('❌ Error fetching server:', err?.message || 'server null');
         return resolve('❌ Server tidak ditemukan. Silakan coba lagi.');
@@ -135,19 +138,15 @@ async function lockvless(username, exp, quota, limitip, serverId) {
       const web_URL = `http://${domain}${param}`;        // Contoh: http://domain.com/vps/vless
       const AUTH_TOKEN = server.auth;
 
-      const curlCommand = `curl -s -X PATCH "${web_URL}/${username}" \
--H "Authorization: ${AUTH_TOKEN}" \
--H "accept: application/json"`;
-
-      exec(curlCommand, (_, stdout) => {
-        let d;
-        try {
-          d = JSON.parse(stdout);
-        } catch (e) {
-          console.error('❌ Gagal parsing JSON:', e.message);
-          console.error('🪵 Output:', stdout);
-          return resolve('❌ Format respon dari server tidak valid.');
-        }
+      try {
+        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}`, null, {
+        headers: {
+          Authorization: AUTH_TOKEN,
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+        const d = response.data;
 
         if (d?.meta?.code !== 200 || !d.data) {
           console.error('❌ Respons error:', d);
@@ -167,7 +166,13 @@ async function lockvless(username, exp, quota, limitip, serverId) {
 *© Telegram Bots - 2025*`;
 
         return resolve(msg);
-      });
+      } catch (err) {
+        console.error('❌ Gagal request API server:', err.message || err);
+        if (err.response?.data) {
+          return resolve(`❌ Respons error:\n${JSON.stringify(err.response.data, null, 2)}`);
+        }
+        return resolve('❌ Gagal terhubung ke server VPN. Coba lagi nanti.');
+      }
     });
   });
 }
@@ -180,7 +185,7 @@ async function locktrojan(username, exp, quota, limitip, serverId) {
   }
 
   return new Promise((resolve) => {
-    db.get('SELECT * FROM Server WHERE id = ?', [serverId], (err, server) => {
+    db.get('SELECT * FROM Server WHERE id = ?', [serverId], async (err, server) => {
       if (err || !server) {
         console.error('❌ Error fetching server:', err?.message || 'server null');
         return resolve('❌ Server tidak ditemukan. Silakan coba lagi.');
@@ -191,19 +196,15 @@ async function locktrojan(username, exp, quota, limitip, serverId) {
       const web_URL = `http://${domain}${param}`;         // Contoh: http://domain.com/vps/trojan
       const AUTH_TOKEN = server.auth;
 
-      const curlCommand = `curl -s -X PATCH "${web_URL}/${username}" \
--H "Authorization: ${AUTH_TOKEN}" \
--H "accept: application/json"`;
-
-      exec(curlCommand, (_, stdout) => {
-        let d;
-        try {
-          d = JSON.parse(stdout);
-        } catch (e) {
-          console.error('❌ Gagal parsing JSON:', e.message);
-          console.error('🪵 Output:', stdout);
-          return resolve('❌ Format respon dari server tidak valid.');
-        }
+      try {
+        const response = await axios.patch(`${web_URL}/${encodeURIComponent(username)}`, null, {
+        headers: {
+          Authorization: AUTH_TOKEN,
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+        const d = response.data;
 
         if (d?.meta?.code !== 200 || !d.data) {
           console.error('❌ Respons error:', d);
@@ -223,7 +224,13 @@ async function locktrojan(username, exp, quota, limitip, serverId) {
 *© Telegram Bots - 2025*`;
 
         return resolve(msg);
-      });
+      } catch (err) {
+        console.error('❌ Gagal request API server:', err.message || err);
+        if (err.response?.data) {
+          return resolve(`❌ Respons error:\n${JSON.stringify(err.response.data, null, 2)}`);
+        }
+        return resolve('❌ Gagal terhubung ke server VPN. Coba lagi nanti.');
+      }
     });
   });
 }
@@ -238,7 +245,7 @@ async function locktrojan(username, exp, quota, limitip, serverId) {
   
     // Ambil domain dari database
     return new Promise((resolve, reject) => {
-      db.get('SELECT * FROM Server WHERE id = ?', [serverId], (err, server) => {
+      db.get('SELECT * FROM Server WHERE id = ?', [serverId], async (err, server) => {
         if (err) {
           console.error('Error fetching server:', err.message);
           return resolve('❌ Server tidak ditemukan. Silakan coba lagi.');
@@ -260,8 +267,8 @@ async function locktrojan(username, exp, quota, limitip, serverId) {
   🔹 *Informasi Akun*
   ┌─────────────────────────────
   │ Username: \`${username}\`
-  │ Kadaluarsa: \`${vmessData.exp}\`
-  │ Kuota: \`${vmessData.quota}\`
+  │ Kadaluarsa: \`${shadowsocksData.expired}\`
+  │ Kuota: \`${shadowsocksData.quota}\`
   │ Batas IP: \`${shadowsocksData.limitip} IP\`
   └─────────────────────────────
   ✅ Akun ${username} berhasil diperbarui

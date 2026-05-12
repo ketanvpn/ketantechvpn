@@ -15699,8 +15699,9 @@ startResellerTargetScheduler();
 //                              // soalnya di atas sudah ada "startQrisAutoTopupChecker();"
 
 // HTTP server
-app.listen(port, () => {
-  logger.info(`Server berjalan di port ${port}`);
+const HTTP_BIND = envOr('HTTP_BIND', '127.0.0.1');
+app.listen(port, HTTP_BIND, () => {
+  logger.info(`HTTP server listening on ${HTTP_BIND}:${port}`);
 });
 
 // ===== Error handler global + graceful shutdown =====
