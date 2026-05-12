@@ -2,7 +2,7 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **1/6 fase selesai**
+Status keseluruhan: **2/6 fase selesai**
 
 ---
 
@@ -62,18 +62,18 @@ Status keseluruhan: **1/6 fase selesai**
 
 ---
 
-## Fase 2 - Ekstrak DB Setup + Migrasi (LOW-MEDIUM RISK)
+## Fase 2 - Ekstrak DB Setup + Migrasi (LOW-MEDIUM RISK) - SELESAI
 
 **Target:** ~800 baris ke `db/`. Tetap satu connection SQLite.
 
-**Commit:** _(belum)_
+**Commit:** `9280573`
 
 **Checklist:**
-- [ ] `db/connection.js`: init `new sqlite3.Database('./sellvpn.db')`, export `db`.
-- [ ] `db/ddl-safe.js`: `isSafeSqlIdent`, `isSafeSqlIdentList`, `ensureSqliteColumn`, `createUniqueIndexIfSafe`, `createUniqueIndexMultiIfSafe`.
-- [ ] `db/migrations.js`: semua `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX`, `ensureSqliteColumn` calls. Export `runMigrations(db, logger)`.
-- [ ] Update `app.js`: `const db = require('./db/connection')` dan `require('./db/migrations')(db, logger)`.
-- [ ] `node --check`, smoke audit, tests, commit, push.
+- [x] `db/connection.js`: factory `createConnection(filePath, logger)` return sqlite3 instance.
+- [x] `db/ddl-safe.js`: `isSafeSqlIdent`, `isSafeSqlIdentList`, `createDdlHelpers(db, logger)` factory.
+- [x] `db/migrations.js`: semua DDL (pending_deposits, qris_payments, Server, users, transactions, accounts, reseller_bonus_logs) + index + column upgrade. Export `runMigrations(db, logger, helpers)`.
+- [x] Update `app.js`: `createConnection(null, logger)` + `createDdlHelpers(db, logger)` + `runMigrations(db, logger, helpers)`. `recordSaldoTransaction` tetap di `app.js` (bukan DDL).
+- [x] `node --check`, smoke audit, tests (+7 ddl-safe test = 53 total), commit, push.
 
 **Catatan:**
 - Jangan ubah skema. Cuma pindahkan lokasi.
