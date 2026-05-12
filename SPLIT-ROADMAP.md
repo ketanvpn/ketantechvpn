@@ -2,7 +2,7 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **2/6 fase selesai**
+Status keseluruhan: **3/6 fase selesai**
 
 ---
 
@@ -92,25 +92,28 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Fase 3 - Ekstrak Payment/QRIS (MEDIUM RISK) - PARSIAL (2/4 sub)
+## Fase 3 - Ekstrak Payment/QRIS (MEDIUM RISK) - SELESAI
 
 **Target:** ~1500 baris ke `payment/`. Extract bertahap karena deep coupling dengan bot/vars/state.
 
-**Commit:** `045160e`
+**Commit:** `045160e` (Fase 3 parsial, gopay/qris-invoice) + `edd64a2` (Fase 3 lanjutan, polling/deposit)
 
 **Checklist:**
 - [x] `payment/gopay.js`: `createGopayClient({ getApiKey, baseUrl })` factory dengan `fetchTransactions`, `generateQris`, `fetchQrisStatus`. `getGopayApiKey` tetap di `app.js` (pakai `readVarsFresh` dari closure).
 - [x] `payment/qris-invoice.js`: `createQrisInvoiceChecker({ db, gopayClient })` factory untuk `checkQrisInvoiceStatus`. `finalizeQrisPayment`/`applyQrisTopupBonus`/`createQrisInvoice` tetap di `app.js` (pending Fase 3 lanjutan karena butuh `notifyTopupSuccess`, `calculateTopupBonus`, `generateUniqueSuffix`).
-- [ ] `payment/polling.js`: SKIP di sesi ini (deep coupling dengan `notifyTopupSuccess`, `markDepositExpired` closure). Lanjut di sesi berikut.
-- [ ] `payment/deposit.js`: SKIP di sesi ini (pakai `global.pendingDeposits`, `bot.telegram`, `buildDynamicQrisPayload`). Lanjut di sesi berikut.
+- [x] `payment/polling.js`: `createQrisPaymentPoller({ db, bot, logger, checkQrisInvoiceStatus, finalizeQrisPayment, calculateTopupBonus, applyQrisTopupBonus, notifyTopupSuccess, intervalMs, paymentTimeoutMin })` factory. Handler expired/canceled/paid tetap sama (guard PM2 cluster, reset flag >90s, startup log pending count).
+- [x] `payment/deposit.js`: `createDepositManager({ db, bot, logger, gopayClient, getTimeZone, getPaymentTimeoutMin, getMinMaxTopup, getBaseQr, getApiKey, ... })` factory. Ekspor `markDepositExpired`, `creditDeposit`, `pollMutasi`, `startAutoTopupMutasi`, `checkQRISStatus`, `findAvailableTopupAmount`, `processDeposit`. `createQrisInvoice` tetap di `app.js` karena butuh `generateUniqueSuffix` (hoisted).
 - [x] Factory pattern diterapkan di `gopay.js` dan `qris-invoice.js`.
 - [x] `app.js` init `gopayClient` setelah `GOPAY_API_BASE_URL`, `__getQrisInvoiceChecker()` lazy init (butuh `db`).
-- [ ] Test integration `:memory:` - belum, lanjut di sesi berikut.
+- [ ] Test integration `:memory:` - belum, geser ke Fase 4 (akan dibahas bareng account service yang lebih stateful).
 - [x] `node --check`, smoke audit, tests pass (53 test), commit, push.
 
 **Catatan:**
 - `notifyTopupSuccess` masih di `app.js` (pakai `bot.telegram.sendMessage`). Bisa di-pass sebagai callback.
 - Hati-hati dengan `global.pendingDeposits` — tetap shared state. Bisa dibiarkan di `global` atau pindah ke module-scoped Map (preferred).
+- Fase 3 lanjutan (polling + deposit) tetap mempertahankan nama wrapper global (`processDeposit`, `markDepositExpired`, `creditDeposit`, `findAvailableTopupAmount`, `checkQRISStatus`) dengan destructuring dari factory supaya call-site existing tidak berubah.
+- `pollMutasi` dan `startAutoTopupMutasi` sekarang pakai closure dari factory (`pollIntervalMs`, `depositExpireMs`). Konstanta lama `POLL_INTERVAL` / `DEPOSIT_EXPIRE_MS` di `app.js` dihapus.
+- Startup dipanggil via `depositManager.startAutoTopupMutasi()` + `qrisPaymentPoller.start()` (menggantikan dua baris lama).
 
 ---
 

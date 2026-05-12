@@ -2105,267 +2105,9 @@ runMigrations(db, logger, { ensureSqliteColumn, createUniqueIndexIfSafe, createU
 
 
 
-// =================== AUTO TOPUP QRIS (MODEL MUTASI: pending_deposits) ===================
-
-// Simpan deposit yang sedang menunggu pembayaran (di memory)
+// --- Fase 3 split: fungsi markDepositExpired / creditDeposit / pollMutasi / startAutoTopupMutasi
+// dipindah ke payment/deposit.js (createDepositManager). Wrapper di-assign di bagian bawah.
 global.pendingDeposits = global.pendingDeposits || {};
-
-// Anti dobel proses di PM2 cluster: hanya instance 0 yang polling
-const IS_PRIMARY_INSTANCE =
-  !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
-
-let lastPollTime = 0;
-const POLL_INTERVAL = 10000;          // 10 detik (mirip temanmu)
-const DEPOSIT_EXPIRE_MS = 5 * 60 * 1000; // 5 menit
-
-function parseKreditFromResponse(text) {
-  // format dari temanmu: ada "Kredit: 10.123"
-  const blocks = String(text).split('------------------------').filter(Boolean);
-  const kredits = [];
-
-  for (const b of blocks) {
-    const m = b.match(/Kredit\s*:\s*([\d.]+)/);
-    if (!m) continue;
-    const val = parseInt(m[1].replace(/\./g, ''), 10);
-    if (!Number.isNaN(val)) kredits.push(val);
-  }
-
-  return kredits;
-}
-
-async function markDepositExpired(uniqueCode, bot, db, logger) {
-  await new Promise((resolve) => {
-    db.run(
-      `UPDATE pending_deposits SET status=? WHERE unique_code=? AND status=?`,
-      ['expired', uniqueCode, 'pending'],
-      () => resolve()
-    );
-  });
-
-  const d = global.pendingDeposits[uniqueCode];
-  if (d) {
-    try {
-      const text =
-  `â° <b>QRIS EXPIRED</b>\n` +
-  `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
-  `Pembayaran tidak kami terima dalam batas waktu.\n` +
-  `Silakan buat QRIS baru dari menu topup.\n` +
-  `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
-  `Ref: <code>${uniqueCode}</code>`;
-
-      await bot.telegram.sendMessage(d.userId, text, {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'ðŸ  Menu Utama', callback_data: 'send_main_menu' }],
-          ],
-        },
-      });
-    } catch {}
-
-  }
-
-  delete global.pendingDeposits[uniqueCode];
-}
-
-async function creditDeposit(uniqueCode, bot, db, logger, matchedTx = null) {
-  const d = global.pendingDeposits[uniqueCode];
-  if (!d) return false;
-
-  const now = Date.now();
-
-  // SALDO MASUK: pakai nominal topup asli (tanpa angka unik)
-  // Kalau kamu mau saldo masuk = yang dibayar, ubah jadi: const credit = d.amount;
-  const credit = d.originalAmount;
-  const providerPayloadJson = matchedTx ? JSON.stringify(matchedTx) : null;
-  const providerTxId = matchedTx ? (String(matchedTx.id || matchedTx.transaction_id || matchedTx.tx_id || '').trim() || null) : null;
-  const providerTxTime = matchedTx ? (matchedTx.time || matchedTx.created_at || matchedTx.updated_at || matchedTx.transaction_time || null) : null;
-  const providerIssuer = matchedTx ? (String(matchedTx.issuer || '').trim() || null) : null;
-  const providerPaymentType = matchedTx ? (String(matchedTx.payment_type || '').trim() || null) : null;
-  const providerStatus = matchedTx ? (String(matchedTx.status || '').trim() || null) : null;
-
-  const applied = await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN IMMEDIATE TRANSACTION', (beginErr) => {
-        if (beginErr) return reject(beginErr);
-
-        // Pastikan hanya proses sekali (status masih pending)
-        db.run(
-          `UPDATE pending_deposits SET status=? WHERE unique_code=? AND status=?`,
-          ['paid', uniqueCode, 'pending'],
-          function (err1) {
-            if (err1) {
-              db.run('ROLLBACK');
-              return reject(err1);
-            }
-            if ((this.changes || 0) === 0) {
-              db.run('ROLLBACK');
-              return resolve(false);
-            }
-
-            db.run(
-              `UPDATE users SET saldo = saldo + ? WHERE user_id = ?`,
-              [credit, d.userId],
-              function (err2) {
-                if (err2) {
-                  db.run('ROLLBACK');
-                  return reject(err2);
-                }
-                if ((this.changes || 0) === 0) {
-                  db.run('ROLLBACK');
-                  return reject(new Error('User topup manual tidak ditemukan'));
-                }
-
-                db.run(
-                  `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
-                   VALUES (?, ?, ?, ?, ?)`,
-                  [d.userId, credit, 'qris_auto_topup', uniqueCode, now],
-                  (err3) => {
-                    if (err3) {
-                      db.run('ROLLBACK');
-                      return reject(err3);
-                    }
-
-                    if (!providerPayloadJson) {
-                      return db.run('COMMIT', (err4) => (err4 ? reject(err4) : resolve(true)));
-                    }
-
-                    db.run(
-                      `INSERT INTO qris_payments (
-                        user_id,
-                        invoice_id,
-                        amount,
-                        base_amount,
-                        unique_suffix,
-                        status,
-                        created_at,
-                        paid_at,
-                        matched_at,
-                        provider_tx_id,
-                        provider_tx_time,
-                        provider_payment_type,
-                        provider_issuer,
-                        provider_status,
-                        provider_payload_json
-                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                      [
-                        d.userId,
-                        uniqueCode,
-                        d.amount,
-                        credit,
-                        Number(d.amount || 0) - Number(credit || 0),
-                        'paid',
-                        Number(d.timestamp || now),
-                        parseProviderTransactionTime(providerTxTime) || now,
-                        now,
-                        providerTxId,
-                        providerTxTime ? String(providerTxTime) : null,
-                        providerPaymentType,
-                        providerIssuer,
-                        providerStatus,
-                        providerPayloadJson,
-                      ],
-                      (err4) => {
-                        if (err4 && !String(err4.message || '').includes('UNIQUE constraint failed: qris_payments.invoice_id')) {
-                          db.run('ROLLBACK');
-                          return reject(err4);
-                        }
-                        db.run('COMMIT', (err5) => (err5 ? reject(err5) : resolve(true)));
-                      }
-                    );
-                  }
-                );
-              }
-            );
-          }
-        );
-      });
-    });
-  });
-
-  if (!applied) return false;
-
-  try {
-    const rupiah = (n) => `Rp${Number(n || 0).toLocaleString('id-ID')}`;
-    const waktu = new Date().toLocaleString('id-ID', { timeZone: TIME_ZONE });
-
-    const text =
-      `âœ… <b>TOPUP BERHASIL</b>
-` +
-      `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-` +
-      `ðŸ’° <b>Saldo Masuk</b> : <b>${rupiah(credit)}</b>
-` +
-      `ðŸ§¾ <b>Ref</b>        : <code>${uniqueCode}</code>
-` +
-      `ðŸ•’ <b>Waktu</b>      : ${waktu}
-` +
-      `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-` +
-      `Terima kasih ðŸ™`;
-
-    await bot.telegram.sendMessage(d.userId, text, {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'ðŸ  Menu Utama', callback_data: 'send_main_menu' }],
-        ],
-      },
-    });
-  } catch {}
-
-  delete global.pendingDeposits[uniqueCode];
-  return true;
-}
-
-async function pollMutasi(bot, db, logger, axios) {
-  global.mutasiBlockedUntil = global.mutasiBlockedUntil || 0;
-  if (Date.now() < global.mutasiBlockedUntil) return;
-
-  const now = Date.now();
-  if (now - lastPollTime < POLL_INTERVAL) return;
-  lastPollTime = now;
-
-  const pendingList = Object.entries(global.pendingDeposits)
-    .filter(([_, d]) => d.status === 'pending');
-
-  if (pendingList.length === 0) return;
-
-  try {
-    const transactions = await gopayClient.fetchTransactions();
-
-    for (const [uniqueCode, d] of pendingList) {
-      const expiresAt = d.expiresAt || (d.timestamp ? (d.timestamp + DEPOSIT_EXPIRE_MS) : 0);
-      if (expiresAt && now > expiresAt) {
-        await markDepositExpired(uniqueCode, bot, db, logger);
-        continue;
-      }
-
-      const matched = findMatchingSettlementTransaction(transactions, d.amount, {
-        createdAt: d.timestamp,
-        timeWindowMs: DEPOSIT_EXPIRE_MS,
-      });
-      if (matched) {
-        await creditDeposit(uniqueCode, bot, db, logger, matched);
-      }
-    }
-  } catch (e) {
-    const status = e?.response?.status;
-    const msg = e?.response?.data?.message || e?.message || e;
-    logger.error(`âŒ Poll mutasi GoPay error (${status || 'no-status'}): ${msg}`);
-  }
-}
-
-
-function startAutoTopupMutasi(bot, db, logger, axios) {
-  if (!IS_PRIMARY_INSTANCE) {
-    logger.info('â„¹ï¸ Auto-topup mutasi nonaktif di instance non-primary (PM2 cluster).');
-    return;
-  }
-
-  setInterval(() => pollMutasi(bot, db, logger, axios), 2000);
-  logger.info('âœ… Auto-topup QRIS (mutasi) aktif.');
-}
 
 // ======================= END SECTION: PAYMENT - DATABASE TABLES =============
 
@@ -14302,16 +14044,12 @@ function generateRandomAmount(baseAmount) {
   return baseAmount + random;
 }
 
-global.depositState = {};
-global.pendingDeposits = {};
-let lastRequestTime = 0;
-const requestInterval = 1000;
+// --- Fase 3 split: state topup dikelola depositManager (payment/deposit.js)
+global.depositState = global.depositState || {};
+global.pendingDeposits = global.pendingDeposits || {};
 
 db.all('SELECT * FROM pending_deposits WHERE status = "pending"', [], (err, rows) => {
-  if (err) {
-    logger.error('Gagal load pending_deposits:', err.message);
-    return;
-  }
+  if (err) { logger.error('Gagal load pending_deposits:', err.message); return; }
   const timeoutMinOnBoot = Number(QRIS_PAYMENT_TIMEOUT_MIN || 5);
   const nowBoot = Date.now();
   let restored = 0;
@@ -14323,7 +14061,6 @@ db.all('SELECT * FROM pending_deposits WHERE status = "pending"', [], (err, rows
     const ts = Number(row.timestamp || nowBoot);
     const expiresAt = ts + timeoutMinOnBoot * 60 * 1000;
     if (nowBoot > expiresAt) {
-      // Sudah expired saat startup: tandai di DB dan jangan masukkan ke memori
       db.run(
         'UPDATE pending_deposits SET status = ? WHERE unique_code = ? AND status = ?',
         ['expired', row.unique_code, 'pending'],
@@ -14350,46 +14087,16 @@ db.all('SELECT * FROM pending_deposits WHERE status = "pending"', [], (err, rows
   logger.info(`Pending deposit restored: ${restored} aktif, ${expiredOnBoot} di-expired saat boot`);
 });
 
-// ============================================================================
-// ============================================================================
-// SECTION: PAYMENT - QRIS AUTO TOPUP (RAJASERVERPREMIUM GATEWAY)
-// - processDeposit : buat QR dinamis (createpayment) + simpan pending
-// - checkQRISStatus: cek status via gateway/mutasi tanpa branding OrderKuota
-// ============================================================================
-
-// PM2 cluster guard (biar interval cuma jalan 1x kalau pakai cluster)
+// PM2 cluster guard tetap dipakai di beberapa tempat lama (misal HTTP bind).
 const IS_PM2_PRIMARY = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
 
-function _parseRupiahToInt(v) {
-  if (typeof v === 'number') return Math.round(v);
-  if (!v) return 0;
-  return parseInt(String(v).replace(/[^\d]/g, ''), 10) || 0;
-}
-
-function _getOrkutAccountId() {
-  // token format: "2304754:xxxx"
-  if (GOPAY_AUTH_TOKEN && String(GOPAY_AUTH_TOKEN).includes(':')) {
-    return String(GOPAY_AUTH_TOKEN).split(':')[0];
-  }
-  return '';
-}
-
 function _getBaseQr() {
-  // pakai GOPAY_BASE_QR kalau ada, fallback ke config lama lalu DATA_QRIS
   return GOPAY_BASE_QR || DATA_QRIS || '';
 }
-
-function _getTimeoutMs() {
-  // pakai config kamu
-  const ms = Number(QRIS_CHECK_INTERVAL_MS || 15000);
-  return ms >= 2000 ? ms : 15000;
-}
-
 function _getPaymentTimeoutMin() {
   const m = Number(QRIS_PAYMENT_TIMEOUT_MIN || 5);
   return m > 0 ? m : 5;
 }
-
 function _getMinMaxTopup() {
   return {
     min: Number(QRIS_AUTO_TOPUP_MIN || 1000),
@@ -14397,170 +14104,46 @@ function _getMinMaxTopup() {
   };
 }
 
-function _randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+const { createDepositManager } = require('./payment/deposit');
+const depositManager = createDepositManager({
+  db,
+  bot,
+  logger,
+  gopayClient,
+  findMatchingSettlementTransaction,
+  parseProviderTransactionTime,
+  buildDynamicQrisPayload,
+  buildStaticQrisImageUrl,
+  getTimeZone: () => TIME_ZONE,
+  getPaymentTimeoutMin: _getPaymentTimeoutMin,
+  getMinMaxTopup: _getMinMaxTopup,
+  getBaseQr: _getBaseQr,
+  getApiKey: () => API_KEY,
+  pollIntervalMs: 10000,
+  depositExpireMs: 5 * 60 * 1000,
+  requestIntervalMs: 1000,
+});
+const {
+  markDepositExpired,
+  creditDeposit,
+  checkQRISStatus,
+  findAvailableTopupAmount,
+  processDeposit,
+} = depositManager;
 
-// Cari unique suffix yang tidak bentrok dengan pending_deposits aktif (status = 'pending')
-// untuk window waktu konfigurasi. Return { amount, uniqueSuffix }.
-async function findAvailableTopupAmount(baseAmount, minSuffix, maxSuffix, maxAttempts) {
-  const min = Number.isFinite(Number(minSuffix)) ? Number(minSuffix) : 1;
-  const max = Number.isFinite(Number(maxSuffix)) ? Number(maxSuffix) : 300;
-  const attempts = Number(maxAttempts) > 0 ? Number(maxAttempts) : 10;
-  const tried = new Set();
-  for (let i = 0; i < attempts; i++) {
-    const suffix = _randomInt(min, max);
-    if (tried.has(suffix)) continue;
-    tried.add(suffix);
-    const candidate = Number(baseAmount) + suffix;
-    const clash = await new Promise((resolve) => {
-      db.get(
-        'SELECT 1 FROM pending_deposits WHERE amount = ? AND status = ? LIMIT 1',
-        [candidate, 'pending'],
-        (err, row) => {
-          if (err) { logger.warn('findAvailableTopupAmount db error: ' + err.message); return resolve(false); }
-          resolve(!!row);
-        }
-      );
-    });
-    if (!clash) return { amount: candidate, uniqueSuffix: suffix };
-  }
-  // Fallback: pakai attempt terakhir walaupun mungkin clash. Polling tetap pakai uniqueCode.
-  const lastSuffix = _randomInt(min, max);
-  return { amount: Number(baseAmount) + lastSuffix, uniqueSuffix: lastSuffix };
-}
-
-
-async function processDeposit(ctx, amount) {
-  const currentTime = Date.now();
-
-  // Anti spam
-  if (currentTime - lastRequestTime < requestInterval) {
-    await ctx.editMessageText(
-      'âš ï¸ *Terlalu banyak permintaan. Silakan tunggu sebentar sebelum mencoba lagi.*',
-      { parse_mode: 'Markdown' }
-    );
-    return;
-  }
-  lastRequestTime = currentTime;
-
-  const userId = ctx.from.id;
-
-  // batas nominal
-  const amountNum = Number(amount || 0);
-  const { min, max } = _getMinMaxTopup();
-  if (!Number.isFinite(amountNum) || amountNum < min || amountNum > max) {
-    await ctx.editMessageText(
-      `âŒ *Nominal tidak valid!*\n\nMinimal: *Rp ${min.toLocaleString('id-ID')}*\nMaksimal: *Rp ${max.toLocaleString('id-ID')}*`,
-      { parse_mode: 'Markdown' }
-    );
-    delete global.depositState[userId];
-    return;
-  }
-
-  // pastikan API_KEY ada
-  if (!API_KEY || API_KEY === 'NONE') {
-    await ctx.editMessageText(
-      'âŒ *API_KEY belum diisi.*\n\nIsi `API_KEY` di `.vars.json` dengan apikey dari rajaserverpremium.',
-      { parse_mode: 'Markdown' }
-    );
-    delete global.depositState[userId];
-    return;
-  }
-
-  const baseQr = _getBaseQr();
-  if (!baseQr || baseQr.length < 10) {
-    await ctx.editMessageText(
-      'âŒ *QR String belum benar.*\n\nCek `GOPAY_BASE_QR` / `DATA_QRIS` di `.vars.json` (`ORDERKUOTA_BASE_QR` masih didukung sebagai fallback).',
-      { parse_mode: 'Markdown' }
-    );
-    delete global.depositState[userId];
-    return;
-  }
-
-  // Buat nominal unik anti-collision (coba 10x hindari bentrok dengan pending_deposits aktif)
-  const { amount: finalAmount, uniqueSuffix } = await findAvailableTopupAmount(amountNum, 1, 300, 10);
-  const adminFee = uniqueSuffix;
-
-  // kode unik internal + reference (buat info)
-  const ts = Date.now();
-  const uniqueCode = `TOPUP-${userId}-${ts}`;
-  const referenceId = `REF-${ts}-${_randomInt(1000, 9999)}`;
-
-  try {
-    const dynamicQrText = buildDynamicQrisPayload(baseQr, finalAmount);
-    const qrImageUrl = buildStaticQrisImageUrl(dynamicQrText);
-    if (!qrImageUrl) {
-      throw new Error('QR URL tidak valid dari QRIS dinamis');
-    }
-
-    const timeoutMin = _getPaymentTimeoutMin();
-    const caption =
-      `ðŸ’³ *INSTRUKSI PEMBAYARAN*
-
-` +
-      `ðŸ’° *TOP-UP:* Rp ${amountNum.toLocaleString('id-ID')}
-` +
-      `ðŸŽ² *ADMIN FEE:* Rp ${adminFee.toLocaleString('id-ID')}
-` +
-      `ðŸ’µ *TOTAL BAYAR:* Rp ${finalAmount.toLocaleString('id-ID')}
-
-` +
-      `ðŸ“Œ *CARA BAYAR:*
-` +
-      `1) Scan QR di atas
-` +
-      `2) Nominal akan terisi otomatis
-` +
-      `3) Pastikan bayar *tepat* Rp ${finalAmount.toLocaleString('id-ID')}
-
-` +
-      `â³ QR berlaku *${timeoutMin} menit*
-` +
-      `ðŸ†” Ref: \`${referenceId}\``;
-
-    const qrMessage = await ctx.replyWithPhoto(
-      { url: qrImageUrl },
-      { caption, parse_mode: 'Markdown' }
-    );
-
-    try { await ctx.deleteMessage(); } catch (_) {}
-
-    global.pendingDeposits[uniqueCode] = {
-      amount: finalAmount,
-      originalAmount: amountNum,
-      adminFee,
-      userId,
-      timestamp: Date.now(),
-      status: 'pending',
-      qrMessageId: qrMessage.message_id,
-      referenceId,
-      expiresAt: Date.now() + (timeoutMin * 60 * 1000),
-      qrisText: dynamicQrText,
-    };
-
-    db.run(
-      `INSERT INTO pending_deposits
-        (unique_code, user_id, amount, original_amount, timestamp, status, qr_message_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [uniqueCode, userId, finalAmount, amountNum, Date.now(), 'pending', qrMessage.message_id],
-      (err) => {
-        if (err) logger.error('âŒ Gagal insert pending_deposits:', err.message);
-      }
-    );
-
-    delete global.depositState[userId];
-    logger.info(`âœ… QR dynamic sent: user=${userId} amount=${finalAmount} ref=${referenceId}`);
-
-  } catch (error) {
-    logger.error('âŒ Deposit error:', error?.message || error);
-    await ctx.editMessageText(
-      'âŒ *GAGAL MEMBUAT PEMBAYARAN*\n\nSilakan coba lagi.',
-      { parse_mode: 'Markdown' }
-    );
-    delete global.depositState[userId];
-  }
-}
+const { createQrisPaymentPoller } = require('./payment/polling');
+const qrisPaymentPoller = createQrisPaymentPoller({
+  db,
+  bot,
+  logger,
+  checkQrisInvoiceStatus,
+  finalizeQrisPayment,
+  calculateTopupBonus,
+  applyQrisTopupBonus,
+  notifyTopupSuccess,
+  intervalMs: Number(QRIS_CHECK_INTERVAL_MS || 15000),
+  paymentTimeoutMin: Number(QRIS_PAYMENT_TIMEOUT_MIN || 10),
+});
 
 async function createQrisInvoice(baseAmount, noteOrReference, forcedUniqueSuffix = null) {
   const base_amount = Number(baseAmount);
@@ -14569,7 +14152,6 @@ async function createQrisInvoice(baseAmount, noteOrReference, forcedUniqueSuffix
   }
 
   const gopayApiKey = getGopayApiKey();
-
   if (!gopayApiKey) {
     throw new Error('GOPAY_API_KEY belum diisi di .vars.json');
   }
@@ -14618,50 +14200,6 @@ async function createQrisInvoice(baseAmount, noteOrReference, forcedUniqueSuffix
     },
   };
 }
-
-async function checkQRISStatus() {
-  try {
-    const entries = Object.entries(global.pendingDeposits || {}).filter(
-      ([, d]) => d.status === 'pending'
-    );
-    if (entries.length === 0) return;
-
-    const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-    const transactions = await gopayClient.fetchTransactions();
-
-    for (const [uniqueCode, deposit] of entries) {
-      const expiredAt = deposit.expiresAt || (deposit.timestamp + (timeoutMin * 60 * 1000));
-      if (Date.now() > expiredAt) {
-        try {
-          if (deposit.qrMessageId) {
-            await bot.telegram.deleteMessage(deposit.userId, deposit.qrMessageId);
-          }
-        } catch (e) {}
-        await markDepositExpired(uniqueCode, bot, db, logger);
-        continue;
-      }
-
-      const matched = findMatchingSettlementTransaction(transactions, deposit.amount, { createdAt: Number(deposit.timestamp || 0) });
-      if (matched) {
-        await creditDeposit(uniqueCode, bot, db, logger);
-        logger.info(`âœ… QRIS paid: ${uniqueCode} amount=${deposit.amount}`);
-      }
-    }
-  } catch (error) {
-    logger.error('Error in checkQRISStatus:', error?.message || error);
-  }
-}
-
-// Jalankan auto check (pakai interval dari vars.json)
-//if (IS_PM2_PRIMARY) {
-//  setInterval(checkQRISStatus, _getTimeoutMs());
-// logger.info(`âœ… Auto-topup QRIS aktif. Interval: ${_getTimeoutMs()}ms`);
-//} else {
-//  logger.info('â„¹ï¸ Auto-topup QRIS nonaktif di instance non-primary (PM2 cluster).');
-//}
-
-// ===== END SECTION: PAYMENT - QRIS AUTO TOPUP (RAJASERVERPREMIUM GATEWAY) ===
-
 
 async function recordAccountTransaction(userId, type) {
   return new Promise((resolve, reject) => {
@@ -14774,209 +14312,6 @@ if (EXPIRE_DATE) {
 
 
 
-function startQrisPaymentPolling(bot, db, logger) {
-  const IS_PRIMARY_INSTANCE = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
-  const qrisPollIntervalMs = Number(QRIS_CHECK_INTERVAL_MS || 15000);
-  if (!IS_PRIMARY_INSTANCE) {
-    logger.info('â„¹ï¸ QRIS polling nonaktif di instance non-primary (PM2 cluster).');
-    return;
-  }
-  if (global.__qrisPollStarted) {
-    logger.info(`â„¹ï¸ QRIS polling sudah aktif. Interval=${qrisPollIntervalMs}ms`);
-    return;
-  }
-
-  async function getPendingQrisCount() {
-    return await new Promise((resolve) => {
-      db.get(`SELECT COUNT(*) AS cnt FROM qris_payments WHERE status='pending'`, [], (err, row) => {
-        if (err) return resolve(-1);
-        resolve(Number(row?.cnt || 0));
-      });
-    });
-  }
-
-  async function markQrisStatus(id, status, paidAt = null) {
-    return await new Promise((resolve) => {
-      if (paidAt) {
-        db.run(`UPDATE qris_payments SET status=?, paid_at=? WHERE id=?`, [status, paidAt, id], () => resolve());
-      } else {
-        db.run(`UPDATE qris_payments SET status=? WHERE id=?`, [status, id], () => resolve());
-      }
-    });
-  }
-
-  async function pollQrisPaymentsStartup() {
-    const pollStartedAt = Number(global.__pollQrisStartedAt || 0);
-    if (global.__pollQrisRunning) {
-      // Guard: kalau polling stuck >90 detik, anggap crashed dan reset flag.
-      if (pollStartedAt && Date.now() - pollStartedAt > 90 * 1000) {
-        logger.warn('Polling QRIS sebelumnya stuck >90s, reset flag dan mulai ulang.');
-        global.__pollQrisRunning = false;
-      } else {
-        return;
-      }
-    }
-    global.__pollQrisRunning = true;
-    global.__pollQrisStartedAt = Date.now();
-    try {
-      const now = Date.now();
-      const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-      const rows = await new Promise((resolve, reject) => {
-        const cutoff = now - ((timeoutMin + 15) * 60 * 1000);
-        db.all(
-          `SELECT id, user_id, invoice_id, amount, base_amount, unique_suffix, created_at
-           FROM qris_payments
-           WHERE status='pending' AND created_at >= ?
-           ORDER BY created_at ASC
-           LIMIT 50`,
-          [cutoff],
-          (err, rows) => (err ? reject(err) : resolve(rows || []))
-        );
-      });
-
-      if (!rows.length) return;
-
-      logger.info(`ðŸ”Ž Poll QRIS GoPay: cek ${rows.length} transaksi pending...`);
-
-      for (const row of rows) {
-        const expiresAt = Number(row.created_at) + (timeoutMin * 60 * 1000);
-        if (now > expiresAt) {
-          await markQrisStatus(row.id, 'expired');
-          try {
-            await bot.telegram.sendMessage(
-              row.user_id,
-              `â° <b>QRIS EXPIRED</b>
-` +
-                `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-` +
-                `QR sudah tidak berlaku (melewati batas waktu).
-` +
-                `Silakan buat QRIS baru untuk topup.
-` +
-                `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-` +
-                `Invoice: <code>${row.invoice_id}</code>`,
-              {
-                parse_mode: 'HTML',
-                reply_markup: {
-                  inline_keyboard: [
-                    [{ text: 'ðŸ’³ Buat QRIS Baru', callback_data: 'topupqris_btn' }],
-                    [{ text: 'ðŸ  Menu Utama', callback_data: 'send_main_menu' }],
-                  ],
-                },
-              }
-            );
-          } catch (_) {}
-          logger.info(`âŒ› QRIS expired: invoice=${row.invoice_id} user=${row.user_id}`);
-          continue;
-        }
-
-        const checkRes = await checkQrisInvoiceStatus(row.invoice_id, Number(row.amount), row.created_at);
-        if (checkRes.status === 'EXPIRED') {
-          await markQrisStatus(row.id, 'expired');
-          try {
-            await bot.telegram.sendMessage(
-              row.user_id,
-              `â° <b>QRIS EXPIRED</b>
-` +
-                `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-` +
-                `QR sudah tidak berlaku (melewati batas waktu).
-` +
-                `Silakan buat QRIS baru untuk topup.
-` +
-                `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-` +
-                `Invoice: <code>${row.invoice_id}</code>`,
-              {
-                parse_mode: 'HTML',
-                reply_markup: {
-                  inline_keyboard: [
-                    [{ text: 'ðŸ’³ Buat QRIS Baru', callback_data: 'topupqris_btn' }],
-                    [{ text: 'ðŸ  Menu Utama', callback_data: 'send_main_menu' }],
-                  ],
-                },
-              }
-            );
-          } catch (_) {}
-          logger.info(`âŒ› QRIS expired: invoice=${row.invoice_id} user=${row.user_id}`);
-          continue;
-        }
-        if (checkRes.status === 'CANCELED') {
-          await markQrisStatus(row.id, 'canceled');
-          logger.info(`ðŸš« QRIS canceled: invoice=${row.invoice_id} user=${row.user_id}`);
-          continue;
-        }
-        if (checkRes.status !== 'PAID' || !checkRes.transaction) continue;
-
-        const finalRes = await finalizeQrisPayment({
-          paymentRow: row,
-          matchedTx: checkRes.transaction,
-          transactionType: 'qris_auto_topup',
-          transactionRef: `qris_auto_${row.invoice_id}`,
-        });
-        if (!finalRes.applied) continue;
-
-        const addSaldo = Number(row.base_amount);
-        try {
-          const { bonus, percent } = calculateTopupBonus(addSaldo);
-          if (bonus > 0) {
-            try {
-              await applyQrisTopupBonus(row.user_id, row.invoice_id, bonus);
-            } catch (e) {
-              logger.error(`âš ï¸ Gagal mencatat bonus QRIS: ${e?.message || e}`);
-            }
-            await notifyTopupSuccess({
-              bot,
-              db,
-              userId: row.user_id,
-              baseAmount: addSaldo,
-              bonusAmount: bonus,
-              percent,
-              ref: row.invoice_id,
-              method: 'QRIS GoPay',
-            });
-          } else {
-            await notifyTopupSuccess({
-              bot,
-              db,
-              userId: row.user_id,
-              baseAmount: addSaldo,
-              bonusAmount: 0,
-              percent: 0,
-              ref: row.invoice_id,
-              method: 'QRIS GoPay',
-            });
-          }
-        } catch (e) {
-          logger.error(`âš ï¸ Gagal kirim notif topup sukses: ${e?.message || e}`);
-        }
-
-        logger.info(`âœ… QRIS PAID: invoice=${row.invoice_id} user=${row.user_id} billed=${row.amount} add=${addSaldo} tx=${finalRes.providerTxId || '-'} `);
-      }
-    } catch (e) {
-      logger.error(`âŒ pollQrisPayments fatal: ${e?.message || e}`);
-    } finally {
-      global.__pollQrisRunning = false;
-      global.__pollQrisStartedAt = 0;
-    }
-  }
-
-  global.__qrisPollStarted = true;
-  global.__qrisPollInterval = setInterval(pollQrisPaymentsStartup, qrisPollIntervalMs);
-  setTimeout(() => { pollQrisPaymentsStartup().catch(() => {}); }, 2000);
-  getPendingQrisCount()
-    .then((pendingCount) => {
-      if (pendingCount >= 0) {
-        logger.info(`âœ… QRIS polling aktif. Interval=${qrisPollIntervalMs}ms, pending=${pendingCount}, source=startup`);
-      } else {
-        logger.info(`âœ… QRIS polling aktif. Interval=${qrisPollIntervalMs}ms, source=startup`);
-      }
-    })
-    .catch(() => {
-      logger.info(`âœ… QRIS polling aktif. Interval=${qrisPollIntervalMs}ms, source=startup`);
-    });
-}
 
 // Jalankan bot
 bot.launch()
@@ -14988,8 +14323,9 @@ bot.launch()
   });
 
 // Jalankan scheduler di luar app.listen
-startAutoTopupMutasi(bot, db, logger, axios);
-startQrisPaymentPolling(bot, db, logger);
+// --- Fase 3 split: scheduler auto-topup dipindah ke payment/deposit.js & payment/polling.js
+depositManager.startAutoTopupMutasi();
+qrisPaymentPoller.start();
 restartAutoBackupScheduler();
 startDailyReportScheduler();
 startExpiryReminderScheduler();
@@ -15033,8 +14369,6 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   logger.error(`uncaughtException: ${err && err.message ? err.message : err}`);
 });
-
-
 
 
 
