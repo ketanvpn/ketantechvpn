@@ -167,7 +167,7 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 **Target:** ~800 baris ke `scheduler/`.
 
-**Commit:** `<TBD>` (diisi setelah commit)
+**Commit:** `f2bef74`
 
 **Checklist:**
 - [x] `scheduler/daily-report.js`: `createDailyReportScheduler({ logger, getTimeInConfiguredTimeZone, getTimeZone, isEnabled, getHour, getMinute, sendDailyReport, getLastSentDateKey, setLastSentDateKey })`. Loop scheduler dipindah, `sendDailyReport` body tetap di `app.js` (akses DB + template).
