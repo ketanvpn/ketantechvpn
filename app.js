@@ -7,20 +7,27 @@ const axios = require('axios');
 const { isUserReseller, addReseller, removeReseller, listResellersSync } = require('./modules/reseller');
 const winston = require('winston');
 
+const { maskLogMessage, maskToken } = require('./lib/masker');
+const {
+  buildStaticQrisImageUrl,
+  buildEmvTag,
+  crc16Ccitt,
+  removeTag54,
+  buildDynamicQrisPayload,
+  parseProviderTransactionTime,
+  buildProviderTransactionFingerprint,
+  findMatchingSettlementTransaction,
+} = require('./lib/qris');
+const {
+  getTimeInConfiguredTimeZone: _getTimeInTZ,
+  getAccountDaysLeft,
+  getMonthRange: _getMonthRangeLib,
+  typeCode,
+  shortStatus,
+} = require('./lib/time');
+const { getLicenseInfo: _getLicenseInfoLib } = require('./lib/licence');
+
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
-function maskLogMessage(msg) {
-  if (msg == null) return msg;
-  let text = typeof msg === 'string' ? msg : String(msg);
-  // Telegram bot token: digits:base58 setelah 'bot'
-  text = text.replace(/bot\d{6,}:[A-Za-z0-9_-]{20,}/g, 'bot<REDACTED>');
-  text = text.replace(/(BOT_TOKEN[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
-  text = text.replace(/(Authorization[:=]\s*(?:Bearer\s+)?)([A-Za-z0-9._~+/=\-]{12,})/gi, '$1<REDACTED>');
-  text = text.replace(/(api[_-]?key[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
-  text = text.replace(/(token[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
-  text = text.replace(/(password[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
-  text = text.replace(/(auth_token[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
-  return text;
-}
 
 const logger = winston.createLogger({
   // Bisa diatur via ENV, default 'info'
@@ -439,12 +446,6 @@ function getGopayApiKey() {
   return String(fresh.GOPAY_API_KEY || '').trim();
 }
 
-function maskToken(token, head = 12, tail = 8) {
-  const value = String(token || '').trim();
-  if (!value) return '-';
-  if (value.length <= head + tail) return value;
-  return `${value.slice(0, head)}...${value.slice(-tail)}`;
-}
 
 const GOPAY_BASE_QR = envOr('GOPAY_BASE_QR', envOr('ORDERKUOTA_BASE_QR', ''));
 const GOPAY_AUTH_USERNAME = envOr('GOPAY_AUTH_USERNAME', envOr('ORDERKUOTA_AUTH_USERNAME', ''));
@@ -511,74 +512,10 @@ function generateUniqueSuffix(min = 50, max = 200) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function buildStaticQrisImageUrl(qrString) {
-  const payload = String(qrString || '').trim();
-  if (!payload) return '';
-  return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(payload)}`;
-}
 
-function buildEmvTag(tag, value) {
-  const v = String(value ?? '');
-  return `${tag}${String(v.length).padStart(2, '0')}${v}`;
-}
 
-function crc16Ccitt(payload) {
-  let crc = 0xFFFF;
-  for (let i = 0; i < payload.length; i += 1) {
-    crc ^= payload.charCodeAt(i) << 8;
-    for (let j = 0; j < 8; j += 1) {
-      if ((crc & 0x8000) !== 0) {
-        crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
-      } else {
-        crc = (crc << 1) & 0xFFFF;
-      }
-    }
-  }
-  return crc.toString(16).toUpperCase().padStart(4, '0');
-}
 
-function removeTag54(payload) {
-  const idx = payload.indexOf('54');
-  if (idx === -1) return payload;
-  const len = Number.parseInt(payload.slice(idx + 2, idx + 4), 10);
-  if (!Number.isFinite(len) || len < 0) return payload;
-  return payload.slice(0, idx) + payload.slice(idx + 4 + len);
-}
 
-function buildDynamicQrisPayload(baseQrString, amount) {
-  const nominal = Number(amount || 0);
-  if (!Number.isFinite(nominal) || nominal <= 0) {
-    throw new Error('Nominal QRIS dinamis tidak valid');
-  }
-
-  let payload = String(baseQrString || '').trim();
-  if (!payload) {
-    throw new Error('Base QRIS kosong');
-  }
-
-  const crcPos = payload.lastIndexOf('6304');
-  if (crcPos >= 0) {
-    payload = payload.slice(0, crcPos);
-  }
-
-  if (payload.includes('010211')) {
-    payload = payload.replace('010211', '010212');
-  } else if (!payload.includes('010212') && payload.startsWith('00020101')) {
-    payload = payload.replace('00020101', '000201010212');
-  }
-
-  payload = removeTag54(payload);
-
-  const amountTag = buildEmvTag('54', String(Math.round(nominal)));
-  if (payload.includes('5802ID')) {
-    payload = payload.replace('5802ID', `${amountTag}5802ID`);
-  } else {
-    payload += amountTag;
-  }
-
-  const unsignedPayload = `${payload}6304`;
-  return `${unsignedPayload}${crc16Ccitt(unsignedPayload)}`;
-}
 
 async function fetchGopayTransactions() {
   const gopayApiKey = getGopayApiKey();
@@ -671,60 +608,8 @@ async function fetchGopayQrisStatus(transactionId) {
   return res.data;
 }
 
-function parseProviderTransactionTime(value) {
-  if (value === null || typeof value === 'undefined' || value === '') return null;
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value > 1e12 ? value : value * 1000;
-  }
 
-  const raw = String(value).trim();
-  if (!raw) return null;
 
-  const directTs = Number(raw);
-  if (Number.isFinite(directTs) && directTs > 0) {
-    return directTs > 1e12 ? directTs : directTs * 1000;
-  }
-
-  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
-  const parsed = Date.parse(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function buildProviderTransactionFingerprint(trx) {
-  if (!trx || typeof trx !== 'object') return '';
-  const explicitId = String(trx.id || trx.transaction_id || trx.tx_id || '').trim();
-  if (explicitId) return `id:${explicitId}`;
-
-  const amount = Number(trx.amount || 0);
-  const timeMs = parseProviderTransactionTime(trx.time || trx.created_at || trx.updated_at || trx.transaction_time) || 0;
-  const issuer = String(trx.issuer || '').trim().toLowerCase();
-  const paymentType = String(trx.payment_type || '').trim().toLowerCase();
-  const status = String(trx.status || '').trim().toLowerCase();
-  return `fp:${amount}|${timeMs}|${issuer}|${paymentType}|${status}`;
-}
-
-function findMatchingSettlementTransaction(transactions, expectedAmount, options = {}) {
-  const expected = Number(expectedAmount || 0);
-  if (!Array.isArray(transactions) || expected <= 0) return null;
-
-  const { createdAt = 0, windowBeforeMs = 5 * 60 * 1000, windowAfterMs = 60 * 60 * 1000 } = options || {};
-  const minTime = createdAt > 0 ? createdAt - windowBeforeMs : 0;
-  const maxTime = createdAt > 0 ? createdAt + windowAfterMs : Infinity;
-
-  return (
-    transactions.find((trx) => {
-      const amount = Number(trx?.amount || 0);
-      const status = String(trx?.status || '').toLowerCase();
-      if (amount !== expected || status !== 'settlement') return false;
-      if (createdAt <= 0) return true;
-      const trxTime = parseProviderTransactionTime(
-        trx?.transaction_time || trx?.time || trx?.paid_at || trx?.created_at || trx?.updated_at
-      );
-      if (!trxTime) return true;
-      return trxTime >= minTime && trxTime <= maxTime;
-    }) || null
-  );
-}
 
 async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
   const inv = String(invoiceId || '').trim();
@@ -1094,23 +979,6 @@ function updateResellerBonusVars(partial) {
   }
 }
 
-function getMonthRange(offsetMonths = 0) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() + offsetMonths, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + offsetMonths + 1, 1);
-  return {
-    startMs: start.getTime(),
-    endMs: end.getTime(),
-    year: start.getFullYear(),
-    month: start.getMonth() + 1,
-    monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
-    label: start.toLocaleDateString('id-ID', {
-      timeZone: TIME_ZONE,
-      year: 'numeric',
-      month: 'long',
-    }),
-  };
-}
 
 function getResellerActiveBonusTiers() {
   const tiers = [
@@ -1469,77 +1337,17 @@ let TIME_ZONE = vars.TIME_ZONE || envOr('TIME_ZONE', 'Asia/Jayapura'); // defaul
 
 logger.info(`Time zone init: ${TIME_ZONE}`);
 
+// Wrapper thin yang inject TIME_ZONE / EXPIRE_DATE ke helper lib/
+function getTimeInConfiguredTimeZone() { return _getTimeInTZ(TIME_ZONE); }
+function getMonthRange(offsetMonths = 0) { return _getMonthRangeLib(offsetMonths, TIME_ZONE); }
+function getLicenseInfo() { return _getLicenseInfoLib(EXPIRE_DATE); }
+
 // Helper: ambil tanggal & jam sesuai TIME_ZONE (bukan jam server)
-function getTimeInConfiguredTimeZone() {
-  const now = new Date();
-
-  const formatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-
-  const parts = formatter.formatToParts(now);
-  const get = (type) => parts.find((p) => p.type === type).value;
-
-  const year = get('year');
-  const month = get('month');
-  const day = get('day');
-  const hour = parseInt(get('hour'), 10);
-  const minute = parseInt(get('minute'), 10);
-
-  const dateKey = `${year}-${month}-${day}`; // YYYY-MM-DD di timezone kita
-
-  return { dateKey, hour, minute };
-}
 
 // ===== Tambahan: helper sisa hari akun (berdasarkan TANGGAL, bukan jam) =====
-function getAccountDaysLeft(expiresAtMs) {
-  if (!expiresAtMs) return null; // kalau nggak ada expires_at
-
-  const now = new Date();
-  const todayStart = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()
-  ).getTime();
-
-  const expDate = new Date(expiresAtMs);
-  const expDayStart = new Date(
-    expDate.getFullYear(),
-    expDate.getMonth(),
-    expDate.getDate()
-  ).getTime();
-
-  const diffDays = Math.round(
-    (expDayStart - todayStart) / (1000 * 60 * 60 * 24)
-  );
-
-  return diffDays;
-}
 // ===== Akhir helper =====
 
-function typeCode(type) {
-  const t = String(type || '').toLowerCase();
-  if (t === 'vmess') return 'VM';
-  if (t === 'vless') return 'VL';
-  if (t === 'ssh') return 'SH';
-  if (t === 'trojan') return 'TJ';
-  if (t === 'shadowsocks') return 'SS';
-  return (t.slice(0, 2) || '??').toUpperCase();
-}
 
-function shortStatus(expiresAtMs) {
-  const daysLeft = getAccountDaysLeft(expiresAtMs);
-  if (daysLeft === null || typeof daysLeft === 'undefined') return 'â“';
-  if (daysLeft > 0) return `âœ…A${daysLeft}`;
-  if (daysLeft === 0) return 'âš ï¸A0';
-  return 'âŒX';
-}
 // State sederhana untuk admin (edit nama / harga server)
 const adminState = {};
 
@@ -2286,18 +2094,6 @@ async function handleCheckGopayApiKey(ctx) {
 bot.command('cekgopayapikey', handleCheckGopayApiKey);
 
 // ====== FUNGSI INFO LISENSI BOT ======
-function getLicenseInfo() {
-  if (!EXPIRE_DATE) return null;
-
-  // Anggap EXPIRE_DATE dalam format "YYYY-MM-DD"
-  const now = new Date();
-  const expire = new Date(EXPIRE_DATE + 'T23:59:59');
-
-  const diffMs   = expire - now;
-  const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24)); // dibulatkan ke atas
-
-  return { expire, daysLeft };
-}
 // ====== AKHIR FUNGSI INFO LISENSI ======
 
 // === MIDDLEWARE KUNCI LISENSI ===

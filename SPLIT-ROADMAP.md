@@ -2,7 +2,7 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **0/6 fase selesai**
+Status keseluruhan: **1/6 fase selesai**
 
 ---
 
@@ -40,20 +40,20 @@ Status keseluruhan: **0/6 fase selesai**
 
 ---
 
-## Fase 1 - Ekstrak Helper Pure (LOW RISK)
+## Fase 1 - Ekstrak Helper Pure (LOW RISK) - SELESAI
 
 **Target:** keluarkan ~500 baris ke `lib/`. No runtime behavior change.
 
-**Commit:** _(belum)_
+**Commit:** `f6c0a95`
 
 **Checklist:**
-- [ ] `lib/qris.js`: `crc16Ccitt`, `removeTag54`, `buildEmvTag`, `buildDynamicQrisPayload`, `buildStaticQrisImageUrl`, `parseProviderTransactionTime`, `buildProviderTransactionFingerprint`, `findMatchingSettlementTransaction`
-- [ ] `lib/licence.js`: `getLicenseInfo`, `setLicenseExpireDate`
-- [ ] `lib/masker.js`: `maskLogMessage`, `maskToken`
-- [ ] `lib/time.js`: `getTimeInConfiguredTimeZone`, `getAccountDaysLeft`, `getMonthRange`, `typeCode`, `shortStatus`
-- [ ] Update `app.js` untuk `require('./lib/*')` dan hapus definisi lama.
-- [ ] Tambah unit test untuk fn yang di-ekstrak (minimal qris + time).
-- [ ] `node --check`, smoke audit, tests, commit, push.
+- [x] `lib/qris.js`: `crc16Ccitt`, `removeTag54`, `buildEmvTag`, `buildDynamicQrisPayload`, `buildStaticQrisImageUrl`, `parseProviderTransactionTime`, `buildProviderTransactionFingerprint`, `findMatchingSettlementTransaction`
+- [x] `lib/licence.js`: `getLicenseInfo` (note: `setLicenseExpireDate` tetap di `app.js` karena mutate `vars`)
+- [x] `lib/masker.js`: `maskLogMessage`, `maskToken`
+- [x] `lib/time.js`: `getTimeInConfiguredTimeZone`, `getAccountDaysLeft`, `getMonthRange`, `typeCode`, `shortStatus`
+- [x] Update `app.js` untuk `require('./lib/*')` dan hapus definisi lama (tambah wrapper thin untuk inject `TIME_ZONE`/`EXPIRE_DATE`).
+- [x] Tambah unit test: qris (11), time (7), masker (6), licence (4) = 28 test baru (total 46).
+- [x] `node --check`, smoke audit, tests, commit, push.
 
 **Catatan:**
 - Fungsi yang di-extract harus PURE (tidak akses `db`/`vars`/`logger` lewat closure). Kalau butuh, pass sebagai parameter.
