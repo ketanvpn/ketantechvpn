@@ -468,6 +468,25 @@ const GOPAY_API_BASE_URL =
   envOr('GOPAY_API_BASE_URL', envOr('GOPAY_BACKEND_BASE_URL',
   'https://api-gopay.autoftbot.com'));
 
+const { createGopayClient } = require('./payment/gopay');
+const gopayClient = createGopayClient({ getApiKey: getGopayApiKey, baseUrl: GOPAY_API_BASE_URL });
+
+const { createQrisInvoiceChecker } = require('./payment/qris-invoice');
+let __qrisInvoiceChecker = null;
+function __getQrisInvoiceChecker() {
+  if (!__qrisInvoiceChecker) {
+    __qrisInvoiceChecker = createQrisInvoiceChecker({
+      db,
+      gopayClient,
+      paymentTimeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
+    });
+  }
+  return __qrisInvoiceChecker;
+}
+async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
+  return __getQrisInvoiceChecker().checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt);
+}
+
 let qrisGen = null;
 let qrisPaymentChecker = null;
 
@@ -522,179 +541,13 @@ function generateUniqueSuffix(min = 50, max = 200) {
 
 
 
-async function fetchGopayTransactions() {
-  const gopayApiKey = getGopayApiKey();
-
-  if (!gopayApiKey) {
-    throw new Error('GOPAY_API_KEY belum diisi di .vars.json');
-  }
-
-  const res = await axios.post(
-    `${GOPAY_API_BASE_URL}/transactions`,
-    {},
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${gopayApiKey}`,
-      },
-      timeout: 15000,
-    }
-  );
-
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || 'Gagal mengambil transaksi GoPay');
-  }
-
-  return Array.isArray(res.data?.data?.transactions)
-    ? res.data.data.transactions
-    : [];
-}
-
-
-async function generateGopayQris(amount) {
-  const gopayApiKey = getGopayApiKey();
-
-  if (!gopayApiKey) {
-    throw new Error('GOPAY_API_KEY belum diisi di .vars.json');
-  }
-
-  const nominal = Number(amount || 0);
-  if (!Number.isFinite(nominal) || nominal <= 0) {
-    throw new Error('Nominal QRIS tidak valid');
-  }
-
-  const res = await axios.post(
-    `${GOPAY_API_BASE_URL}/qris/generate`,
-    { amount: nominal },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${gopayApiKey}`,
-      },
-      timeout: 15000,
-    }
-  );
-
-  if (!res.data?.success || !res.data?.data?.transaction_id) {
-    throw new Error(res.data?.message || 'Gagal membuat QRIS GoPay');
-  }
-
-  return res.data.data;
-}
-
-async function fetchGopayQrisStatus(transactionId) {
-  const gopayApiKey = getGopayApiKey();
-
-  if (!gopayApiKey) {
-    throw new Error('GOPAY_API_KEY belum diisi di .vars.json');
-  }
-
-  const txid = String(transactionId || '').trim();
-  if (!txid) {
-    throw new Error('transaction_id kosong');
-  }
-
-  const res = await axios.post(
-    `${GOPAY_API_BASE_URL}/qris/status`,
-    { transaction_id: txid },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${gopayApiKey}`,
-      },
-      timeout: 15000,
-    }
-  );
-
-  if (!res.data?.data) {
-    throw new Error(res.data?.message || 'Gagal mengecek status QRIS');
-  }
-
-  return res.data;
-}
 
 
 
 
-async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
-  const inv = String(invoiceId || '').trim();
-  if (!inv) {
-    return { status: 'PENDING', paid_at: null, transaction: null };
-  }
 
-  const paymentRow = await new Promise((resolve, reject) => {
-    db.get(
-      `SELECT * FROM qris_payments WHERE invoice_id = ? LIMIT 1`,
-      [inv],
-      (err, row) => (err ? reject(err) : resolve(row || null))
-    );
-  });
 
-  if (!paymentRow) {
-    throw new Error('Invoice QRIS tidak ditemukan di database');
-  }
 
-  const providerTransactionId = String(paymentRow.provider_tx_id || '').trim();
-  const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-  const expiresAt = Number(paymentRow.created_at || createdAt || 0) + timeoutMin * 60 * 1000;
-
-  const graceMs = 2 * 60 * 1000; // beri 2 menit grace period sebelum mark EXPIRED
-  if (!providerTransactionId) {
-    if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt + graceMs) {
-      return { status: 'EXPIRED', paid_at: null, transaction: null };
-    }
-    return { status: 'PENDING', paid_at: null, transaction: null };
-  }
-
-  const statusRes = await fetchGopayQrisStatus(providerTransactionId);
-  const data = statusRes.data || {};
-  const providerStatus = String(data.transaction_status || '').toLowerCase();
-  const normalizedTx = {
-    transaction_id: data.transaction_id || providerTransactionId,
-    transaction_time: data.transaction_time || null,
-    transaction_status: data.transaction_status || providerStatus || null,
-    payment_type: 'qris',
-    issuer: 'gopay',
-  };
-
-  if (providerStatus === 'settlement' || statusRes.success === true) {
-    return {
-      status: 'PAID',
-      paid_at: data.transaction_time || Date.now(),
-      transaction: normalizedTx,
-    };
-  }
-
-  if (providerStatus === 'expire') {
-    return {
-      status: 'EXPIRED',
-      paid_at: null,
-      transaction: normalizedTx,
-    };
-  }
-
-  if (providerStatus === 'cancel') {
-    return {
-      status: 'CANCELED',
-      paid_at: null,
-      transaction: normalizedTx,
-    };
-  }
-
-  if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt + graceMs) {
-    return {
-      status: 'EXPIRED',
-      paid_at: null,
-      transaction: normalizedTx,
-    };
-  }
-
-  return {
-    status: 'PENDING',
-    paid_at: null,
-    transaction: normalizedTx,
-  };
-}
 
 // === PENGATURAN BONUS TOPUP (TIER) ===
 let TOPUP_BONUS_ENABLED =
@@ -2078,7 +1931,7 @@ async function handleCheckGopayApiKey(ctx) {
   try {
     const activeApiKey = getGopayApiKey();
     const maskedApiKey = maskToken(activeApiKey);
-    const transactions = await fetchGopayTransactions();
+    const transactions = await gopayClient.fetchTransactions();
     return ctx.reply(
       `âœ… <b>API key GoPay valid.</b>\n\nAPI key aktif: <code>${maskedApiKey}</code>\nEndpoint: <code>${GOPAY_API_BASE_URL}/transactions</code>\nBerhasil ambil <b>${transactions.length}</b> transaksi dari endpoint mutasi.`,
       { parse_mode: 'HTML' }
@@ -2544,7 +2397,7 @@ async function pollMutasi(bot, db, logger, axios) {
   if (pendingList.length === 0) return;
 
   try {
-    const transactions = await fetchGopayTransactions();
+    const transactions = await gopayClient.fetchTransactions();
 
     for (const [uniqueCode, d] of pendingList) {
       const expiresAt = d.expiresAt || (d.timestamp ? (d.timestamp + DEPOSIT_EXPIRE_MS) : 0);
@@ -11747,7 +11600,7 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
         if (!rows.length) return;
 
         logger.info(`ðŸ”Ž Poll QRIS GoPay: cek ${rows.length} transaksi pending...`);
-        const transactions = await fetchGopayTransactions();
+        const transactions = await gopayClient.fetchTransactions();
 
         for (const row of rows) {
           const expiresAt = Number(row.created_at) + (timeoutMin * 60 * 1000);
@@ -14803,7 +14656,7 @@ async function createQrisInvoice(baseAmount, noteOrReference, forcedUniqueSuffix
     }
   }
 
-  const generated = await generateGopayQris(amount);
+  const generated = await gopayClient.generateQris(amount);
   const invoice_id = String(generated.order_id || `GOPAY-${Date.now()}`);
   const qris_image_url = String(generated.qr_url || '').trim() || null;
   const qris_text = String(generated.qr_string || '').trim() || null;
@@ -14839,7 +14692,7 @@ async function checkQRISStatus() {
     if (entries.length === 0) return;
 
     const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-    const transactions = await fetchGopayTransactions();
+    const transactions = await gopayClient.fetchTransactions();
 
     for (const [uniqueCode, deposit] of entries) {
       const expiredAt = deposit.expiresAt || (deposit.timestamp + (timeoutMin * 60 * 1000));

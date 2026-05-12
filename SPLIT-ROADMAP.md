@@ -81,21 +81,21 @@ Status keseluruhan: **2/6 fase selesai**
 
 ---
 
-## Fase 3 - Ekstrak Payment/QRIS (MEDIUM RISK)
+## Fase 3 - Ekstrak Payment/QRIS (MEDIUM RISK) - PARSIAL (2/4 sub)
 
-**Target:** ~1500 baris ke `payment/`.
+**Target:** ~1500 baris ke `payment/`. Extract bertahap karena deep coupling dengan bot/vars/state.
 
-**Commit:** _(belum)_
+**Commit:** `9ffcd3e`
 
 **Checklist:**
-- [ ] `payment/gopay.js`: `fetchGopayTransactions`, `generateGopayQris`, `fetchGopayQrisStatus`, `getGopayApiKey`.
-- [ ] `payment/qris-invoice.js`: `createQrisInvoice`, `checkQrisInvoiceStatus`, `finalizeQrisPayment`, `applyQrisTopupBonus`.
-- [ ] `payment/polling.js`: `startQrisPaymentPolling`, `startAutoTopupMutasi`, `pollQrisPaymentsStartup`, `markQrisStatus`, `getPendingQrisCount`.
-- [ ] `payment/deposit.js`: `processDeposit`, `creditDeposit`, `markDepositExpired`, `findAvailableTopupAmount`, `generateRandomAmount`.
-- [ ] Pakai factory pattern: `module.exports = ({ db, bot, logger, vars, notifyTopupSuccess }) => ({ ... })`.
-- [ ] Update `app.js` untuk init via factory.
-- [ ] Test: integration test pakai sqlite `:memory:` untuk flow `processDeposit` → `creditDeposit`.
-- [ ] `node --check`, smoke audit, tests, commit, push.
+- [x] `payment/gopay.js`: `createGopayClient({ getApiKey, baseUrl })` factory dengan `fetchTransactions`, `generateQris`, `fetchQrisStatus`. `getGopayApiKey` tetap di `app.js` (pakai `readVarsFresh` dari closure).
+- [x] `payment/qris-invoice.js`: `createQrisInvoiceChecker({ db, gopayClient })` factory untuk `checkQrisInvoiceStatus`. `finalizeQrisPayment`/`applyQrisTopupBonus`/`createQrisInvoice` tetap di `app.js` (pending Fase 3 lanjutan karena butuh `notifyTopupSuccess`, `calculateTopupBonus`, `generateUniqueSuffix`).
+- [ ] `payment/polling.js`: SKIP di sesi ini (deep coupling dengan `notifyTopupSuccess`, `markDepositExpired` closure). Lanjut di sesi berikut.
+- [ ] `payment/deposit.js`: SKIP di sesi ini (pakai `global.pendingDeposits`, `bot.telegram`, `buildDynamicQrisPayload`). Lanjut di sesi berikut.
+- [x] Factory pattern diterapkan di `gopay.js` dan `qris-invoice.js`.
+- [x] `app.js` init `gopayClient` setelah `GOPAY_API_BASE_URL`, `__getQrisInvoiceChecker()` lazy init (butuh `db`).
+- [ ] Test integration `:memory:` - belum, lanjut di sesi berikut.
+- [x] `node --check`, smoke audit, tests pass (53 test), commit, push.
 
 **Catatan:**
 - `notifyTopupSuccess` masih di `app.js` (pakai `bot.telegram.sendMessage`). Bisa di-pass sebagai callback.
