@@ -7,13 +7,28 @@ const axios = require('axios');
 const { isUserReseller, addReseller, removeReseller, listResellersSync } = require('./modules/reseller');
 const winston = require('winston');
 
+// Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
+function maskLogMessage(msg) {
+  if (msg == null) return msg;
+  let text = typeof msg === 'string' ? msg : String(msg);
+  // Telegram bot token: digits:base58 setelah 'bot'
+  text = text.replace(/bot\d{6,}:[A-Za-z0-9_-]{20,}/g, 'bot<REDACTED>');
+  text = text.replace(/(BOT_TOKEN[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
+  text = text.replace(/(Authorization[:=]\s*(?:Bearer\s+)?)([A-Za-z0-9._~+/=\-]{12,})/gi, '$1<REDACTED>');
+  text = text.replace(/(api[_-]?key[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
+  text = text.replace(/(token[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
+  text = text.replace(/(password[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
+  text = text.replace(/(auth_token[=: ]+)([^\s"']+)/gi, '$1<REDACTED>');
+  return text;
+}
+
 const logger = winston.createLogger({
   // Bisa diatur via ENV, default 'info'
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.printf(({ timestamp, level, message }) => {
-      return `${timestamp} [${level.toUpperCase()}]: ${message}`;
+      return `${timestamp} [${level.toUpperCase()}]: ${maskLogMessage(message)}`;
     })
   ),
   transports: [
