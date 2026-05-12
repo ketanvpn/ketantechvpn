@@ -220,13 +220,14 @@ Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dik
 
 ### Body function ke module
 
-**Risiko: MEDIUM.** Body fungsi ini masih di `app.js` karena banyak closure. Bisa dipindah ke module yang sudah ada kalau closure-nya di-pass eksplisit.
+**Risiko: MEDIUM. SELESAI.** Semua body function di bawah sudah pindah ke module; wrapper tipis (`const fn = (...args) => factory.fn(...args)`) tetap di `app.js` agar call-site lama tidak berubah.
 
-- [ ] Pindah body `sendDailyReport` ke `scheduler/daily-report.js` (butuh akses DB, `getMonthRange`, `ADMIN_USERNAME`, `MASTER_ID`, `TIME_ZONE`).
-- [ ] Pindah body `sendExpiryReminders` ke `scheduler/expiry-reminder.js` (akses DB accounts, `EXPIRY_REMINDER_DAYS_BEFORE`, `bot.telegram.sendMessage`).
-- [ ] Pindah body `sendAutoBackup` ke `scheduler/auto-backup.js` (akses `BACKUP_CHAT_ID`, list file DB, `TIME_ZONE`, `bot.telegram.sendDocument`).
-- [ ] Pindah body `checkAndDowngradeResellersForPreviousMonth` ke `scheduler/reseller-target.js` (akses DB + `removeReseller` + `bot.telegram`).
-- [ ] Pindah `createQrisInvoice` ke `payment/qris-invoice.js` (butuh `getGopayApiKey`, `QRIS_AUTO_TOPUP_MAX`, `generateUniqueSuffix`, `gopayClient`).
+- [x] `createQrisInvoice` → `payment/qris-invoice.js` (deps: `getApiKey`, `generateUniqueSuffix`, `parseProviderTransactionTime`, `getMaxTopup`).
+- [x] `sendAutoBackup` → `scheduler/auto-backup.js` (deps: `bot`, `getBackupChatId`, `getTimeZone`, `baseDir`). Factory sekarang expose `{ restart, sendAutoBackup }`.
+- [x] `sendDailyReport` → `scheduler/daily-report.js` (deps: `db`, `bot`, `getMasterId`, `getResselFilePath`, `getUsernameById`, `getTimeZone`).
+- [x] `sendExpiryReminders` → `scheduler/expiry-reminder.js` (deps: `db`, `bot`, `getMasterId`, `getDaysBefore`, `getTimeZone`).
+- [x] `checkAndDowngradeResellersForPreviousMonth` → `scheduler/reseller-target.js` (deps: `db`, `bot`, `getMasterId`, `getMin30dAccounts`, `getMinDaysPerMonth`, `readResellerSetSync`, `removeResellerIdFromCache`).
+- Total dampak: `app.js` 11.562 → ~11.047 baris (turun ~515 baris dari body function saja). Komposisi factory semakin tajam.
 
 ### Integration test & CI
 
