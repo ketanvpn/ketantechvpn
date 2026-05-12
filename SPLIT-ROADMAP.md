@@ -6,6 +6,17 @@ Status keseluruhan: **2/6 fase selesai**
 
 ---
 
+## Catatan Sesi Pengerjaan
+
+Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `vars`, `global.*`, closure `notifyTopupSuccess`, `calculateTopupBonus`, dll). Supaya aman:
+
+- **Satu fase per sesi chat**. Kalau dipaksa dalam satu sesi, rawan bug karena factory parameter meledak.
+- **Strategi per fase**: 1) Petakan dependency closure dulu, 2) Ekstrak **helper pure** dulu (target ke `lib/` kalau mungkin), 3) Ekstrak stateful ke factory terakhir.
+- Kalau mentok (coupling terlalu dalam), **tandai sub-item sebagai SKIP** dengan alasan, lanjut ke sub-item lain. Jangan force.
+- Setelah tiap fase, wajib verify: `node --check app.js`, smoke audit, tests pass, dan **bot bisa boot tanpa error** (minimal manual test).
+
+---
+
 ## Panduan Menandai Selesai
 - Centang `[x]` kalau fase/sub-item sudah dikerjakan, di-commit, dan di-push.
 - Update baris **Commit** dengan hash commit aktual.
