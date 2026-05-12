@@ -142,7 +142,7 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 **Target:** ~3000 baris ke `admin/`.
 
-**Commit:** `<TBD>` (diisi setelah commit)
+**Commit:** `6c26923`
 
 **Checklist:**
 - [x] `admin/menu.js`: `createAdminMenuHandlers({ bot, logger, adminIds, ADMIN_IDS, sendAdminMenu })`. Register `admin_menu` + `admin_reseller_menu`. `sendAdminMenu` sendiri masih di `app.js` (karena mengakses banyak variabel module-level).
