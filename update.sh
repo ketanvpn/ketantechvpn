@@ -69,7 +69,7 @@ if [ -f scripts/smoke-audit.js ]; then
   node scripts/smoke-audit.js
 fi
 if [ -d tests ]; then
-  node --test tests/*.test.js >/dev/null 2>&1 && \
+  node --test tests/*.test.js tests/integration/*.test.js >/dev/null 2>&1 && \
     echo -e "${GREEN}Unit test: pass${NC}" || \
     echo -e "${YELLOW}Unit test: ada yang fail / skip (tidak blocking)${NC}"
 fi

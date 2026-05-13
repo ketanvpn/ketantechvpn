@@ -239,12 +239,39 @@ async function updateTrialConfig(partial) {
   return updated;
 }
 
-// Mengecek apakah user sudah melewati batas trial per hari
-async function checkTrialAccess(userId) {
-  // default kalau config gagal dibaca
-  let maxPerDay = DEFAULT_TRIAL_CONFIG.maxPerDay || 1;
+// Trial counter sekarang pakai tabel SQLite `trial_usage` (PK (user_id, date)).
+// `saveTrialAccess` pakai INSERT ... ON CONFLICT untuk atomic increment,
+// mencegah race condition double-click yang sebelumnya ada di file JSON.
+// Date key pakai TIME_ZONE lokal (via lib/time.js) bukan UTC.
 
-  // baca maxPerDay dari trial_config.json
+function getTrialDateKey() {
+  try {
+    const info = getTimeInConfiguredTimeZone(TIME_ZONE);
+    if (info && info.dateKey) return info.dateKey;
+  } catch (_) {}
+  // fallback pakai UTC kalau TZ helper belum siap (startup edge case)
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getTrialUsageTodayRow(userId) {
+  return new Promise((resolve) => {
+    const today = getTrialDateKey();
+    db.get(
+      'SELECT count FROM trial_usage WHERE user_id = ? AND date = ?',
+      [Number(userId), today],
+      (err, row) => {
+        if (err) {
+          logger.error('⚠️ Gagal baca trial_usage:', err.message || err);
+          return resolve(0);
+        }
+        resolve(row && typeof row.count === 'number' ? row.count : 0);
+      }
+    );
+  });
+}
+
+async function checkTrialAccess(userId) {
+  let maxPerDay = DEFAULT_TRIAL_CONFIG.maxPerDay || 1;
   try {
     const cfg = await getTrialConfig();
     if (cfg && Number.isInteger(cfg.maxPerDay) && cfg.maxPerDay > 0) {
@@ -255,62 +282,12 @@ async function checkTrialAccess(userId) {
       logger.error('⚠️ Gagal membaca konfigurasi trial (maxPerDay):', err.message || err);
     }
   }
-
-  try {
-    const data = await fsPromises.readFile(trialFile, 'utf8');
-    const trialData = JSON.parse(data);
-    const entry = trialData[userId];
-    const today = new Date().toISOString().slice(0, 10);
-
-    if (!entry) {
-      return false;
-    }
-
-    // format lama: "YYYY-MM-DD"
-    if (typeof entry === 'string') {
-      if (entry !== today) return false;
-      const used = 1;
-      return used >= maxPerDay;
-    }
-
-    // format baru: { date, count }
-    if (typeof entry === 'object' && entry.date) {
-      if (entry.date !== today) return false;
-      const used = typeof entry.count === 'number' ? entry.count : 1;
-      return used >= maxPerDay;
-    }
-
-    return false;
-  } catch (err) {
-    return false; // kalau gagal baca file → anggap belum melewati batas
-  }
+  const used = await getTrialUsageTodayRow(userId);
+  return used >= maxPerDay;
 }
 
 async function getTrialUsageToday(userId) {
-  try {
-    const data = await fsPromises.readFile(trialFile, 'utf8');
-    const trialData = JSON.parse(data);
-    const entry = trialData[userId];
-    const today = new Date().toISOString().slice(0, 10);
-
-    if (!entry) return 0;
-
-    // format lama: "YYYY-MM-DD"
-    if (typeof entry === 'string') {
-      return entry === today ? 1 : 0;
-    }
-
-    // format baru: { date, count }
-    if (typeof entry === 'object' && entry.date) {
-      if (entry.date !== today) return 0;
-      return typeof entry.count === 'number' ? entry.count : 1;
-    }
-
-    return 0;
-  } catch (err) {
-    // kalau gagal baca file → anggap belum pernah trial
-    return 0;
-  }
+  return await getTrialUsageTodayRow(userId);
 }
 
 async function getCreateUsageToday(userId) {
@@ -361,39 +338,24 @@ async function checkServerAccess(serverId, userId) {
   });
 }
 
-// Menyimpan informasi penggunaan trial user (tanggal + hitungan per hari)
+// Atomic increment counter trial lewat SQLite (PK (user_id, date)).
+// Dipakai setelah pembuatan akun trial sukses, counter bakal otomatis aman
+// dari double-click race karena ON CONFLICT DO UPDATE.
 async function saveTrialAccess(userId) {
-  let trialData = {};
-  try {
-    const data = await fsPromises.readFile(trialFile, 'utf8');
-    trialData = JSON.parse(data);
-  } catch (err) {
-    // file belum ada / rusak → mulai dari kosong
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const existing = trialData[userId];
-
-  if (existing && typeof existing === 'object') {
-    // format baru: { date, count }
-    if (existing.date === today) {
-      existing.count = (existing.count || 0) + 1;
-    } else {
-      trialData[userId] = { date: today, count: 1 };
-    }
-  } else if (typeof existing === 'string') {
-    // format lama: "YYYY-MM-DD" → anggap sudah 1x di hari itu
-    if (existing === today) {
-      trialData[userId] = { date: today, count: 2 };
-    } else {
-      trialData[userId] = { date: today, count: 1 };
-    }
-  } else {
-    // belum ada catatan sama sekali
-    trialData[userId] = { date: today, count: 1 };
-  }
-
-  await fsPromises.writeFile(trialFile, JSON.stringify(trialData, null, 2));
+  const today = getTrialDateKey();
+  return new Promise((resolve) => {
+    db.run(
+      `INSERT INTO trial_usage (user_id, date, count) VALUES (?, ?, 1)
+       ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1`,
+      [Number(userId), today],
+      (err) => {
+        if (err) {
+          logger.error('⚠️ Gagal update trial_usage:', err.message || err);
+        }
+        resolve();
+      }
+    );
+  });
 }
 // ============================================================================
 // SECTION: PAYMENT CONFIG & QRIS GOPAY AUTOFTBOT
@@ -1992,6 +1954,57 @@ function saveExpiryReminderConfig() {
 const db = createConnection(null, logger);
 const { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe } = createDdlHelpers(db, logger);
 runMigrations(db, logger, { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe });
+
+// Migrasi satu-kali: import counter dari trial.db JSON ke tabel trial_usage.
+// Dijalankan sekali saat startup kalau file lama masih ada. Data JSON tidak
+// dihapus, cuma di-rename ke .migrated supaya bisa dipakai ulang kalau perlu.
+(function importLegacyTrialDb() {
+  try {
+    if (!fs.existsSync(trialFile)) return;
+    const raw = fs.readFileSync(trialFile, 'utf8');
+    const parsed = JSON.parse(raw || '{}');
+    const entries = Object.entries(parsed);
+    if (!entries.length) return;
+
+    db.serialize(() => {
+      const stmt = db.prepare(
+        `INSERT INTO trial_usage (user_id, date, count) VALUES (?, ?, ?)
+         ON CONFLICT(user_id, date) DO UPDATE SET count = MAX(count, excluded.count)`
+      );
+      let imported = 0;
+      for (const [uid, entry] of entries) {
+        const userId = Number(uid);
+        if (!Number.isFinite(userId)) continue;
+        let date = null;
+        let count = 0;
+        if (typeof entry === 'string') {
+          date = entry;
+          count = 1;
+        } else if (entry && typeof entry === 'object' && entry.date) {
+          date = entry.date;
+          count = Number.isInteger(entry.count) ? entry.count : 1;
+        }
+        if (!date || !count) continue;
+        stmt.run(userId, date, count);
+        imported++;
+      }
+      stmt.finalize((err) => {
+        if (err) {
+          logger.error('Gagal import trial.db legacy:', err.message || err);
+          return;
+        }
+        try {
+          fs.renameSync(trialFile, trialFile + '.migrated');
+          logger.info(`trial.db JSON diimport (${imported} entri) -> trial_usage, file lama di-rename ke trial.db.migrated`);
+        } catch (e) {
+          logger.warn('Gagal rename trial.db ke trial.db.migrated:', e.message || e);
+        }
+      });
+    });
+  } catch (e) {
+    logger.warn('Lewati import trial.db legacy (file tidak valid / tidak bisa dibaca):', e.message || e);
+  }
+})();
 
 // Start / restart scheduler auto-backup
 

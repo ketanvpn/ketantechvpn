@@ -210,6 +210,19 @@ function runMigrations(db, logger, helpers) {
   createUniqueIndexMultiIfSafe('idx_reseller_bonus_unique_month', 'reseller_bonus_logs', 'user_id, period_month');
   ensureSqliteColumn('reseller_bonus_logs', 'processed_by', 'INTEGER');
   ensureSqliteColumn('reseller_bonus_logs', 'note', 'TEXT');
+
+  // ============================================================================
+  // Trial counter harian (menggantikan trial.db JSON, atomic upsert)
+  // ============================================================================
+  db.run(`CREATE TABLE IF NOT EXISTS trial_usage (
+    user_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, date)
+  )`, (err) => {
+    if (err) logger.error('Kesalahan membuat tabel trial_usage:', err.message);
+    else logger.info('trial_usage table created or already exists');
+  });
 }
 
 module.exports = { runMigrations };
