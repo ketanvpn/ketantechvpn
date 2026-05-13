@@ -114,6 +114,7 @@ Kedua script bisa di-run ulang. Pattern baru bisa ditambahkan sebagai object `{ 
 - `d041185` — fix(gopay) fallback baseUrl kosong
 - `c4d4063` — fix(emoji) menu user: Buat Akun, Trial, Bantuan, Admin status, license, reseller bullets
 - `bfa208c` — fix(emoji) context-aware 100+ emoji konteks salah (success/warning/loading/info/bullet)
+- `4f9cd1c` — fix(app) tambah `getUserFlagStatus` + `getUsernameById` yang hilang (bot diam saat klik Buat Akun/Trial sebelum pilih server)
 
 ---
 
