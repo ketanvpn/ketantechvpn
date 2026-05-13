@@ -237,7 +237,7 @@ Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dik
   - [x] `smoke.test.js` (1 test): verifikasi semua table utama ter-migrate.
   - Total: **8 integration test, semua PASS.**
   - Script npm: `npm run test:integration` (tests/integration/*.test.js) + `npm run test:all` (unit + integration).
-- [ ] Scheduler fake-timer test (`sinon.useFakeTimers()` atau `node:test` mock timer) untuk 4 scheduler.
+- [x] Scheduler fake-timer test (`node:test` `mock.timers`) untuk 4 scheduler — `tests/scheduler.test.js`, 6 test: auto-backup disabled/enabled/restart, daily-report jam target + no double-send, expiry-reminder H-n, reseller-target day-1 of month only. Total 59 unit test (dari 53).
 - [ ] GitHub Actions matrix: tambah smoke boot test (spawn bot dengan dummy token & dummy DB, cek exit 0 dalam 5 detik).
 
 ### Nice-to-have (bukan refactor)
