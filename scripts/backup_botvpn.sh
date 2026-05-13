@@ -29,8 +29,31 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
-set -a; . "$ENV_FILE"; set +a
+# Parse .env line-by-line tanpa source bash. Source bash bisa pecah kalau
+# value mengandung karakter spesial (`,`, `&`, `/`, spasi tanpa quote).
+# Format: KEY=value (komentar `#` dan baris kosong di-skip).
+while IFS= read -r line || [ -n "$line" ]; do
+  # Skip komentar + baris kosong
+  case "$line" in
+    ''|\#*) continue ;;
+  esac
+  # Split di tanda `=` pertama
+  key="${line%%=*}"
+  value="${line#*=}"
+  # Trim whitespace di key
+  key="${key#"${key%%[![:space:]]*}"}"
+  key="${key%"${key##*[![:space:]]}"}"
+  # Hilangkan tanda petik wrapping kalau ada
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    \'*\') value="${value#\'}"; value="${value%\'}" ;;
+  esac
+  # Validasi key (harus alfanumerik + underscore)
+  case "$key" in
+    *[!A-Za-z0-9_]*|'') continue ;;
+  esac
+  export "$key=$value"
+done < "$ENV_FILE"
 
 if [ -z "${BOT_TOKEN:-}" ]; then
   log "ERROR: BOT_TOKEN kosong di $ENV_FILE."
