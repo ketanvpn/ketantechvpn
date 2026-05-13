@@ -10263,18 +10263,26 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
 
       const password = 'none';
       const exp = durationHours;   // DIKIRIM ke script trial sebagai JUMLAH JAM
-      const iplimit = 'none';
+      const iplimit = 1;           // trial default 1 IP
+      const quota = 1;             // trial default 1 GB (hanya dipakai non-ssh)
 
-      const delFunctions = {
-        vmess: trialvmess,
-        vless: trialvless,
-        trojan: trialtrojan,
-        shadowsocks: trialshadowsocks,
-        ssh: trialssh
-      };
+      // Signature berbeda per type:
+      //   trialssh(username, password, exp, iplimit, serverId)
+      //   trialvmess/vless/trojan/shadowsocks(username, exp, quota, limitip, serverId)
+      let msg;
+      if (type === 'ssh') {
+        msg = await trialssh(username, password, exp, iplimit, serverId);
+      } else if (type === 'vmess') {
+        msg = await trialvmess(username, exp, quota, iplimit, serverId);
+      } else if (type === 'vless') {
+        msg = await trialvless(username, exp, quota, iplimit, serverId);
+      } else if (type === 'trojan') {
+        msg = await trialtrojan(username, exp, quota, iplimit, serverId);
+      } else if (type === 'shadowsocks') {
+        msg = await trialshadowsocks(username, exp, quota, iplimit, serverId);
+      }
 
-      if (delFunctions[type]) {
-        const msg = await delFunctions[type](username, password, exp, iplimit, serverId);
+      if (msg) {
 await recordAccountTransaction(ctx.from.id, type);
 await saveTrialAccess(ctx.from.id);
 
@@ -10285,7 +10293,7 @@ const extraInfo =
 
 await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
 
-        logger.info(`❌ Trial ${type} oleh ${ctx.from.id}`);
+        logger.info(`✅ Trial ${type} oleh ${ctx.from.id}`);
       }
 
     } catch (err) {
