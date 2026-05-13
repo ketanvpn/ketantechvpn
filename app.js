@@ -1960,6 +1960,24 @@ function saveExpiryReminderConfig() {
 }
 
 
+// --- Fase 6 split: function restartAutoBackupScheduler() dipindah ke scheduler/
+
+(async () => {
+  try {
+    const adminId = Array.isArray(adminIds) ? adminIds[0] : adminIds;
+    const chat = await bot.telegram.getChat(adminId);
+    ADMIN_USERNAME = chat.username ? `@${chat.username}` : 'Admin';
+    logger.info(`Admin username detected: ${ADMIN_USERNAME}`);
+  } catch (e) {
+    ADMIN_USERNAME = 'Admin';
+    logger.warn('Tidak bisa ambil username admin otomatis.');
+  }
+})();
+/////
+const db = createConnection(null, logger);
+const { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe } = createDdlHelpers(db, logger);
+runMigrations(db, logger, { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe });
+
 // Start / restart scheduler auto-backup
 
 // --- Fase 6 split: scheduler factory (scheduler/*.js)
@@ -2044,23 +2062,6 @@ function startResellerTargetScheduler() { __resellerTargetScheduler.start(); }
 const checkAndDowngradeResellersForPreviousMonth = (...args) =>
   __resellerTargetScheduler.checkAndDowngradeResellersForPreviousMonth(...args);
 
-// --- Fase 6 split: function restartAutoBackupScheduler() dipindah ke scheduler/
-
-(async () => {
-  try {
-    const adminId = Array.isArray(adminIds) ? adminIds[0] : adminIds;
-    const chat = await bot.telegram.getChat(adminId);
-    ADMIN_USERNAME = chat.username ? `@${chat.username}` : 'Admin';
-    logger.info(`Admin username detected: ${ADMIN_USERNAME}`);
-  } catch (e) {
-    ADMIN_USERNAME = 'Admin';
-    logger.warn('Tidak bisa ambil username admin otomatis.');
-  }
-})();
-/////
-const db = createConnection(null, logger);
-const { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe } = createDdlHelpers(db, logger);
-runMigrations(db, logger, { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe });
 
 // --- Fase 4 split: account service (accounts/service.js)
 const { createAccountService } = require('./accounts/service');
