@@ -10,6 +10,7 @@ const AUDIT_FILES = [
   APP_PATH,
   path.join(ROOT, 'admin', 'menu.js'),
   path.join(ROOT, 'admin', 'promo.js'),
+  path.join(ROOT, 'admin', 'reseller.js'),
 ];
 const src = AUDIT_FILES
   .filter((f) => fs.existsSync(f))
@@ -35,7 +36,9 @@ assertRegex(
   'admin_menu belum punya guard admin yang memadai'
 );
 
-// 3) Action admin_res_bonus_* kritikal wajib cek admin
+// 3) Action admin_res_bonus_* kritikal wajib cek admin.
+// Setelah Fase 5 lanjutan, guard bisa berbentuk `!ADMIN_IDS.includes(ctx.from.id)`
+// (pattern lama di app.js) ATAU `!isAdmin(ctx)` (pattern baru di admin/reseller.js).
 [
   'admin_res_bonus_mindur_inc',
   'admin_res_bonus_mindur_dec',
@@ -43,19 +46,22 @@ assertRegex(
   'admin_res_bonus_omzet_dec',
 ].forEach((actionName) => {
   const re = new RegExp(
-    `bot\\.action\\('${actionName}'[\\s\\S]*?if\\s*\\(!ctx\\.from\\s*\\|\\|\\s*!ADMIN_IDS\\.includes\\(ctx\\.from\\.id\\)\\)`,
+    `bot\\.action\\('${actionName}'[\\s\\S]*?(?:!ADMIN_IDS\\.includes\\(ctx\\.from\\.id\\)|!isAdmin\\(ctx\\))`,
     'm'
   );
   assertRegex(re, `${actionName} belum punya guard admin`);
 });
 
-// 4) Handler tier bonus wajib guard admin dan tidak pakai eval
+// 4) Handler tier bonus wajib punya guard admin + helper adjust.
+// Setelah Fase 5 lanjutan, handler pindah ke admin/reseller.js dengan pattern
+// isAdmin(ctx) + adjustBonusVar(dayVar/amountVar, delta). Regex di-update supaya
+// cocok dengan format template string `admin_res_bonus_` + tier + `_days_inc`.
 assertRegex(
-  /bot\.action\(`admin_res_bonus_\$\{tier\}_days_inc`[\s\S]*?if\s*\(!ctx\.from\s*\|\|\s*!ADMIN_IDS\.includes\(ctx\.from\.id\)\)[\s\S]*?adjustResellerBonusVar\(dayVar,\s*1\)/,
+  /admin_res_bonus_'\s*\+\s*tier\s*\+\s*'_days_inc[\s\S]*?if\s*\(!isAdmin\(ctx\)\)[\s\S]*?adjustBonusVar\(dayVar,\s*1\)/,
   'tier days inc belum aman (guard/admin atau adjust helper)'
 );
 assertRegex(
-  /bot\.action\(`admin_res_bonus_\$\{tier\}_amt_dec`[\s\S]*?if\s*\(!ctx\.from\s*\|\|\s*!ADMIN_IDS\.includes\(ctx\.from\.id\)\)[\s\S]*?adjustResellerBonusVar\(amountVar,\s*-5000\)/,
+  /admin_res_bonus_'\s*\+\s*tier\s*\+\s*'_amt_dec[\s\S]*?if\s*\(!isAdmin\(ctx\)\)[\s\S]*?adjustBonusVar\(amountVar,\s*-5000\)/,
   'tier amount dec belum aman (guard/admin atau adjust helper)'
 );
 

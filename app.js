@@ -1090,109 +1090,7 @@ async function grantResellerActiveBonus({ userId, monthKey, activeDays, bonusAmo
   });
 }
 
-async function renderResellerBonusMenu(ctx, options = {}) {
-  const isEdit = options.edit || false;
-  const tiers = getResellerActiveBonusTiers();
-  const statusText = RESELLER_ACTIVE_BONUS_ENABLED ? 'Aktif ???' : 'Nonaktif ???';
-  const monthInfo = getMonthRange(-1);
-
-  const lines = [];
-  lines.push('???? *Bonus Reseller Aktif*');
-  lines.push('');
-  lines.push(`Status bonus          : *${statusText}*`);
-  lines.push(`Durasi akun minimum   : *${RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS} hari*`);
-  lines.push(`Omzet valid / hari    : *Rp${Number(RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET || 0).toLocaleString('id-ID')}*`);
-  lines.push(`Periode preview/proses: *${monthInfo.label}*`);
-  lines.push('');
-  lines.push('*Tier bonus:*');
-  tiers.forEach((tier) => {
-    lines.push(`??? ${tier.label}: *${tier.minDays} hari* ??? *Rp${tier.bonusAmount.toLocaleString('id-ID')}*`);
-  });
-  lines.push('');
-  lines.push('_Hanya akun berbayar dengan durasi minimum yang dihitung. Hari aktif hanya dihitung sekali per tanggal._');
-
-  const replyMarkup = {
-    inline_keyboard: [
-      [
-        {
-          text: RESELLER_ACTIVE_BONUS_ENABLED ? '??? Nonaktifkan' : '??? Aktifkan',
-          callback_data: 'admin_res_bonus_toggle'
-        }
-      ],
-      [
-        { text: '???', callback_data: 'admin_res_bonus_mindur_dec' },
-        { text: `Min Durasi: ${RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS}h`, callback_data: 'admin_res_bonus_nop' },
-        { text: '???', callback_data: 'admin_res_bonus_mindur_inc' }
-      ],
-      [
-        { text: '???', callback_data: 'admin_res_bonus_omzet_dec' },
-        { text: `Min Omzet: Rp${Number(RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET || 0).toLocaleString('id-ID')}`, callback_data: 'admin_res_bonus_nop' },
-        { text: '???', callback_data: 'admin_res_bonus_omzet_inc' }
-      ],
-      [
-        { text: 'Tier 1', callback_data: 'admin_res_bonus_nop' },
-        { text: 'Hari -', callback_data: 'admin_res_bonus_t1_days_dec' },
-        { text: `${RESELLER_ACTIVE_BONUS_TIER1_DAYS}h`, callback_data: 'admin_res_bonus_nop' },
-        { text: 'Hari +', callback_data: 'admin_res_bonus_t1_days_inc' }
-      ],
-      [
-        { text: 'Bonus -', callback_data: 'admin_res_bonus_t1_amt_dec' },
-        { text: `Rp${Number(RESELLER_ACTIVE_BONUS_TIER1_AMOUNT || 0).toLocaleString('id-ID')}`, callback_data: 'admin_res_bonus_nop' },
-        { text: 'Bonus +', callback_data: 'admin_res_bonus_t1_amt_inc' }
-      ],
-      [
-        { text: 'Tier 2', callback_data: 'admin_res_bonus_nop' },
-        { text: 'Hari -', callback_data: 'admin_res_bonus_t2_days_dec' },
-        { text: `${RESELLER_ACTIVE_BONUS_TIER2_DAYS}h`, callback_data: 'admin_res_bonus_nop' },
-        { text: 'Hari +', callback_data: 'admin_res_bonus_t2_days_inc' }
-      ],
-      [
-        { text: 'Bonus -', callback_data: 'admin_res_bonus_t2_amt_dec' },
-        { text: `Rp${Number(RESELLER_ACTIVE_BONUS_TIER2_AMOUNT || 0).toLocaleString('id-ID')}`, callback_data: 'admin_res_bonus_nop' },
-        { text: 'Bonus +', callback_data: 'admin_res_bonus_t2_amt_inc' }
-      ],
-      [
-        { text: 'Tier 3', callback_data: 'admin_res_bonus_nop' },
-        { text: 'Hari -', callback_data: 'admin_res_bonus_t3_days_dec' },
-        { text: `${RESELLER_ACTIVE_BONUS_TIER3_DAYS}h`, callback_data: 'admin_res_bonus_nop' },
-        { text: 'Hari +', callback_data: 'admin_res_bonus_t3_days_inc' }
-      ],
-      [
-        { text: 'Bonus -', callback_data: 'admin_res_bonus_t3_amt_dec' },
-        { text: `Rp${Number(RESELLER_ACTIVE_BONUS_TIER3_AMOUNT || 0).toLocaleString('id-ID')}`, callback_data: 'admin_res_bonus_nop' },
-        { text: 'Bonus +', callback_data: 'admin_res_bonus_t3_amt_inc' }
-      ],
-      [
-        { text: '???? Preview Penerima', callback_data: 'admin_res_bonus_preview' }
-      ],
-      [
-        { text: '???? Proses Bonus Bulan Lalu', callback_data: 'admin_res_bonus_process' }
-      ],
-      [
-        { text: '???? Kembali ke Menu Reseller', callback_data: 'admin_reseller_menu' }
-      ]
-    ]
-  };
-
-  const message = lines.join('\n');
-
-  if (isEdit) {
-    try {
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: replyMarkup,
-      });
-      return;
-    } catch (err) {
-      logger.error('Gagal edit menu bonus reseller:', err.message || err);
-    }
-  }
-
-  await ctx.reply(message, {
-    parse_mode: 'Markdown',
-    reply_markup: replyMarkup,
-  });
-}
+// --- Fase 5 lanjutan split: reseller handler "async function renderResellerBonusMenu" dipindah ke admin/reseller.js
 
 // Tanggal kadaluarsa lisensi bot...
 let EXPIRE_DATE = vars.EXPIRE_DATE || envOr('EXPIRE_DATE', null);
@@ -5317,91 +5215,7 @@ function getAdminTrialTemp(ctx) {
   return temp;
 }
 
-async function renderResellerTargetMenu(ctx, options = {}) {
-  const isEdit = options.edit || false;
-
-  const statusText = RESELLER_TARGET_ENABLED ? 'Aktif ???' : 'Nonaktif ???';
-  const min30 = RESELLER_TARGET_MIN_30D_ACCOUNTS;
-  const minDays = RESELLER_TARGET_MIN_DAYS_PER_MONTH;
-
-  const message =
-    '???? *Pengaturan Target Reseller*\n\n' +
-    `Status target bulanan : *${statusText}*\n` +
-    `Minimal akun 30 hari  : *${min30} akun/bulan*\n` +
-    `Minimal total hari    : *${minDays} hari/bulan*\n\n` +
-    '_Reseller yang tidak memenuhi salah satu target di atas ' +
-    'pada akhir bulan akan otomatis turun menjadi member biasa._';
-
-  const replyMarkup = {
-    inline_keyboard: [
-      [
-        {
-          text: RESELLER_TARGET_ENABLED ? '??? Nonaktifkan' : '??? Aktifkan',
-          callback_data: 'admin_res_target_toggle'
-        }
-      ],
-      [
-        { text: '???', callback_data: 'admin_res_target_min30_dec' },
-        {
-          text: `Min 30 Hari: ${min30}`,
-          callback_data: 'admin_res_target_min30_nop'
-        },
-        { text: '???', callback_data: 'admin_res_target_min30_inc' }
-      ],
-      [
-        { text: '???', callback_data: 'admin_res_target_days_dec' },
-        {
-          text: `Min Total: ${minDays} hari`,
-          callback_data: 'admin_res_target_days_nop'
-        },
-        { text: '???', callback_data: 'admin_res_target_days_inc' }
-      ],
-      [
-        {
-          text: '???? Kembali ke Menu Reseller',
-          callback_data: 'admin_reseller_menu'
-        }
-      ]
-    ]
-  };
-
-  if (isEdit) {
-    try {
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: replyMarkup
-      });
-    } catch (err) {
-      logger.error(
-        'Gagal edit pesan menu target reseller:',
-        err.message || err
-      );
-      try {
-        await ctx.reply(message, {
-          parse_mode: 'Markdown',
-          reply_markup: replyMarkup
-        });
-      } catch (e2) {
-        logger.error(
-          'Gagal kirim pesan menu target reseller:',
-          e2.message || e2
-        );
-      }
-    }
-  } else {
-    try {
-      await ctx.reply(message, {
-        parse_mode: 'Markdown',
-        reply_markup: replyMarkup
-      });
-    } catch (err) {
-      logger.error(
-        'Gagal kirim pesan menu target reseller:',
-        err.message || err
-      );
-    }
-  }
-}
+// --- Fase 5 lanjutan split: reseller handler "async function renderResellerTargetMenu" dipindah ke admin/reseller.js
 
 async function renderAdminTrialMenu(ctx, cfg, options = {}) {
   const isEdit = options.edit || false;
@@ -7064,438 +6878,101 @@ const { createPromoHandlers } = require('./admin/promo');
 createAdminMenuHandlers({ bot, logger, adminIds, ADMIN_IDS, sendAdminMenu }).register();
 createPromoHandlers({ bot, logger, adminIds }).register();
 
+// --- Fase 5 lanjutan: register handler admin/reseller (target + bonus menu)
+const { createResellerAdminHandlers } = require('./admin/reseller');
+const __resellerAdminHandlers = createResellerAdminHandlers({
+  bot,
+  logger,
+  ADMIN_IDS,
+  state: {
+    getTargetEnabled: () => RESELLER_TARGET_ENABLED,
+    setTargetEnabled: (v) => { RESELLER_TARGET_ENABLED = v; },
+    getTargetMin30d: () => RESELLER_TARGET_MIN_30D_ACCOUNTS,
+    setTargetMin30d: (v) => { RESELLER_TARGET_MIN_30D_ACCOUNTS = v; },
+    getTargetMinDays: () => RESELLER_TARGET_MIN_DAYS_PER_MONTH,
+    setTargetMinDays: (v) => { RESELLER_TARGET_MIN_DAYS_PER_MONTH = v; },
+    getBonusEnabled: () => RESELLER_ACTIVE_BONUS_ENABLED,
+    setBonusEnabled: (v) => { RESELLER_ACTIVE_BONUS_ENABLED = v; },
+    getBonusMinDuration: () => RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS,
+    setBonusMinDuration: (v) => { RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS = v; },
+    getBonusMinOmzet: () => RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET,
+    setBonusMinOmzet: (v) => { RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET = v; },
+    getBonusTier1Days: () => RESELLER_ACTIVE_BONUS_TIER1_DAYS,
+    setBonusTier1Days: (v) => { RESELLER_ACTIVE_BONUS_TIER1_DAYS = v; },
+    getBonusTier1Amount: () => RESELLER_ACTIVE_BONUS_TIER1_AMOUNT,
+    setBonusTier1Amount: (v) => { RESELLER_ACTIVE_BONUS_TIER1_AMOUNT = v; },
+    getBonusTier2Days: () => RESELLER_ACTIVE_BONUS_TIER2_DAYS,
+    setBonusTier2Days: (v) => { RESELLER_ACTIVE_BONUS_TIER2_DAYS = v; },
+    getBonusTier2Amount: () => RESELLER_ACTIVE_BONUS_TIER2_AMOUNT,
+    setBonusTier2Amount: (v) => { RESELLER_ACTIVE_BONUS_TIER2_AMOUNT = v; },
+    getBonusTier3Days: () => RESELLER_ACTIVE_BONUS_TIER3_DAYS,
+    setBonusTier3Days: (v) => { RESELLER_ACTIVE_BONUS_TIER3_DAYS = v; },
+    getBonusTier3Amount: () => RESELLER_ACTIVE_BONUS_TIER3_AMOUNT,
+    setBonusTier3Amount: (v) => { RESELLER_ACTIVE_BONUS_TIER3_AMOUNT = v; },
+  },
+  getTiers: () => getResellerActiveBonusTiers(),
+  getMonthRange: (offset) => getMonthRange(offset),
+  getEligiblePreview: (offset) => getEligibleResellerActiveBonusPreview(offset),
+  grantBonus: (params) => grantResellerActiveBonus(params),
+  updateTargetVars: (partial) => updateResellerTargetVars(partial),
+  updateBonusVars: (partial) => updateResellerBonusVars(partial),
+});
+__resellerAdminHandlers.register();
+const renderResellerTargetMenu = (...args) => __resellerAdminHandlers.renderResellerTargetMenu(...args);
+const renderResellerBonusMenu = (...args) => __resellerAdminHandlers.renderResellerBonusMenu(...args);
+
 // --- Fase 5 split: bot.action('admin_menu', async dipindah ke admin/
 // === SUBMENU: RESELLER & SALDO ===
 // --- Fase 5 split: bot.action('admin_reseller_menu', async dipindah ke admin/
 
 // Buka menu "???? Target Reseller"
-bot.action('admin_reseller_target', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', {
-        parse_mode: 'Markdown'
-      });
-    }
-
-    await renderResellerTargetMenu(ctx, { edit: false });
-  } catch (err) {
-    logger.error('Gagal membuka menu target reseller:', err.message || err);
-    ctx.reply('??? Terjadi kesalahan saat membuka menu target reseller.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_reseller_target', async" dipindah ke admin/reseller.js
 
 // ON/OFF target reseller
-bot.action('admin_res_target_toggle', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', {
-        parse_mode: 'Markdown'
-      });
-    }
-
-    RESELLER_TARGET_ENABLED = !RESELLER_TARGET_ENABLED;
-
-    updateResellerTargetVars({
-      RESELLER_TARGET_ENABLED: RESELLER_TARGET_ENABLED
-    });
-
-    await renderResellerTargetMenu(ctx, { edit: true });
-  } catch (err) {
-    logger.error('Gagal toggle RESELLER_TARGET_ENABLED:', err.message || err);
-    ctx.reply('??? Terjadi kesalahan saat mengubah status target reseller.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_target_toggle', async" dipindah ke admin/reseller.js
 
 // Naikkan minimal akun 30 hari
-bot.action('admin_res_target_min30_inc', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', {
-        parse_mode: 'Markdown'
-      });
-    }
-
-    RESELLER_TARGET_MIN_30D_ACCOUNTS =
-      Number(RESELLER_TARGET_MIN_30D_ACCOUNTS || 0) + 1;
-    if (RESELLER_TARGET_MIN_30D_ACCOUNTS < 1)
-      RESELLER_TARGET_MIN_30D_ACCOUNTS = 1;
-
-    updateResellerTargetVars({
-      RESELLER_TARGET_MIN_30D_ACCOUNTS
-    });
-
-    await renderResellerTargetMenu(ctx, { edit: true });
-  } catch (err) {
-    logger.error('Gagal menaikkan target akun 30 hari:', err.message || err);
-    ctx.reply('??? Terjadi kesalahan saat mengubah target akun 30 hari.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_target_min30_inc', async" dipindah ke admin/reseller.js
 
 // Turunkan minimal akun 30 hari (minimal 1)
-bot.action('admin_res_target_min30_dec', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', {
-        parse_mode: 'Markdown'
-      });
-    }
-
-    RESELLER_TARGET_MIN_30D_ACCOUNTS =
-      Number(RESELLER_TARGET_MIN_30D_ACCOUNTS || 1) - 1;
-    if (RESELLER_TARGET_MIN_30D_ACCOUNTS < 1)
-      RESELLER_TARGET_MIN_30D_ACCOUNTS = 1;
-
-    updateResellerTargetVars({
-      RESELLER_TARGET_MIN_30D_ACCOUNTS
-    });
-
-    await renderResellerTargetMenu(ctx, { edit: true });
-  } catch (err) {
-    logger.error('Gagal menurunkan target akun 30 hari:', err.message || err);
-    ctx.reply('??? Terjadi kesalahan saat mengubah target akun 30 hari.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_target_min30_dec', async" dipindah ke admin/reseller.js
 
 // Naikkan minimal total hari (step 30 hari)
-bot.action('admin_res_target_days_inc', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', {
-        parse_mode: 'Markdown'
-      });
-    }
-
-    RESELLER_TARGET_MIN_DAYS_PER_MONTH =
-      Number(RESELLER_TARGET_MIN_DAYS_PER_MONTH || 0) + 30;
-
-    updateResellerTargetVars({
-      RESELLER_TARGET_MIN_DAYS_PER_MONTH
-    });
-
-    await renderResellerTargetMenu(ctx, { edit: true });
-  } catch (err) {
-    logger.error('Gagal menaikkan target hari reseller:', err.message || err);
-    ctx.reply('??? Terjadi kesalahan saat mengubah target total hari.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_target_days_inc', async" dipindah ke admin/reseller.js
 
 // Turunkan minimal total hari (minimal 30)
-bot.action('admin_res_target_days_dec', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', {
-        parse_mode: 'Markdown'
-      });
-    }
-
-    RESELLER_TARGET_MIN_DAYS_PER_MONTH =
-      Number(RESELLER_TARGET_MIN_DAYS_PER_MONTH || 30) - 30;
-    if (RESELLER_TARGET_MIN_DAYS_PER_MONTH < 30)
-      RESELLER_TARGET_MIN_DAYS_PER_MONTH = 30;
-
-    updateResellerTargetVars({
-      RESELLER_TARGET_MIN_DAYS_PER_MONTH
-    });
-
-    await renderResellerTargetMenu(ctx, { edit: true });
-  } catch (err) {
-    logger.error('Gagal menurunkan target hari reseller:', err.message || err);
-    ctx.reply('??? Terjadi kesalahan saat mengubah target total hari.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_target_days_dec', async" dipindah ke admin/reseller.js
 
 // Tombol tengah (NOP) biar nggak error kalau kepencet
-bot.action('admin_res_target_min30_nop', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_target_min30_nop', async" dipindah ke admin/reseller.js
 
-bot.action('admin_res_target_days_nop', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_target_days_nop', async" dipindah ke admin/reseller.js
 
 
 
 // Buka menu bonus reseller aktif
-bot.action('admin_reseller_bonus_menu', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_reseller_bonus_menu', async" dipindah ke admin/reseller.js
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', {
-        parse_mode: 'Markdown'
-      });
-    }
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_nop', async" dipindah ke admin/reseller.js
 
-    await renderResellerBonusMenu(ctx, { edit: false });
-  } catch (err) {
-    logger.error('Gagal membuka menu bonus reseller:', err.message || err);
-    ctx.reply('??? Terjadi kesalahan saat membuka menu bonus reseller.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_toggle', async" dipindah ke admin/reseller.js
 
-bot.action('admin_res_bonus_nop', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-});
+// --- Fase 5 lanjutan split: reseller handler "function clampResellerBonusConfig" dipindah ke admin/reseller.js
 
-bot.action('admin_res_bonus_toggle', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-  RESELLER_ACTIVE_BONUS_ENABLED = !RESELLER_ACTIVE_BONUS_ENABLED;
-  updateResellerBonusVars({ RESELLER_ACTIVE_BONUS_ENABLED });
-  await renderResellerBonusMenu(ctx, { edit: true });
-});
+// --- Fase 5 lanjutan split: reseller handler "async function updateAndRenderResellerBonusMenu" dipindah ke admin/reseller.js
 
-function clampResellerBonusConfig() {
-  if (RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS < 1) RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS = 1;
-  if (RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET < 0) RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET = 0;
-  if (RESELLER_ACTIVE_BONUS_TIER1_DAYS < 1) RESELLER_ACTIVE_BONUS_TIER1_DAYS = 1;
-  if (RESELLER_ACTIVE_BONUS_TIER2_DAYS <= RESELLER_ACTIVE_BONUS_TIER1_DAYS) RESELLER_ACTIVE_BONUS_TIER2_DAYS = RESELLER_ACTIVE_BONUS_TIER1_DAYS + 1;
-  if (RESELLER_ACTIVE_BONUS_TIER3_DAYS <= RESELLER_ACTIVE_BONUS_TIER2_DAYS) RESELLER_ACTIVE_BONUS_TIER3_DAYS = RESELLER_ACTIVE_BONUS_TIER2_DAYS + 1;
-  if (RESELLER_ACTIVE_BONUS_TIER1_AMOUNT < 1000) RESELLER_ACTIVE_BONUS_TIER1_AMOUNT = 1000;
-  if (RESELLER_ACTIVE_BONUS_TIER2_AMOUNT < RESELLER_ACTIVE_BONUS_TIER1_AMOUNT) RESELLER_ACTIVE_BONUS_TIER2_AMOUNT = RESELLER_ACTIVE_BONUS_TIER1_AMOUNT;
-  if (RESELLER_ACTIVE_BONUS_TIER3_AMOUNT < RESELLER_ACTIVE_BONUS_TIER2_AMOUNT) RESELLER_ACTIVE_BONUS_TIER3_AMOUNT = RESELLER_ACTIVE_BONUS_TIER2_AMOUNT;
-}
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_mindur_inc', async" dipindah ke admin/reseller.js
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_mindur_dec', async" dipindah ke admin/reseller.js
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_omzet_inc', async" dipindah ke admin/reseller.js
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_omzet_dec', async" dipindah ke admin/reseller.js
 
-async function updateAndRenderResellerBonusMenu(ctx) {
-  clampResellerBonusConfig();
-  updateResellerBonusVars({
-    RESELLER_ACTIVE_BONUS_ENABLED,
-    RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS,
-    RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET,
-    RESELLER_ACTIVE_BONUS_TIER1_DAYS,
-    RESELLER_ACTIVE_BONUS_TIER1_AMOUNT,
-    RESELLER_ACTIVE_BONUS_TIER2_DAYS,
-    RESELLER_ACTIVE_BONUS_TIER2_AMOUNT,
-    RESELLER_ACTIVE_BONUS_TIER3_DAYS,
-    RESELLER_ACTIVE_BONUS_TIER3_AMOUNT,
-  });
-  await renderResellerBonusMenu(ctx, { edit: true });
-}
+// --- Fase 5 lanjutan split: reseller handler "function adjustResellerBonusVar" dipindah ke admin/reseller.js
 
-bot.action('admin_res_bonus_mindur_inc', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-  }
-  RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS += 1;
-  await updateAndRenderResellerBonusMenu(ctx);
-});
-bot.action('admin_res_bonus_mindur_dec', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-  }
-  RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS -= 1;
-  await updateAndRenderResellerBonusMenu(ctx);
-});
-bot.action('admin_res_bonus_omzet_inc', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-  }
-  RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET += 5000;
-  await updateAndRenderResellerBonusMenu(ctx);
-});
-bot.action('admin_res_bonus_omzet_dec', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-  }
-  RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET -= 5000;
-  await updateAndRenderResellerBonusMenu(ctx);
-});
+// --- Fase 5 lanjutan split: reseller handler "for(tier days/amount handlers)" dipindah ke admin/reseller.js
 
-function adjustResellerBonusVar(varName, delta) {
-  switch (varName) {
-    case 'RESELLER_ACTIVE_BONUS_TIER1_DAYS':
-      RESELLER_ACTIVE_BONUS_TIER1_DAYS += delta;
-      return;
-    case 'RESELLER_ACTIVE_BONUS_TIER2_DAYS':
-      RESELLER_ACTIVE_BONUS_TIER2_DAYS += delta;
-      return;
-    case 'RESELLER_ACTIVE_BONUS_TIER3_DAYS':
-      RESELLER_ACTIVE_BONUS_TIER3_DAYS += delta;
-      return;
-    case 'RESELLER_ACTIVE_BONUS_TIER1_AMOUNT':
-      RESELLER_ACTIVE_BONUS_TIER1_AMOUNT += delta;
-      return;
-    case 'RESELLER_ACTIVE_BONUS_TIER2_AMOUNT':
-      RESELLER_ACTIVE_BONUS_TIER2_AMOUNT += delta;
-      return;
-    case 'RESELLER_ACTIVE_BONUS_TIER3_AMOUNT':
-      RESELLER_ACTIVE_BONUS_TIER3_AMOUNT += delta;
-      return;
-    default:
-      logger.warn(`Variabel bonus reseller tidak dikenal: ${varName}`);
-  }
-}
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_preview', async" dipindah ke admin/reseller.js
 
-for (const [tier, dayVar, amountVar] of [
-  ['t1', 'RESELLER_ACTIVE_BONUS_TIER1_DAYS', 'RESELLER_ACTIVE_BONUS_TIER1_AMOUNT'],
-  ['t2', 'RESELLER_ACTIVE_BONUS_TIER2_DAYS', 'RESELLER_ACTIVE_BONUS_TIER2_AMOUNT'],
-  ['t3', 'RESELLER_ACTIVE_BONUS_TIER3_DAYS', 'RESELLER_ACTIVE_BONUS_TIER3_AMOUNT'],
-]) {
-  bot.action(`admin_res_bonus_${tier}_days_inc`, async (ctx) => {
-    await ctx.answerCbQuery().catch(() => {});
-    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-    }
-    adjustResellerBonusVar(dayVar, 1);
-    await updateAndRenderResellerBonusMenu(ctx);
-  });
-  bot.action(`admin_res_bonus_${tier}_days_dec`, async (ctx) => {
-    await ctx.answerCbQuery().catch(() => {});
-    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-    }
-    adjustResellerBonusVar(dayVar, -1);
-    await updateAndRenderResellerBonusMenu(ctx);
-  });
-  bot.action(`admin_res_bonus_${tier}_amt_inc`, async (ctx) => {
-    await ctx.answerCbQuery().catch(() => {});
-    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-    }
-    adjustResellerBonusVar(amountVar, 5000);
-    await updateAndRenderResellerBonusMenu(ctx);
-  });
-  bot.action(`admin_res_bonus_${tier}_amt_dec`, async (ctx) => {
-    await ctx.answerCbQuery().catch(() => {});
-    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-      return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-    }
-    adjustResellerBonusVar(amountVar, -5000);
-    await updateAndRenderResellerBonusMenu(ctx);
-  });
-}
-
-bot.action('admin_res_bonus_preview', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-
-  try {
-    const monthInfo = getMonthRange(-1);
-    const preview = await getEligibleResellerActiveBonusPreview(-1);
-
-    if (!preview.length) {
-      return ctx.reply(
-        `?????? Belum ada reseller yang lolos bonus aktif untuk periode *${monthInfo.label}*.`,
-        { parse_mode: 'Markdown' }
-      );
-    }
-
-    const lines = [];
-    lines.push(`???? *Preview Bonus Reseller Aktif*`);
-    lines.push(`Periode: *${monthInfo.label}*`);
-    lines.push('');
-
-    preview.slice(0, 25).forEach((item, idx) => {
-      const processedMark = item.processed ? ' ??? SUDAH DIPROSES' : '';
-      lines.push(
-        `${idx + 1}. \`${item.userId}\` ??? *${item.validActiveDays} hari* ??? ` +
-        `omzet ~ *Rp${Number(item.validOmzet || 0).toLocaleString('id-ID')}* ??? ` +
-        `${item.currentTier.label}: *Rp${Number(item.currentTier.bonusAmount || 0).toLocaleString('id-ID')}*${processedMark}`
-      );
-    });
-
-    if (preview.length > 25) {
-      lines.push('');
-      lines.push(`_Menampilkan 25 dari total ${preview.length} reseller yang lolos._`);
-    }
-
-    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
-  } catch (err) {
-    logger.error('Gagal preview bonus reseller:', err.message || err);
-    await ctx.reply('??? Gagal membuat preview bonus reseller.');
-  }
-});
-
-bot.action('admin_res_bonus_process', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('??? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
-
-  if (!RESELLER_ACTIVE_BONUS_ENABLED) {
-    return ctx.reply('?????? Bonus reseller aktif sedang nonaktif. Aktifkan dulu dari menu bonus reseller.', { parse_mode: 'Markdown' });
-  }
-
-  try {
-    const monthInfo = getMonthRange(-1);
-    const preview = await getEligibleResellerActiveBonusPreview(-1);
-    let successCount = 0;
-    let skipCount = 0;
-    let totalBonus = 0;
-
-    for (const item of preview) {
-      if (item.processed || !item.currentTier) {
-        skipCount += 1;
-        continue;
-      }
-      const result = await grantResellerActiveBonus({
-        userId: item.userId,
-        monthKey: item.monthKey,
-        activeDays: item.validActiveDays,
-        bonusAmount: item.currentTier.bonusAmount,
-        tierLabel: item.currentTier.label,
-        processedBy: ctx.from.id,
-      });
-
-      if (result.ok) {
-        successCount += 1;
-        totalBonus += Number(item.currentTier.bonusAmount || 0);
-        try {
-          await bot.telegram.sendMessage(
-            item.userId,
-            `???? <b>Bonus Reseller Aktif Cair</b>
-
-` +
-            `Periode: <b>${monthInfo.label}</b>
-` +
-            `Hari aktif valid: <b>${item.validActiveDays}</b> hari
-` +
-            `Tier bonus: <b>${item.currentTier.label}</b>
-` +
-            `Bonus saldo: <b>Rp${Number(item.currentTier.bonusAmount || 0).toLocaleString('id-ID')}</b>
-
-` +
-            `Terima kasih sudah aktif jualan. Semangat closing lagi ya ????`,
-            { parse_mode: 'HTML' }
-          );
-        } catch (e) {}
-      } else {
-        skipCount += 1;
-      }
-    }
-
-    await ctx.reply(
-      `??? *Proses bonus reseller selesai*
-
-` +
-      `Periode : *${monthInfo.label}*
-` +
-      `Berhasil: *${successCount}* reseller
-` +
-      `Skip    : *${skipCount}* reseller
-` +
-      `Total   : *Rp${Number(totalBonus || 0).toLocaleString('id-ID')}*`,
-      { parse_mode: 'Markdown' }
-    );
-  } catch (err) {
-    logger.error('Gagal proses bonus reseller:', err.message || err);
-    await ctx.reply('??? Gagal memproses bonus reseller.');
-  }
-});
+// --- Fase 5 lanjutan split: reseller handler "bot.action('admin_res_bonus_process', async" dipindah ke admin/reseller.js
 
 // === SUBMENU: MANAGEMEN SERVER ===
 bot.action('admin_server_menu', async (ctx) => {
@@ -12790,6 +12267,5 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   logger.error(`uncaughtException: ${err && err.message ? err.message : err}`);
 });
-
 
 

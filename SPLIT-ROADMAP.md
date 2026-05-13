@@ -2,7 +2,7 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **5/6 fase selesai (Fase 5 parsial 2/6 sub)**
+Status keseluruhan: **5/6 fase selesai (Fase 5 parsial 3/6 sub: menu + promo + reseller)**
 
 ---
 
@@ -138,16 +138,16 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Fase 5 - Ekstrak Admin Menu (HIGH RISK) - PARSIAL (2/6 sub)
+## Fase 5 - Ekstrak Admin Menu (HIGH RISK) - PARSIAL (3/6 sub)
 
 **Target:** ~3000 baris ke `admin/`.
 
-**Commit:** `6c26923`
+**Commit:** `6c26923` + `<TBD>` (admin/reseller.js)
 
 **Checklist:**
 - [x] `admin/menu.js`: `createAdminMenuHandlers({ bot, logger, adminIds, ADMIN_IDS, sendAdminMenu })`. Register `admin_menu` + `admin_reseller_menu`. `sendAdminMenu` sendiri masih di `app.js` (karena mengakses banyak variabel module-level).
 - [x] `admin/promo.js`: `createPromoHandlers({ bot, logger, adminIds })`. Register `promo_template_menu` + 4 template (`promo_tpl_catalog/reseller/short/kaisar`). `getBotTagForPromo` helper pindah ke module.
-- [ ] `admin/reseller.js`: SKIP di sesi ini. Semua handler `admin_res_target_*` & `admin_res_bonus_*` mengakses (reassign) variabel module-level (`RESELLER_TARGET_ENABLED`, `RESELLER_ACTIVE_BONUS_TIER1_DAYS`, dll.) yang juga dibaca oleh `renderResellerTargetMenu`/`renderResellerBonusMenu` di `app.js`. Pindah ke module = reassign hanya mempengaruhi scope modul, bukan closure di `app.js`. Butuh wrapper state object (invasif) — tunda ke sesi khusus.
+- [x] `admin/reseller.js`: `createResellerAdminHandlers({ bot, logger, ADMIN_IDS, state, getTiers, getMonthRange, getEligiblePreview, grantBonus, updateTargetVars, updateBonusVars })`. Register `admin_reseller_target` + `admin_res_target_*` + `admin_reseller_bonus_menu` + `admin_res_bonus_*` (17 handler total). `renderResellerTargetMenu` + `renderResellerBonusMenu` + `clampResellerBonusConfig` + `updateAndRenderResellerBonusMenu` + `adjustResellerBonusVar` semua pindah. State wrapper pakai getter/setter object (`state.getTargetEnabled/setTargetEnabled()` dst.) supaya `let` di `app.js` tetap bisa di-reassign — tidak perlu refactor 140 callsite.
 - [ ] `admin/broadcast.js`: SKIP. Flow `broadcast_menu` + `broadcastSessions` nested di dalam `bot.on('text')` handler (step machine), tidak bisa dicabut sepotong.
 - [ ] `admin/server.js`: SKIP. Handler `addserver`/`editharga`/dsb tersebar di banyak titik + share flow dengan `userState`.
 - [ ] `admin/user.js`: SKIP. Sama seperti server — command `addsaldo`/`minsaldo`/`deluser` + state flow.
@@ -157,9 +157,9 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 - [x] `node --check`, smoke audit, tests pass (53), commit, push.
 
 **Catatan:**
-- Sesi berikut untuk `admin/reseller.js`: strategi = bungkus `RESELLER_TARGET_*` & `RESELLER_ACTIVE_BONUS_*` jadi satu object state (`resellerState.targetEnabled`, dst.), pass reference ke module + `render*Menu` sekaligus. Atau pindahkan kedua `render*Menu` ke module yang sama.
 - Urutan register sensitif tetap dijaga: module admin di-register duluan supaya generic handler yang lebih umum tidak menelan callback admin.
-- Smoke audit regex `admin_res_bonus_*` masih pass karena handler-nya belum dipindah (masih di `app.js`).
+- Smoke audit regex `admin_res_bonus_*` di-update: (a) scan file diperluas ke `admin/reseller.js`, (b) regex guard admin menerima `!ADMIN_IDS.includes(ctx.from.id)` atau `!isAdmin(ctx)`, (c) regex tier days/amount update ke format template string baru `'admin_res_bonus_' + tier + '_xxx'` + helper `adjustBonusVar`.
+- Smoke boot tambah check `require admin/reseller` + `createResellerAdminHandlers factory` (total 36 check).
 
 ---
 

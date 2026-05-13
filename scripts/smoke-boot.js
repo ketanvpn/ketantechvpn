@@ -61,6 +61,7 @@ check('require accounts/my-accounts', () => require('../accounts/my-accounts'));
 
 check('require admin/menu', () => require('../admin/menu'));
 check('require admin/promo', () => require('../admin/promo'));
+check('require admin/reseller', () => require('../admin/reseller'));
 
 check('require scheduler/auto-backup', () => require('../scheduler/auto-backup'));
 check('require scheduler/daily-report', () => require('../scheduler/daily-report'));
@@ -230,6 +231,58 @@ check('createPromoHandlers factory', () => {
   const { createPromoHandlers } = require('../admin/promo');
   const h = createPromoHandlers({ bot: stubBot(), logger: silentLogger(), adminIds: [1] });
   if (typeof h.register !== 'function') throw new Error('missing register');
+});
+
+check('createResellerAdminHandlers factory', () => {
+  const { createResellerAdminHandlers } = require('../admin/reseller');
+  let v = 5;
+  const stateGetSet = (initial) => {
+    let val = initial;
+    return {
+      get: () => val,
+      set: (x) => { val = x; },
+    };
+  };
+  const enabled = stateGetSet(true);
+  const min30d = stateGetSet(3);
+  const minDays = stateGetSet(90);
+  const bEnabled = stateGetSet(true);
+  const bMinDur = stateGetSet(7);
+  const bMinOmz = stateGetSet(10000);
+  const t1d = stateGetSet(5);
+  const t1a = stateGetSet(5000);
+  const t2d = stateGetSet(10);
+  const t2a = stateGetSet(15000);
+  const t3d = stateGetSet(15);
+  const t3a = stateGetSet(30000);
+  const h = createResellerAdminHandlers({
+    bot: stubBot(),
+    logger: silentLogger(),
+    ADMIN_IDS: [1],
+    state: {
+      getTargetEnabled: enabled.get, setTargetEnabled: enabled.set,
+      getTargetMin30d: min30d.get, setTargetMin30d: min30d.set,
+      getTargetMinDays: minDays.get, setTargetMinDays: minDays.set,
+      getBonusEnabled: bEnabled.get, setBonusEnabled: bEnabled.set,
+      getBonusMinDuration: bMinDur.get, setBonusMinDuration: bMinDur.set,
+      getBonusMinOmzet: bMinOmz.get, setBonusMinOmzet: bMinOmz.set,
+      getBonusTier1Days: t1d.get, setBonusTier1Days: t1d.set,
+      getBonusTier1Amount: t1a.get, setBonusTier1Amount: t1a.set,
+      getBonusTier2Days: t2d.get, setBonusTier2Days: t2d.set,
+      getBonusTier2Amount: t2a.get, setBonusTier2Amount: t2a.set,
+      getBonusTier3Days: t3d.get, setBonusTier3Days: t3d.set,
+      getBonusTier3Amount: t3a.get, setBonusTier3Amount: t3a.set,
+    },
+    getTiers: () => [],
+    getMonthRange: () => ({ label: '2026-01' }),
+    getEligiblePreview: async () => [],
+    grantBonus: async () => ({ ok: true }),
+    updateTargetVars: () => {},
+    updateBonusVars: () => {},
+  });
+  if (typeof h.register !== 'function') throw new Error('missing register');
+  if (typeof h.renderResellerTargetMenu !== 'function') throw new Error('missing renderResellerTargetMenu');
+  if (typeof h.renderResellerBonusMenu !== 'function') throw new Error('missing renderResellerBonusMenu');
 });
 
 check('createMyAccountsHandlers factory', () => {
