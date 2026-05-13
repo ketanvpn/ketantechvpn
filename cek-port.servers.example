@@ -1,0 +1,11 @@
+# cek-port.servers.example - contoh isi file daftar server.
+# Copy file ini ke 'cek-port.servers' (file lokal, tidak di-commit di git):
+#
+#   cp cek-port.servers.example cek-port.servers
+#
+# Lalu edit isi cek-port.servers sesuai server kamu. Format: satu hostname
+# per baris. Komentar pakai '#'.
+
+# do1.ketanx.com
+# hemat2.ketanx.com
+# sg1.contoh.com

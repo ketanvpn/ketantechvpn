@@ -8,9 +8,15 @@ bot-*.log
 *.db-journal
 *.db-shm
 *.db-wal
+*.db.migrated
+*.db.bak
 trial_config.json
 trial_settings.json
 app.js.bak
 .DS_Store
 Thumbs.db
 .vars.json
+
+# VPS-specific local configs (dicopy dari *.example, jangan di-commit)
+cek-port.servers
+*.local

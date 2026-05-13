@@ -406,6 +406,34 @@ Script akan:
 4. Smoke test (`node --check` + audit).
 5. `pm2 restart sellvpn --update-env`.
 
+**Kalau ada peringatan "perubahan lokal yang belum di-commit":**
+
+Update.sh sengaja stop kalau working tree kotor, biar gak rusak file lokal kamu.
+File yang biasa muncul:
+- `cek-port.sh` — mestinya bersih, list server kamu di `cek-port.servers`. Kalau tetap muncul, bandingkan dengan repo lalu `git checkout -- cek-port.sh`.
+- `cek-port.servers` — sudah di-`.gitignore`. Kalau muncul di list, kemungkinan kamu di branch lama. `git pull` dulu setelah stash.
+- `trial.db.migrated` — file hasil migrasi trial.db ke SQLite, sudah di-`.gitignore`. Aman dibiarkan.
+
+Cara stash perubahan lokal lalu lanjut update:
+```bash
+cd /root/BotVPN
+git stash push -u -m "vps-local"
+bash ./update.sh
+# kalau perlu balikin perubahan lokal:
+# git stash pop
+```
+
+**Cara isi `cek-port.servers` (daftar server VPN buat health-check):**
+
+```bash
+cd /root/BotVPN
+cp cek-port.servers.example cek-port.servers
+nano cek-port.servers   # isi 1 hostname per baris, '#' = komentar
+bash cek-port.sh
+```
+
+File ini sudah di-`.gitignore`, jadi gak akan ke-overwrite saat update.
+
 **Kalau update gagal di tengah jalan:** restore dari folder backup yang baru dibuat:
 
 ```bash
@@ -572,4 +600,3 @@ sudo apt remove -y nodejs npm
 ---
 
 **Butuh bantuan lebih lanjut?** Cek log dulu (`pm2 logs sellvpn --lines 100`), baru lapor issue dengan output log yang relevan.
-
