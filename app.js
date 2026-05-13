@@ -9196,21 +9196,23 @@ const MY_STATS_PAGE_SIZE = 10; // ?→ ganti ke 15 / 20 kalau mau
     const navButtons = [];
     if (currentPage > 0) {
       navButtons.push({
-        text: '⚠️ Sebelumnya',
+        text: '⬅️ Sebelumnya',
         callback_data: `my_stats:${currentPage - 1}`,
       });
     }
     if (currentPage < totalPages - 1) {
       navButtons.push({
-        text: '⚠️ Selanjutnya',
+        text: 'Selanjutnya ➡️',
         callback_data: `my_stats:${currentPage + 1}`,
       });
     }
 
-    const replyMarkup =
-      navButtons.length > 0
-        ? { inline_keyboard: [navButtons] }
-        : undefined;
+    const keyboardRows = [];
+    if (navButtons.length > 0) keyboardRows.push(navButtons);
+    keyboardRows.push([
+      { text: '🔙 Menu Utama', callback_data: 'send_main_menu' },
+    ]);
+    const replyMarkup = { inline_keyboard: keyboardRows };
 
     try {
       await ctx.editMessageText(text, {
@@ -12665,5 +12667,4 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   logger.error(`uncaughtException: ${err && err.message ? err.message : err}`);
 });
-
 
