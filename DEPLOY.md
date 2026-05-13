@@ -86,14 +86,22 @@ Ini paket yang diperlukan untuk build `sqlite3` native + download repo + edit fi
 
 ```bash
 sudo apt update
-sudo apt install -y curl git jq build-essential python3 bash ca-certificates nano
+sudo apt install -y curl git jq build-essential python3 bash ca-certificates \
+                    nano rsync sqlite3 ufw
 ```
+
+Arti paket tambahan:
+- `rsync` — buat migrasi DB dari VPS lama (section 12).
+- `sqlite3` — CLI buat cek integrity DB + query manual saat debugging.
+- `ufw` — firewall dasar (section 11).
 
 **Cek sukses:**
 
 ```bash
 git --version
 jq --version
+rsync --version | head -n1
+sqlite3 --version
 ```
 
 Kalau dua command di atas keluar versinya, berarti sukses.
@@ -154,7 +162,15 @@ cd /root/BotVPN
 ls -la
 ```
 
-Harus ada file: `app.js`, `package.json`, `ecosystem.config.js`, `cek-port.sh`, `qris.jpg`.
+Harus ada minimal file-file ini:
+- `app.js`, `package.json`, `ecosystem.config.js` — core bot.
+- `.env.example`, `.vars.example.json` — template config (copy jadi `.env` + `.vars.json`).
+- `update.sh`, `cek-port.sh`, `cek-port.servers.example` — helper scripts.
+- `scripts/` (ada `install.sh`, `smoke-audit.js`, dkk) — script install & audit.
+- `db/`, `lib/`, `payment/`, `scheduler/`, `modules/`, `accounts/`, `admin/` — modul.
+- `qris.jpg` — placeholder QRIS (bisa kosong, nanti di-upload via bot admin).
+
+Kalau ada yang hilang, clone gagal di tengah. Coba hapus folder + clone ulang.
 
 ---
 
@@ -194,14 +210,16 @@ Harus keluar 3 folder tanpa error.
 
 ## 8. Isi Konfigurasi (`.env`)
 
-Bot butuh minimal 4 config: `BOT_TOKEN`, `USER_ID`, `ADMIN_IDS`, `GROUP_ID`. Lainnya bisa diisi belakangan.
+Bot butuh minimal 5 config wajib: `BOT_TOKEN`, `USER_ID`, `ADMIN_IDS`, `GROUP_ID`, `BACKUP_CHAT_ID`. Lainnya bisa diisi belakangan.
 
-Buat file `.env`:
+Buat file `.env` (copy dari template, lalu edit):
 
 ```bash
 cp /root/BotVPN/.env.example /root/BotVPN/.env
 nano /root/BotVPN/.env
 ```
+
+Cara ini selalu bikin `.env` punya **semua** field dari `.env.example`. Kalau di sesi mendatang ada field baru ditambah ke template, kamu tahu di mana isi-nya tanpa perlu cari-cari.
 
 Isi yang WAJIB:
 
@@ -211,6 +229,7 @@ USER_ID=690744680
 MASTER_ID=690744680
 ADMIN_IDS=690744680
 GROUP_ID=-1001234567890
+BACKUP_CHAT_ID=690744680
 ```
 
 Arti field:
@@ -219,6 +238,7 @@ Arti field:
 - `MASTER_ID`: biasanya sama dengan `USER_ID`. Yang terima laporan harian.
 - `ADMIN_IDS`: ID admin, pisahkan koma kalau lebih dari 1 (contoh: `690744680,123456789`).
 - `GROUP_ID`: ID grup Telegram untuk notifikasi transaksi. Add bot ke grup, kirim `/start@bot_kamu`, cek ID grup via log bot atau pakai bot lain seperti @getmyid_bot.
+- `BACKUP_CHAT_ID`: chat ID tujuan backup DB otomatis (biasanya sama dengan `USER_ID`).
 
 **Kalau mau auto-topup QRIS**, isi juga:
 
@@ -362,16 +382,46 @@ pm2 stop sellvpn
 
 ```bash
 cd /root/BotVPN
+# DB utama
 rsync -avz root@OLD_VPS:/root/BotVPN/sellvpn.db        ./
-rsync -avz root@OLD_VPS:/root/BotVPN/trial.db          ./
-rsync -avz root@OLD_VPS:/root/BotVPN/ressel.db         ./
+rsync -avz root@OLD_VPS:/root/BotVPN/ressel.db         ./  2>/dev/null || true
+# Legacy trial counter (kalau masih ada di VPS lama).
+# Versi baru sudah migrate ke tabel SQLite `trial_usage` di sellvpn.db,
+# tapi kalau VPS lama belum upgrade, file ini masih pegang counter harian.
+rsync -avz root@OLD_VPS:/root/BotVPN/trial.db          ./  2>/dev/null || true
+# Config file
 rsync -avz root@OLD_VPS:/root/BotVPN/trial_config.json ./ 2>/dev/null || true
 rsync -avz root@OLD_VPS:/root/BotVPN/trial_settings.json ./ 2>/dev/null || true
 rsync -avz root@OLD_VPS:/root/BotVPN/qris.jpg          ./ 2>/dev/null || true
 rsync -avz root@OLD_VPS:/root/BotVPN/.vars.json        ./ 2>/dev/null || true
+rsync -avz root@OLD_VPS:/root/BotVPN/.env              ./ 2>/dev/null || true
+# Opsional: list server health-check
+rsync -avz root@OLD_VPS:/root/BotVPN/cek-port.servers  ./ 2>/dev/null || true
 ```
 
 Ganti `OLD_VPS` dengan IP VPS lama.
+
+**Alternatif cepat (satu paket)** — bundle semua file yang penting di VPS lama jadi satu `.tar.gz`, transfer sekali, lalu extract:
+
+```bash
+# Di VPS lama
+cd /root/BotVPN
+pm2 stop sellvpn
+tar --exclude='node_modules' --exclude='.git' --exclude='logs' \
+    --exclude='*.log' \
+    -czf /tmp/botvpn-backup.tar.gz \
+    sellvpn.db ressel.db trial.db trial_config.json trial_settings.json \
+    .env .vars.json qris.jpg cek-port.servers 2>/dev/null
+ls -lh /tmp/botvpn-backup.tar.gz
+
+# Di laptop / VPS baru
+scp root@OLD_VPS:/tmp/botvpn-backup.tar.gz .
+# Di VPS baru, extract ke /root/BotVPN
+cd /root/BotVPN
+tar -xzf /path/ke/botvpn-backup.tar.gz
+```
+
+Cara ini lebih rapih buat DB yang besar — kompresi `.tar.gz` biasanya 30–60% dari ukuran raw.
 
 **Cek integrity DB:**
 
@@ -381,12 +431,46 @@ sqlite3 ./sellvpn.db "PRAGMA integrity_check;" 2>/dev/null
 
 Output harus `ok`. Kalau bukan, DB corrupt \u2014 restore dari backup sebelumnya, jangan dipakai.
 
+**Cek isi tabel penting:**
+
+```bash
+sqlite3 ./sellvpn.db <<'SQL'
+.tables
+SELECT COUNT(*) AS users FROM users;
+SELECT COUNT(*) AS servers FROM Server;
+SELECT COUNT(*) AS akun FROM accounts;
+SELECT COUNT(*) AS tx FROM transactions;
+SQL
+```
+
+Angka harus masuk akal (bukan 0 total) kalau memang VPS lama aktif.
+
 **Rapikan permission:**
 
 ```bash
 chmod 600 ./*.db ./.env ./.vars.json 2>/dev/null || true
 chmod 644 ./qris.jpg ./trial_config.json ./trial_settings.json 2>/dev/null || true
 ```
+
+**Restart + test:**
+
+```bash
+pm2 restart sellvpn --update-env
+pm2 logs sellvpn --lines 30
+```
+
+Pastikan tidak ada error `SQLITE_CANTOPEN`, tidak ada `Unauthorized`, dan laporan lisensi muncul. Lalu di Telegram, kirim `/start` ke bot — harus balas menu utama dengan saldo + riwayat dari VPS lama.
+
+**Setelah migrasi sukses**, jangan lupa stop bot di VPS lama permanen:
+
+```bash
+# Di VPS lama
+pm2 stop sellvpn
+pm2 delete sellvpn
+pm2 save
+```
+
+Dua bot jalan bersamaan = double notifikasi + double potong saldo = kacau.
 
 ---
 
@@ -464,11 +548,15 @@ Cari atau tambahkan:
 
 `BACKUP_CHAT_ID` = chat tempat kirim backup (biasanya ID kamu sendiri).
 
+**Catatan**: kalau `BACKUP_CHAT_ID` sudah di-set di `.env`, field ini di `.vars.json` bersifat override — boleh di-skip. Urutan prioritas: `.env` → `.vars.json` → default.
+
 Restart bot:
 
 ```bash
-pm2 restart sellvpn
+pm2 restart sellvpn --update-env
 ```
+
+Flag `--update-env` penting kalau kamu ubah `.env`, bukan cuma `.vars.json`. Tanpa flag itu PM2 masih pakai env lama.
 
 **Off-site backup (rekomendasi tambahan ke VPS lain):**
 
@@ -499,20 +587,22 @@ bash scripts/install.sh
 
 1. Cek OS (harus Ubuntu 24.04 / Debian 12).
 2. Set timezone ke `Asia/Jayapura`.
-3. Instal paket dasar (`git`, `curl`, `jq`, `build-essential`, `python3`, `nano`).
+3. Instal paket dasar (`git`, `curl`, `jq`, `build-essential`, `python3`, `nano`, `rsync`, `sqlite3`, `ufw`).
 4. Instal Node.js 20 + PM2.
 5. Clone repo ke `/root/BotVPN` (skip kalau sudah ada).
 6. `npm ci --omit=dev`.
-7. Tanya `BOT_TOKEN`, `USER_ID`, `ADMIN_IDS`, `GROUP_ID` (prompt interaktif).
-8. Tulis `.env` dengan `chmod 600`.
+7. Prompt interaktif: `BOT_TOKEN`, `USER_ID`, `MASTER_ID`, `ADMIN_IDS`, `GROUP_ID`, `BACKUP_CHAT_ID`, `NAMA_STORE`. Field opsional boleh dikosongkan.
+8. Copy `.env.example` ke `.env` (semua field ikut), isi field yang user masukkan lewat `sed`, `chmod 600`.
 9. Smoke test syntax + audit.
 10. Start PM2 + setup auto-start saat reboot.
 11. Pasang UFW allow OpenSSH + deny incoming.
 
+**Setelah installer selesai, kamu tetap bisa edit manual** `nano /root/BotVPN/.env` untuk isi field opsional yang belum terisi (GoPay, OrderKuota, dll). Semua field dari `.env.example` sudah ada di file-mu, tinggal isi.
+
 **Kalau mau non-interaktif (untuk automation)**, set env var:
 
 ```bash
-BOT_TOKEN=xxx USER_ID=123 ADMIN_IDS=123 GROUP_ID=-100123 \
+BOT_TOKEN=xxx USER_ID=123 ADMIN_IDS=123 GROUP_ID=-100123 BACKUP_CHAT_ID=123 \
   bash scripts/install.sh --yes
 ```
 
@@ -596,6 +686,64 @@ pm2 unstartup systemd
 rm -rf /root/BotVPN /root/BotVPN-backup-*
 sudo apt remove -y nodejs npm
 ```
+
+### `update.sh` stop dengan "perubahan lokal yang belum di-commit"
+
+File yang biasa muncul + cara handle:
+- `cek-port.sh` — mestinya bersih sekarang. Kalau muncul, `git checkout -- cek-port.sh`.
+- `cek-port.servers` — sudah `.gitignore`. Kalau masih nyangkut, `git pull` setelah stash.
+- `trial.db.migrated` — hasil migrasi trial ke SQLite. Aman dibiarkan, di-`.gitignore`.
+
+Bersihkan + lanjut update:
+
+```bash
+cd /root/BotVPN
+git stash push -u -m "vps-local"
+bash ./update.sh
+# kalau perlu balikin perubahan lokal: git stash pop
+```
+
+### Bot baru deploy tapi sebagian field `.env` kosong
+
+Installer copy dari `.env.example` lalu prompt 7 field umum (`BOT_TOKEN`, `USER_ID`, `MASTER_ID`, `ADMIN_IDS`, `GROUP_ID`, `BACKUP_CHAT_ID`, `NAMA_STORE`). Field opsional (GoPay/OrderKuota/CekPay) sengaja dibiarkan kosong supaya bot tetap bisa start untuk testing.
+
+Untuk isi sisanya, edit manual:
+
+```bash
+nano /root/BotVPN/.env
+pm2 restart sellvpn --update-env
+```
+
+### Ada field di `.env.example` yang gak ada di `.env` lama
+
+Sesi mendatang mungkin tambah field baru ke `.env.example`. Cara cek + sync:
+
+```bash
+cd /root/BotVPN
+# List field yang ada di example tapi belum ada di .env kamu
+diff <(grep -v '^#' .env.example | awk -F= '{print $1}' | sort -u) \
+     <(grep -v '^#' .env | awk -F= '{print $1}' | sort -u) | grep '^<'
+```
+
+Output `< NAMA_FIELD` = field yang belum kamu punya. Tambah manual via `nano .env`.
+
+### Migrasi DB dari VPS lama tapi data hilang
+
+Cek di VPS lama dulu apakah file DB ada + bukan kosong:
+
+```bash
+# Di VPS lama
+ls -lh /root/BotVPN/*.db
+sqlite3 /root/BotVPN/sellvpn.db "SELECT COUNT(*) FROM users;"
+```
+
+Kalau angka 0 padahal seharusnya banyak, kemungkinan file DB di-overwrite atau path beda. Cek:
+
+```bash
+find / -name 'sellvpn.db' 2>/dev/null
+```
+
+Pastikan kamu pakai file yang benar saat migrasi.
 
 ---
 
