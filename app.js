@@ -7692,6 +7692,20 @@ bot.action('help_user', async (ctx) => {
   const storeName = NAMA_STORE || 'Layanan VPN';
   const adminName = ADMIN_USERNAME || 'Admin';
 
+  // Ambil pengaturan trial supaya teks bantuan match dengan pengaturan admin
+  let trialMaxPerDay = 1;
+  try {
+    const cfg = await getTrialConfig();
+    if (cfg && Number.isInteger(cfg.maxPerDay) && cfg.maxPerDay > 0) {
+      trialMaxPerDay = cfg.maxPerDay;
+    }
+  } catch (e) {
+    logger.error('⚠️ Gagal membaca trial config di help_user:', e.message);
+  }
+  const trialFreqText = trialMaxPerDay === 1
+    ? '<b>1x per hari</b>'
+    : `<b>${trialMaxPerDay}x per hari</b>`;
+
   const text = `
 <b>Bantuan Pengguna ${storeName}</b>
 
@@ -7719,19 +7733,19 @@ bot.action('help_user', async (ctx) => {
 
 <b>4. Trial akun</b>
 • Tekan tombol "<b>🆓 Trial Akun</b>" (jika tersedia).
-• Trial hanya bisa dipakai <b>1x per hari</b> per akun Telegram (non-reseller).
-• Jika sudah pernah trial hari ini, bot akan memberi info bahwa trial belum bisa dipakai lagi.
+• Trial bisa dipakai ${trialFreqText} per akun Telegram (non-reseller).
+• Jika kuota trial hari ini sudah habis, bot akan memberi info bahwa trial belum bisa dipakai lagi.
 
-<b>5. TopUp saldo manual (QRIS)</b>
-• Tekan tombol "<b>💳 TopUp Saldo Manual via (QRIS)</b>" di menu utama.
-• Scan QRIS dengan aplikasi pembayaran kamu.
-• Ikuti petunjuk jumlah & kirim bukti pembayaran ke admin sesuai format yang muncul.
-• Setelah pembayaran dicek dan valid, saldo kamu akan diisi oleh admin.
-• Saldo ini bisa dipakai untuk beli akun langsung dari bot, tanpa perlu chat admin satu-satu.
+<b>5. TopUp saldo (QRIS Otomatis)</b>
+• Tekan tombol "<b>💳 TopUp Saldo (QRIS Otomatis)</b>" di menu utama.
+• Masukkan nominal yang ingin di-topup, lalu bot akan menampilkan QRIS dinamis.
+• Scan QRIS pakai aplikasi pembayaran kamu (DANA, OVO, GoPay, BCA Mobile, dll).
+• Setelah pembayaran sukses, saldo akan otomatis masuk tanpa perlu konfirmasi admin.
+• Saldo bisa langsung dipakai untuk beli akun lewat tombol "🛍️ Buat Akun".
 
 <b>6. Program Reseller (harga lebih murah)</b>
 • Kalau kamu mau jualan akun VPN sendiri, atau ingin harga akun lebih murah dari harga user biasa:
-  • Tekan tombol "<b>💎 Jadi Reseller harga lebih murah!!</b>" di menu utama.
+  • Tekan tombol "<b>💎 Upgrade ke Reseller (harga murah)</b>" di menu utama.
   • Di sana ada format pesan yang bisa kamu salin dan kirim ke admin.
 • Setelah disetujui dan diaktifkan sebagai reseller:
   • Kamu akan dapat harga akun lebih murah.
@@ -7763,6 +7777,11 @@ Jika masih bingung, kamu selalu bisa tekan tombol ini lagi: "<b>❓ Bantuan</b>"
     try {
     await sendCleanMenu(ctx, text, {
       parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }]
+        ]
+      },
     });
   } catch (e) {
     logger.error('Gagal kirim pesan bantuan:', e.message || e);
