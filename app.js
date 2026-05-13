@@ -10173,8 +10173,14 @@ if (lowerType.includes('deposit')) {
 // Baca file reseller
 fs.readFile(resselDbPath, 'utf8', async (err, data) => {
   if (err) {
-    logger.error('❌ Gagal membaca file ressel.db:', err.message);
-    return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+    if (err.code === 'ENOENT') {
+      // File reseller belum ada — anggap user bukan reseller, lanjut flow.
+      logger.warn('ressel.db belum ada, anggap user bukan reseller.');
+      data = '';
+    } else {
+      logger.error('⚠\ufe0f Gagal membaca file ressel.db:', err.message);
+      return ctx.reply('⚠\ufe0f *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+    }
   }
 
   const resselList = data.split('\n').map(line => line.trim()).filter(Boolean);
@@ -10301,8 +10307,13 @@ await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
     const resselDbPath = './ressel.db';
     fs.readFile(resselDbPath, 'utf8', async (err, data) => {
       if (err) {
-        logger.error('❌ Gagal membaca file ressel.db:', err.message);
-        return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+        if (err.code === 'ENOENT') {
+          logger.warn('ressel.db belum ada, anggap user bukan reseller.');
+          data = '';
+        } else {
+          logger.error('⚠️ Gagal membaca file ressel.db:', err.message);
+          return ctx.reply('⚠️ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+        }
       }
 
       const idUser = ctx.from.id.toString().trim();
@@ -10355,8 +10366,13 @@ await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
     const resselDbPath = './ressel.db';
     fs.readFile(resselDbPath, 'utf8', async (err, data) => {
       if (err) {
-        logger.error('❌ Gagal membaca file ressel.db:', err.message);
-        return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+        if (err.code === 'ENOENT') {
+          logger.warn('ressel.db belum ada, anggap user bukan reseller.');
+          data = '';
+        } else {
+          logger.error('⚠️ Gagal membaca file ressel.db:', err.message);
+          return ctx.reply('⚠️ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+        }
       }
 
       const idUser = ctx.from.id.toString().trim();
@@ -10409,8 +10425,13 @@ await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
     const resselDbPath = './ressel.db';
     fs.readFile(resselDbPath, 'utf8', async (err, data) => {
       if (err) {
-        logger.error('❌ Gagal membaca file ressel.db:', err.message);
-        return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+        if (err.code === 'ENOENT') {
+          logger.warn('ressel.db belum ada, anggap user bukan reseller.');
+          data = '';
+        } else {
+          logger.error('⚠️ Gagal membaca file ressel.db:', err.message);
+          return ctx.reply('⚠️ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
+        }
       }
 
       const idUser = ctx.from.id.toString().trim();
@@ -10680,7 +10701,7 @@ if (baseHarga30 > 0) {
             return ctx.reply(msg, { parse_mode: 'Markdown' });
           }
 
-          logger.info(`❌ Transaksi sukses untuk user ${ctx.from.id}, type: ${type}, server: ${serverId}`);
+          logger.info(`✅ Transaksi sukses untuk user ${ctx.from.id}, type: ${type}, server: ${serverId}`);
           upsertAccount(ctx.from.id, username, type, serverId, exp);
 
 
