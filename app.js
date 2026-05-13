@@ -4934,57 +4934,46 @@ async function sendAdminMenu(ctx) {
     }
   }
 
-       // === TOMBOL ADMIN (RAPI, PAKAI SUBMENU SERVER) ===
+      // === TOMBOL ADMIN (Group: User → Finance → Server → System) ===
       const adminKeyboard = [
-  // ?→ Submenu Reseller & Saldo
-  [
-    { text: '🧾 Menu Reseller & Saldo', callback_data: 'admin_reseller_menu' }
-  ],
+        // —— USER MANAGEMENT ——
+        [
+          { text: '📊 Monitor User & Reseller', callback_data: 'monitor_panel' },
+          { text: '📋 List Semua User',         callback_data: 'list_all_users' }
+        ],
+        [
+          { text: '🚩 Tandai User',       callback_data: 'flag_user_start' },
+          { text: '🧪 Pengaturan Trial',  callback_data: 'admin_trial_menu' }
+        ],
 
-  // ?→ Submenu Server
-  [
-    { text: '⚠️ Menu Server', callback_data: 'admin_server_menu' }
-  ],
+        // —— FINANCE & PROMOSI ——
+        [
+          { text: '🧾 Reseller & Saldo', callback_data: 'admin_reseller_menu' }
+        ],
+        [
+          { text: '🎁 Template Promosi', callback_data: 'promo_template_menu' },
+          { text: '📢 Kirim Pengumuman', callback_data: 'broadcast_menu' }
+        ],
 
-    // ?→ Monitoring & List User
-  [
-    { text: '📊 Monitor User & Reseller', callback_data: 'monitor_panel' },
-    { text: '📋 List Semua User',         callback_data: 'list_all_users' }
-  ],
-    // ?→ Flag / Tandai user
-  [
-    { text: '🚩 Tandai User', callback_data: 'flag_user_start' }
-  ],
-  // → Pengaturan Trial
-  [
-    { text: '🧪 Pengaturan Trial', callback_data: 'admin_trial_menu' }
-  ],
+        // —— SERVER ——
+        [
+          { text: '🖥️ Menu Server',          callback_data: 'admin_server_menu' },
+          { text: '🔔 Pengingat Expired',  callback_data: 'expiry_reminder_menu' }
+        ],
 
-  // ?→ Backup & auto backup
-  [
-    { text: '📦 Backup Database', callback_data: 'backup_db' },
-    { text: '💾 Auto Backup',     callback_data: 'backup_auto_menu' }
-  ],
-  
-// ?→ Timezone bot
-  [
-    { text: '🌐 Timezone Bot', callback_data: 'timezone_menu' }
-  ],
-    // ????→ QRIS & pengingat expired
-  [
-    { text: '🖼️ Upload Gambar QRIS', callback_data: 'upload_qris' },
-    { text: '🔔 Pengingat Expired',   callback_data: 'expiry_reminder_menu' }
-  ],
+        // —— SYSTEM ——
+        [
+          { text: '📦 Backup Database', callback_data: 'backup_db' },
+          { text: '💾 Auto Backup',     callback_data: 'backup_auto_menu' }
+        ],
+        [
+          { text: '🌐 Timezone Bot',    callback_data: 'timezone_menu' }
+        ],
 
-  // ?→ Template promosi & pengumuman
-  [
-    { text: '🎁 Template Promosi', callback_data: 'promo_template_menu' },
-    { text: '📢 Kirim Pengumuman', callback_data: 'broadcast_menu' }
-  ],
-  [
-    { text: '🔙 Kembali', callback_data: 'send_main_menu' }
-  ]
-];
+        [
+          { text: '🔙 Kembali', callback_data: 'send_main_menu' }
+        ]
+      ];
 
 
 
