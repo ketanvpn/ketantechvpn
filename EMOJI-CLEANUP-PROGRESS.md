@@ -79,12 +79,22 @@ Banyak `❌` (x merah) muncul di tempat yang harusnya `✅` (check), `⚠️` (w
 
 ## Status Sekarang
 
-- **Menu user**: sudah rapi. User konfirmasi: "oke sip mantep, selanjutnya kita akan ke menu admin".
+- **Menu user**: sudah rapi semua tampilan (main menu, submenu protocol, trial flow, program reseller, help text).
+- **Create akun**: berhasil untuk VMess (ada di log produksi). Protocol lain (VLess/Trojan/SSH/Shadowsocks) perlu test lanjutan.
+- **Trial akun**: semua protocol bisa jalan setelah fix `0a8dd52` (dispatcher per-signature).
+- **Notif grup**: dibiarkan. User belum add bot ke grup, akan jalan otomatis setelah `GROUP_ID` di-set + bot invited.
 - **Menu admin**: belum di-scan ulang. Kemungkinan masih ada banyak ❌ yang salah konteks + emoji aneh di template seperti notifikasi broadcast summary, management server prompts, reseller target menu, dll.
 
 ---
 
 ## Yang Belum (To-Do Sesi Baru)
+
+### Prioritas A — Fungsional (selain emoji)
+
+1. **Test create akun untuk VLess / Trojan / Shadowsocks** (bukan trial). Signature mismatch yang sama mungkin juga ada di handler `create_*`. Trial sudah di-fix via dispatcher per-type, create mungkin perlu perlakuan sama.
+2. **Notif grup setelah `GROUP_ID` di-set**: verify `/testgroup` jalan + notif pembelian muncul di grup.
+
+### Prioritas B — Emoji menu admin
 
 1. **Menu admin top-level**: `/admin` atau tombol `⚙️ MENU ADMIN`. Cek tombol-tombol utama (Menu Reseller, Monitor User, List Semua User, Tandai User, Backup Database, Auto Backup, Timezone, Upload QRIS, Kirim Pengumuman, Template Promosi).
 2. **Submenu Admin Reseller**: `🧾 Menu Reseller & Saldo` → Target Reseller, Bonus Reseller Aktif, Tambah Saldo, Riwayat Saldo, List Reseller/Member, Upload QRIS.
@@ -115,6 +125,8 @@ Kedua script bisa di-run ulang. Pattern baru bisa ditambahkan sebagai object `{ 
 - `c4d4063` — fix(emoji) menu user: Buat Akun, Trial, Bantuan, Admin status, license, reseller bullets
 - `bfa208c` — fix(emoji) context-aware 100+ emoji konteks salah (success/warning/loading/info/bullet)
 - `4f9cd1c` — fix(app) tambah `getUserFlagStatus` + `getUsernameById` yang hilang (bot diam saat klik Buat Akun/Trial sebelum pilih server)
+- `64b058b` — fix: trial gagal (ressel.db ENOENT tolerant) + emoji log `❌ Transaksi sukses` → `✅`
+- `0a8dd52` — fix(trial): dispatcher per-protocol signature (vmess/vless/trojan/shadowsocks bisa trial, bukan cuma ssh)
 
 ---
 
