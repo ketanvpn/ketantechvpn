@@ -1649,6 +1649,11 @@ async function renderConfirm(ctx) {
 // =====================================================
 const txLock = new Map(); // userId -> { action, until }
 
+// Lock khusus flow trial yang jalan di bot.on('text'), bukan callback.
+// Mencegah double-click text message dari user yang sama lolos double trial
+// karena checkTrialAccess -> saveTrialAccess ada race window (file JSON).
+const trialLock = new Set();
+
 function isTxAction(data = '') {
   return (
     data.startsWith('create_') ||   // create_ssh/vmess/vless/trojan...
@@ -5505,13 +5510,41 @@ async function sendBroadcastFromMenu(ctx, target, message) {
     let gagal = 0;
 
     for (const id of targets) {
-      try {
-        await bot.telegram.sendMessage(id, message, { parse_mode: 'HTML' });
-        sukses++;
-      } catch (e) {
-        gagal++;
-        logger.error(`⚠️ Gagal kirim pengumuman ke ${id}:`, e.message);
+      // Retry 1x untuk 429 (rate-limit), sesuai retry_after yang dikirim Telegram.
+      let sent = false;
+      for (let attempt = 0; attempt < 2 && !sent; attempt++) {
+        try {
+          await bot.telegram.sendMessage(id, message, { parse_mode: 'HTML' });
+          sukses++;
+          sent = true;
+        } catch (e) {
+          const status = e?.response?.error_code || e?.code;
+          const retryAfter = Number(
+            e?.response?.parameters?.retry_after ||
+              e?.parameters?.retry_after ||
+              0
+          );
+          if (status === 429 && attempt === 0) {
+            const delayMs = (retryAfter > 0 ? retryAfter + 1 : 3) * 1000;
+            logger.warn(
+              `⏳ Kena limit Telegram (429) saat broadcast menu ke ${id}. retry_after=${retryAfter}s`
+            );
+            await sleep(delayMs);
+            // Loop lanjut ke attempt = 1
+          } else {
+            gagal++;
+            logger.error(
+              `⚠️ Gagal kirim pengumuman ke ${id}:`,
+              e.message
+            );
+            sent = true; // keluar loop, hitung gagal
+          }
+        }
       }
+
+      // Jeda antar target supaya aman dari limit global Telegram (30 msg/s).
+      // 80 ms = ~12.5 msg/s.
+      await sleep(80);
     }
 
     // Simpan ringkasan ke memori
@@ -5781,6 +5814,10 @@ bot.action('broadcast_confirm', async (ctx) => {
   if (!ctx.from) return;
   const adminId = ctx.from.id;
 
+  if (!adminIds.includes(adminId)) {
+    return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
+  }
+
   const state = broadcastSessions[adminId];
   if (!state || state.step !== 'confirm' || !state.message || !state.target) {
     return ctx.reply('⚠️ Tidak ada pengumuman yang menunggu konfirmasi.');
@@ -5802,6 +5839,10 @@ bot.action('broadcast_cancel', async (ctx) => {
 
   if (!ctx.from) return;
   const adminId = ctx.from.id;
+
+  if (!adminIds.includes(adminId)) {
+    return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
+  }
 
   if (broadcastSessions[adminId]) {
     delete broadcastSessions[adminId];
@@ -7569,6 +7610,9 @@ Jika masih bingung, kamu selalu bisa tekan tombol ini lagi: "<b>❓ Bantuan</b>"
 ///////
 bot.action('addserver_reseller', async (ctx) => {
   await ctx.answerCbQuery().catch(()=>{});
+  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+    return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+  }
   userState[ctx.chat.id] = { step: 'reseller_domain' };
   await ctx.reply('🌐 Masukkan domain server reseller:');
 });
@@ -10253,6 +10297,15 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
     const { type, serverId } = state;
     delete userState[ctx.chat.id];
 
+    // Mutex per-user supaya double-click text di flow trial tidak lolos double.
+    if (trialLock.has(ctx.from.id)) {
+      return ctx.reply(
+        '⏳ Trial kamu sedang diproses, mohon tunggu sebentar.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    trialLock.add(ctx.from.id);
+
         try {
       // Ambil durasi trial dari konfigurasi (satuan JAM)
       const cfg = await getTrialConfig();
@@ -10283,22 +10336,33 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
       }
 
       if (msg) {
-await recordAccountTransaction(ctx.from.id, type);
-await saveTrialAccess(ctx.from.id);
+        // Deteksi success: msg dari modules/trial.js mengandung '❌' / '???'
+        // pada path error. Counter trial hanya naik kalau benar-benar sukses.
+        const isError = msg.includes('❌') || msg.includes('???');
+        if (!isError) {
+          await recordAccountTransaction(ctx.from.id, type);
+          await saveTrialAccess(ctx.from.id);
+          logger.info(`✅ Trial ${type} oleh ${ctx.from.id}`);
+        } else {
+          logger.warn(
+            `⚠️ Trial ${type} oleh ${ctx.from.id} gagal di server, counter tidak dinaikkan.`
+          );
+        }
 
-const extraInfo =
-  '\n\n⚠️ *Catatan:*\n' +
-  'Username dan password yang tampil di atas dibuat *acak otomatis oleh server*.\n' +
-  'Teks yang kamu kirim tadi hanya dipakai sebagai konfirmasi, bukan sebagai username akun.';
+        const extraInfo = isError
+          ? ''
+          : '\n\n⚠️ *Catatan:*\n' +
+            'Username dan password yang tampil di atas dibuat *acak otomatis oleh server*.\n' +
+            'Teks yang kamu kirim tadi hanya dipakai sebagai konfirmasi, bukan sebagai username akun.';
 
-await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
-
-        logger.info(`✅ Trial ${type} oleh ${ctx.from.id}`);
+        await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
       }
 
     } catch (err) {
       logger.error('❌ Gagal proses trial akun:', err.message);
       await ctx.reply('❌ *Terjadi kesalahan saat memproses trial akun.*', { parse_mode: 'Markdown' });
+    } finally {
+      trialLock.delete(ctx.from.id);
     }
 
   });
@@ -11232,6 +11296,9 @@ bot.telegram
 ////////
 bot.action('addserver', async (ctx) => {
   try {
+    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+      return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    }
     logger.info('⏳ Proses tambah server dimulai');
     await ctx.answerCbQuery();
        await ctx.reply(
@@ -11248,6 +11315,9 @@ bot.action('addserver', async (ctx) => {
 });
 bot.action('detailserver', async (ctx) => {
   try {
+    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+      return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    }
     logger.info('⏳ Proses detail server dimulai');
     await ctx.answerCbQuery();
 
@@ -11349,7 +11419,7 @@ bot.action('resetdb', async (ctx) => {
 bot.action('confirm_resetdb', async (ctx) => {
   try {
   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   }
     await ctx.answerCbQuery();
     await new Promise((resolve, reject) => {
@@ -11370,6 +11440,9 @@ bot.action('confirm_resetdb', async (ctx) => {
 
 bot.action('cancel_resetdb', async (ctx) => {
   try {
+    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+      return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    }
     await ctx.answerCbQuery();
     await ctx.reply('⛔ *Proses reset database dibatalkan.*', { parse_mode: 'Markdown' });
   } catch (error) {
