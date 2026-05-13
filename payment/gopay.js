@@ -6,8 +6,10 @@ function createGopayClient({ getApiKey, baseUrl, timeoutMs = 15000 }) {
   if (typeof getApiKey !== 'function') {
     throw new Error('createGopayClient: getApiKey harus fungsi');
   }
+  // baseUrl kosong bukan fatal: jatuhkan ke default gateway. Nanti request
+  // akan gagal di runtime kalau memang mau pakai GoPay, tapi bot tetap boot.
   if (!baseUrl || typeof baseUrl !== 'string') {
-    throw new Error('createGopayClient: baseUrl kosong');
+    baseUrl = 'https://api-gopay.autoftbot.com';
   }
 
   function buildHeaders(apiKey) {
