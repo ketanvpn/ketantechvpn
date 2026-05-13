@@ -1136,6 +1136,16 @@ function htmlEscape(value) {
     .replace(/'/g, '&#39;');
 }
 
+// Helper: validasi + escape input admin untuk langkah template broadcast.
+// Returns { ok: true, value } kalau valid; { ok: false, reason } kalau teks
+// kosong atau diawali '/' (user tidak sengaja kirim command saat input template).
+function sanitizeBroadcastTemplateInput(rawText) {
+  const trimmed = (rawText || '').trim();
+  if (!trimmed) return { ok: false, reason: 'empty' };
+  if (trimmed.startsWith('/')) return { ok: false, reason: 'command' };
+  return { ok: true, value: htmlEscape(trimmed) };
+}
+
 function mdToHtml(text) {
   if (text == null) return '';
   let escaped = String(text)
@@ -9173,7 +9183,16 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'tm_ask_layanan') {
       // ----- TEMPLATE MAINTENANCE: langkah 1 (nama layanan) -----
-      bState.layanan = ctx.message.text;
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks nama layanan saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang nama layanan.'
+        );
+        return;
+      }
+      bState.layanan = r.value;
       bState.step = 'tm_ask_waktu';
 
       await ctx.reply(
@@ -9186,7 +9205,16 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'tm_ask_waktu') {
       // ----- TEMPLATE MAINTENANCE: langkah 2 (waktu) -----
-      bState.waktu = ctx.message.text;
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks waktu saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang waktu maintenance.'
+        );
+        return;
+      }
+      bState.waktu = r.value;
       bState.step = 'tm_ask_durasi';
 
       await ctx.reply(
@@ -9200,7 +9228,16 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'tm_ask_durasi') {
       // ----- TEMPLATE MAINTENANCE: langkah 3 (durasi) -----
-      bState.durasi = ctx.message.text;
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks durasi saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang durasi maintenance.'
+        );
+        return;
+      }
+      bState.durasi = r.value;
       bState.step = 'tm_ask_catatan';
 
       await ctx.reply(
@@ -9211,8 +9248,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'tm_ask_catatan') {
       // ----- TEMPLATE MAINTENANCE: langkah 4 (catatan + susun pesan) -----
-      const catatanRaw = ctx.message.text;
-      bState.catatan = catatanRaw === '-' ? '' : catatanRaw;
+      const catatanRaw = (ctx.message.text || '').trim();
+      if (catatanRaw.startsWith('/')) {
+        await ctx.reply(
+          '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks catatan atau "-" untuk kosong.'
+        );
+        return;
+      }
+      bState.catatan = catatanRaw === '-' ? '' : htmlEscape(catatanRaw);
 
       let targetLabel = 'semua user';
       if (bState.target === 'reseller') {
@@ -9269,7 +9312,16 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'promo_ask_paket') {
       // ----- TEMPLATE PROMO: langkah 1 (nama paket/promo) -----
-      bState.paket = ctx.message.text;
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks nama paket saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang nama paket.'
+        );
+        return;
+      }
+      bState.paket = r.value;
       bState.step = 'promo_ask_detail';
 
       await ctx.reply(
@@ -9283,7 +9335,16 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'promo_ask_detail') {
       // ----- TEMPLATE PROMO: langkah 2 (detail promo) -----
-      bState.detail = ctx.message.text;
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks detail promo saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang detail promo.'
+        );
+        return;
+      }
+      bState.detail = r.value;
       bState.step = 'promo_ask_berlaku';
 
       await ctx.reply(
@@ -9297,7 +9358,16 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'promo_ask_berlaku') {
       // ----- TEMPLATE PROMO: langkah 3 (berlaku sampai) -----
-      bState.berlaku = ctx.message.text;
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks masa berlaku saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang masa berlaku.'
+        );
+        return;
+      }
+      bState.berlaku = r.value;
       bState.step = 'promo_ask_catatan';
 
       await ctx.reply(
@@ -9308,8 +9378,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       return;
     } else if (bState.step === 'promo_ask_catatan') {
       // ----- TEMPLATE PROMO: langkah 4 (catatan + susun pesan) -----
-      const catatanRaw = ctx.message.text;
-      bState.catatan = catatanRaw === '-' ? '' : catatanRaw;
+      const catatanRaw = (ctx.message.text || '').trim();
+      if (catatanRaw.startsWith('/')) {
+        await ctx.reply(
+          '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks catatan atau "-" untuk kosong.'
+        );
+        return;
+      }
+      bState.catatan = catatanRaw === '-' ? '' : htmlEscape(catatanRaw);
 
       let targetLabel = 'semua user';
       if (bState.target === 'reseller') {
