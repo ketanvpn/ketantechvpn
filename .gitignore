@@ -20,3 +20,6 @@ Thumbs.db
 # VPS-specific local configs (dicopy dari *.example, jangan di-commit)
 cek-port.servers
 *.local
+*.vpsbaru-bak
+*.fromlama
+.env.installer-bak
