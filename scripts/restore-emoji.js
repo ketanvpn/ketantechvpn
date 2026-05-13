@@ -210,6 +210,335 @@ const rules = [
   // --- QRIS header '???? TOPUP SALDO (QRIS)' ---
   { match: /'\?{3,4}\s+TOPUP\s+SALDO/g, replace: "'\ud83d\udcb3 TOPUP SALDO", label: 'qris header topup saldo' },
 
+  // --- Broadcast header '???? Pengumuman ke' ---
+  { match: /`\?{3,4}\s+Pengumuman\s+ke/g, replace: '`\ud83d\udce2 Pengumuman ke', label: 'pengumuman ke' },
+
+  // --- Broadcast mode button labels ---
+  { match: /\?{3,4}\s+Tulis\s+manual/g, replace: '\u270f\ufe0f Tulis manual', label: 'tulis manual' },
+  { match: /\?{3,4}\s+Template\s+Maintenance/g, replace: '\ud83d\udee0\ufe0f Template Maintenance', label: 'tmpl maintenance' },
+  { match: /\?{3,4}\s+Template\s+Promo/g, replace: '\ud83c\udf81 Template Promo', label: 'tmpl promo' },
+  { match: /'\?{3,4}\s+Maintenance\s+VPN/g, replace: "'\ud83d\udee0\ufe0f Maintenance VPN", label: 'btn maintenance' },
+  { match: /'\?{3,4}\s+Promo\s+\/\s+Diskon/g, replace: "'\ud83c\udf81 Promo / Diskon", label: 'btn promo diskon' },
+
+  // --- 'dari menu ???? lagi' = speaker icon for broadcast menu ---
+  { match: /menu\s+\?{3,4}\s+lagi/g, replace: 'menu \ud83d\udce2 lagi', label: 'menu broadcast lagi' },
+
+  // --- Step marker '1?????? Masukkan' (6 char) = step emoji 1️⃣ ---
+  { match: /(\d)\?{6}\s+/g, replace: '$1\ufe0f\u20e3 ', label: 'step number' },
+
+  // --- 'Silakan masukkan jumlah nominal' = money icon ---
+  { match: /`\?{3,4}\s+\*Silakan\s+masukkan/g, replace: '`\ud83d\udcb0 *Silakan masukkan', label: 'silakan masukkan' },
+
+  // --- Upload QRIS info/action icons ---
+  { match: /'\?{3,4}\s+Kirim\s+gambar\s+QRIS/g, replace: "'\ud83d\uddbc\ufe0f Kirim gambar QRIS", label: 'kirim gambar qris' },
+  { match: /'\u2139\ufe0f QRIS image/g, replace: "'\u2139\ufe0f QRIS image", label: 'noop keep' }, // placeholder, tidak mengubah apa2
+  { match: /\?{7}\s+QRIS\s+image/g, replace: '\u2139\ufe0f QRIS image', label: 'qris image info' },
+
+  // --- Header store top-up manual QRIS template ---
+  { match: /<b>\?{3,4}\s+Top\s+Up\s+Saldo\s+Manual/g, replace: '<b>\ud83d\udcb3 Top Up Saldo Manual', label: 'header topup manual' },
+  { match: /<b>\?{3,4}\s+Format\s+pesan/g, replace: '<b>\u270f\ufe0f Format pesan', label: 'header format pesan' },
+  { match: /\?{3,4}\s+Minimal\s+top\s+up:/g, replace: '\u26a0\ufe0f Minimal top up:', label: 'minimal topup' },
+
+  // --- Permission denied ---
+  { match: /'\?{3,4}\s+Kamu\s+tidak\s+memiliki\s+izin/g, replace: "'\ud83d\udeab Kamu tidak memiliki izin", label: 'kamu tidak punya izin' },
+
+  // --- Backup DB info/log ---
+  { match: /'\?{3,4}\s+Backup\s+database\s+berhasil/g, replace: "'\u2705 Backup database berhasil", label: 'backup berhasil' },
+  { match: /`\?{3,4}\s+Backup\s+database\s+dikirim/g, replace: '`\ud83d\udce6 Backup database dikirim', label: 'backup dikirim log' },
+
+  // --- Timezone/Expiry/Auto-backup header admin menu ---
+  { match: /'\?{3,4}\s+<b>PENGATURAN\s+TIMEZONE/g, replace: "'\ud83c\udf10 <b>PENGATURAN TIMEZONE", label: 'header timezone' },
+  { match: /<b>\?{3,4}\s+Pengaturan\s+Pengingat/g, replace: '<b>\u23f0 Pengaturan Pengingat', label: 'header pengingat' },
+  { match: /<b>\?{7}\s+Pengaturan\s+Auto\s+Backup/g, replace: '<b>\ud83d\udcbe Pengaturan Auto Backup', label: 'header auto backup' },
+  { match: /'\?{3,4}\s+Matikan\s+Pengingat/g, replace: "'\u26d4 Matikan Pengingat", label: 'btn matikan pengingat' },
+  { match: /'\?{3,4}\s+Matikan\s+Auto\s+Backup/g, replace: "'\u26d4 Matikan Auto Backup", label: 'btn matikan backup' },
+
+  // --- Admin: check saldo / flag user / monitor ---
+  { match: /'\?{3,4}\s+Masukkan\s+ID\s+Telegram/g, replace: "'\ud83c\udd94 Masukkan ID Telegram", label: 'masukkan id' },
+  { match: /'\?{3,4}\s+\*Mode\s+tandai/g, replace: "'\ud83d\udea9 *Mode tandai", label: 'mode tandai' },
+  { match: /<b>\?{3,4}\s+Monitor\s+User/g, replace: '<b>\ud83d\udcca Monitor User', label: 'monitor user' },
+  { match: /<b>\?{3,4}\s+MANAGEMEN\s+SERVER/g, replace: '<b>\ud83d\uddd1\ufe0f MANAGEMEN SERVER', label: 'management server' },
+
+  // --- List Reseller/Member button ---
+  { match: /'\?{3,4}\s+List\s+Reseller'/g, replace: "'\ud83d\udc8e List Reseller'", label: 'btn list reseller' },
+  { match: /'\?{3,4}\s+List\s+Member'/g, replace: "'\ud83d\udc64 List Member'", label: 'btn list member' },
+  { match: /'\?{3,4}\s+List\s+Server'/g, replace: "'\ud83d\uddd1\ufe0f List Server'", label: 'btn list server' },
+
+  // --- Khusus admin alert ---
+  { match: /'\?{3,4}\s+Khusus\s+admin\.'/g, replace: "'\ud83d\udeab Khusus admin.'", label: 'khusus admin' },
+
+  // --- Breadcrumb "... bulan ini: N | total: N" ---
+  { match: /}\s+\?{3}\s+bulan\s+ini:/g, replace: '} \u2022 bulan ini:', label: 'breadcrumb bulan ini' },
+
+  // --- Admin menu tombol top-level ---
+  { match: /'\?{3,4}\s+Menu\s+Reseller\s+&\s+Saldo/g, replace: "'\ud83e\uddfe Menu Reseller & Saldo", label: 'btn menu reseller saldo' },
+  { match: /'\?{3,4}\s+Monitor\s+User\s+&\s+Reseller/g, replace: "'\ud83d\udcca Monitor User & Reseller", label: 'btn monitor user reseller' },
+  { match: /'\?{3,4}\s+List\s+Semua\s+User/g, replace: "'\ud83d\udccb List Semua User", label: 'btn list semua user' },
+  { match: /'\?{3,4}\s+Tandai\s+User/g, replace: "'\ud83d\udea9 Tandai User", label: 'btn tandai user' },
+  { match: /'\?{3,4}\s+Backup\s+Database/g, replace: "'\ud83d\udce6 Backup Database", label: 'btn backup database' },
+  { match: /'\?{7}\s+Auto\s+Backup'/g, replace: "'\ud83d\udcbe Auto Backup'", label: 'btn auto backup' },
+  { match: /'\?{3,4}\s+Timezone\s+Bot/g, replace: "'\ud83c\udf10 Timezone Bot", label: 'btn timezone bot' },
+  { match: /'\?{7}\s+Upload\s+Gambar\s+QRIS/g, replace: "'\ud83d\uddbc\ufe0f Upload Gambar QRIS", label: 'btn upload qris' },
+  { match: /'\?{3,4}\s+Kirim\s+Pengumuman/g, replace: "'\ud83d\udce2 Kirim Pengumuman", label: 'btn kirim pengumuman' },
+  { match: /'\?{3,4}\s+Semua\s+User'/g, replace: "'\ud83d\udc65 Semua User'", label: 'btn target semua user' },
+  { match: /'\?{3,4}\s+Member\s+\(bukan/g, replace: "'\ud83d\udc64 Member (bukan", label: 'btn target member' },
+  { match: /'\?{7,}\s+Reseller',/g, replace: "'\ud83d\udc8e\u200d\ud83d\udcb8 Reseller',", label: 'btn target reseller compound' },
+
+  // --- Menu admin header ---
+  { match: /'<b>\?{3,4}\s+MENU\s+ADMIN<\/b>'/g, replace: "'<b>\u2699\ufe0f MENU ADMIN</b>'", label: 'header menu admin' },
+
+  // --- Info Lisensi Bot template ---
+  { match: /`\?{3,4}\s+<b>INFO\s+LISENSI\s+BOT/g, replace: '`\ud83d\udcdc <b>INFO LISENSI BOT', label: 'tmpl info lisensi' },
+
+  // --- Cek Invoice QRIS header ---
+  { match: /'\?{3,4}\s+<b>Cek\s+Invoice\s+QRIS/g, replace: "'\ud83d\udd0d <b>Cek Invoice QRIS", label: 'header cek invoice' },
+  { match: /`\?{3,4}\s+Status\s+DB\s*:/g, replace: '`\ud83d\udcbe Status DB :', label: 'status db' },
+  { match: /`\?{3,4}\s+Dibuat\s+/g, replace: '`\ud83d\udcc5 Dibuat ', label: 'dibuat' },
+  { match: /`\?{3,4}\s+Status\s+API\s*:/g, replace: '`\ud83d\udce1 Status API :', label: 'status api' },
+  { match: /'\\n\?{3,4}\s+Paid\s+API/g, replace: "'\\n\ud83d\udcbc Paid API", label: 'str paid api' },
+  { match: /\\n\?{6}\s+\$\{e\.message/g, replace: '\\n\u26a0\ufe0f ${e.message', label: 'str error msg' },
+
+  // --- 'Silakan ketik domain server baru' ---
+  { match: /'\?{3,4}\s+\*Silakan\s+ketik/g, replace: "'\ud83d\udd8a\ufe0f *Silakan ketik", label: 'silakan ketik' },
+
+  // --- 'Menu ??? Buat Akun' di info (reseller flow) ---
+  { match: /\*\?{3}\s+Buat\s+Akun\*/g, replace: '*\ud83d\udecd\ufe0f Buat Akun*', label: 'mention buat akun' },
+
+  // --- '(base_amount tidak tersimpan ??? transaksi lama)' = arrow ---
+  { match: /tersimpan\s+\?{3}\s+transaksi/g, replace: 'tersimpan \u2192 transaksi', label: 'arrow transaksi' },
+
+  // --- 'Aktif ???' / 'Nonaktif ???' di trial config ---
+  { match: /Aktif\s+\?{3}'/g, replace: "Aktif \u2705'", label: 'trial aktif' },
+  { match: /Nonaktif\s+\?{3}'/g, replace: "Nonaktif \u26d4'", label: 'trial nonaktif' },
+
+  // --- Trial config button '???' (standalone) = - / + adjuster ---
+  // Context: admin_trial_max_dec/inc. Ada 2 set tombol (max, dur) + 2 nop.
+  // Pattern: { text: '???', callback_data: 'admin_trial_max_dec' }
+  { match: /text:\s*'\?{3}',\s*callback_data:\s*'admin_trial_(\w+)_dec'/g, replace: "text: '\u2796', callback_data: 'admin_trial_$1_dec'", label: 'trial btn dec' },
+  { match: /text:\s*'\?{3}',\s*callback_data:\s*'admin_trial_(\w+)_inc'/g, replace: "text: '\u2795', callback_data: 'admin_trial_$1_inc'", label: 'trial btn inc' },
+  { match: /text:\s*'\?{6}',\s*callback_data:\s*'admin_trial_min_dec'/g, replace: "text: '\u2796\u2796', callback_data: 'admin_trial_min_dec'", label: 'trial btn min dec' },
+  { match: /text:\s*'\?{6}',\s*callback_data:\s*'admin_trial_min_inc'/g, replace: "text: '\u2795\u2795', callback_data: 'admin_trial_min_inc'", label: 'trial btn min inc' },
+
+  // --- '*??? Simpan Pengaturan*' (inline text) ---
+  { match: /\*\?{3}\s+Simpan\s+Pengaturan\*/g, replace: '*\ud83d\udcbe Simpan Pengaturan*', label: 'mention simpan pengaturan' },
+
+  // --- Ringkasan Pengumuman ---
+  { match: /`\?{3,4}\s+<b>Ringkasan\s+Pengumuman/g, replace: '`\ud83d\udccb <b>Ringkasan Pengumuman', label: 'ringkasan pengumuman' },
+  { match: /'\?{3,4}\s+<b>Kirim\s+Pengumuman/g, replace: "'\ud83d\udce2 <b>Kirim Pengumuman", label: 'kirim pengumuman header' },
+
+  // --- List line ... ??? Saldo: ---
+  { match: /\)\s+\?{3}\s+Saldo:/g, replace: ') \u2022 Saldo:', label: 'list item saldo' },
+
+  // --- '??? ' (3 char + space) di awal line = bullet • (karakter 3-byte UTF-8 corrupt)
+  // Pattern aman: whitespace + ???  + space, di template string multi-line.
+  // Kita handle terpisah dari 'comment arrow' yang sudah diatas.
+  { match: /\n(\s*)\?{3}\s+/g, replace: '\n$1\u2022 ', label: 'newline bullet' },
+
+  // --- Tombol navigation 'Berikutnya ??????' di pagination -> '➡️' ---
+  { match: /Berikutnya\s+\?{6}/g, replace: 'Berikutnya \u27a1\ufe0f', label: 'nav next' },
+  { match: /\?{6}\s+Sebelumnya/g, replace: '\u2b05\ufe0f Sebelumnya', label: 'nav prev' },
+
+  // --- Tombol arrow standalone: '?????? dan ??????' (pagination body text) ---
+  { match: /tombol\s+\?{6}\s+dan\s+\?{6}/g, replace: 'tombol \u2b05\ufe0f dan \u27a1\ufe0f', label: 'nav both' },
+
+  // --- Header 'DAFTAR RESELLER/MEMBER/SEMUA USER' ---
+  { match: /<b>\?{3,4}\s+DAFTAR\s+RESELLER<\/b>/g, replace: '<b>\ud83d\udc8e DAFTAR RESELLER</b>', label: 'daftar reseller' },
+  { match: /<b>\?{3,4}\s+DAFTAR\s+MEMBER<\/b>/g, replace: '<b>\ud83d\udc64 DAFTAR MEMBER</b>', label: 'daftar member' },
+  { match: /<b>\?{3,4}\s+DAFTAR\s+SEMUA\s+USER<\/b>/g, replace: '<b>\ud83d\udcdc DAFTAR SEMUA USER</b>', label: 'daftar semua user' },
+
+  // --- Reseller program header + keuntungan bullets ---
+  { match: /<b>\?{3,4}\s+Program\s+Reseller/g, replace: '<b>\ud83d\udc8e Program Reseller', label: 'header program reseller' },
+  { match: /<b>\?{3}\s+Keuntungan/g, replace: '<b>\u2728 Keuntungan', label: 'header keuntungan' },
+  { match: /<b>\?{3,4}\s+Cara\s+daftar/g, replace: '<b>\u270d\ufe0f Cara daftar', label: 'header cara daftar' },
+  { match: /<b>\?{6}\s+Keterangan\s+tambahan/g, replace: '<b>\u2139\ufe0f Keterangan tambahan', label: 'header keterangan' },
+
+  // --- Metode : QRIS Otomatis (tmpl) ---
+  { match: /'\?{3,4}\s+Metode\s*:/g, replace: "'\ud83d\udcb3 Metode :", label: 'str metode' },
+
+  // --- Broadcast target list (body) ---
+  { match: /\?{3,4}\s+Semua\s+User\\n/g, replace: '\ud83d\udc65 Semua User\\n', label: 'txt semua user' },
+  { match: /\?{11}\s+Reseller\\n/g, replace: '\ud83d\udc8e\u200d\ud83d\udcb8 Reseller\\n', label: 'txt reseller' },
+  { match: /\?{3,4}\s+Member\s+\(bukan/g, replace: '\ud83d\udc64 Member (bukan', label: 'txt member bukan' },
+
+  // --- Status aktif/expired/habis (inline) ---
+  { match: /\?{6}\s+Aktif\s+\(habis/g, replace: '\u26a0\ufe0f Aktif (habis', label: 'status aktif habis' },
+  { match: /\?{3}\s+Aktif\s+\(~/g, replace: '\u2705 Aktif (~', label: 'status aktif tilde' },
+  { match: /\?{3}\s+Sudah\s+expired/g, replace: '\u274c Sudah expired', label: 'status sudah expired' },
+
+  // --- Help text inline emoji setelah '• ' bullet (?? + button name) ---
+  // Pattern: '• ???? Dapat harga' / '• ???? Bebas atur'
+  // Karena bullet sudah •, '????' setelahnya adalah emoji icon -> sparkle
+  { match: /(\u2022\s+)\?{3,4}\s+(Dapat\s+harga|Bebas\s+atur|Prioritas|Support)/g, replace: '$1\u2728 $2', label: 'bullet sparkle' },
+
+  // --- Inline mention button '"<b>??? Buat Akun</b>"' di teks help ---
+  { match: /"<b>\?{3}\s+Buat\s+Akun<\/b>"/g, replace: '"<b>\ud83d\udecd\ufe0f Buat Akun</b>"', label: 'help btn buat akun' },
+  { match: /"<b>\?{3,4}\s+Akun\s+Saya<\/b>"/g, replace: '"<b>\ud83d\udcc2 Akun Saya</b>"', label: 'help btn akun saya' },
+  { match: /"<b>\?{3,4}\s+Riwayat\s+Saya<\/b>"/g, replace: '"<b>\ud83d\udcca Riwayat Saya</b>"', label: 'help btn riwayat' },
+  { match: /"<b>\?{3}\s+Trial\s+Akun<\/b>"/g, replace: '"<b>\ud83c\udd93 Trial Akun</b>"', label: 'help btn trial' },
+  { match: /"<b>\?{3,4}\s+TopUp\s+Saldo\s+Manual/g, replace: '"<b>\ud83d\udcb3 TopUp Saldo Manual', label: 'help btn topup manual' },
+  { match: /"<b>\?{3,4}\s+Jadi\s+Reseller/g, replace: '"<b>\ud83d\udc8e Jadi Reseller', label: 'help btn jadi reseller' },
+  { match: /"<b>\?{3}\s+Bantuan<\/b>"/g, replace: '"<b>\u2753 Bantuan</b>"', label: 'help btn bantuan' },
+  { match: /<b>\?{3}\s+Buat\s+Akun<\/b>/g, replace: '<b>\ud83d\udecd\ufe0f Buat Akun</b>', label: 'inline buat akun' },
+
+  // --- 'Masukkan domain server reseller' ---
+  { match: /'\?{3,4}\s+Masukkan\s+domain\s+server/g, replace: "'\ud83c\udf10 Masukkan domain server", label: 'masukkan domain' },
+
+  // --- QRIS status template '???? <b>Status QRIS</b>' + 'Refresh Status' button ---
+  { match: /`\?{3,4}\s+<b>Status\s+QRIS<\/b>/g, replace: '`\ud83d\udd0d <b>Status QRIS</b>', label: 'status qris header' },
+  { match: /'\?{3,4}\s+Refresh\s+Status'/g, replace: "'\ud83d\udd04 Refresh Status'", label: 'btn refresh status' },
+
+  // --- Penjualan / target / progress headers ---
+  { match: /<b>\?{3,4}\s+Progress\s+Bonus\s+Aktif/g, replace: '<b>\ud83c\udf81 Progress Bonus Aktif', label: 'header progress bonus' },
+  { match: /<b>\?{3,4}\s+Penjualan\s+Saya/g, replace: '<b>\ud83d\udcb5 Penjualan Saya', label: 'header penjualan saya' },
+  { match: /<b>\?{3,4}\s+Target\s+Bulanan<\/b>/g, replace: '<b>\ud83c\udfaf Target Bulanan</b>', label: 'header target bulanan' },
+  { match: /<b>\?{3,4}\s+Status\s+Target\s+Bulan\s+Ini/g, replace: '<b>\ud83d\udcca Status Target Bulan Ini', label: 'header status target' },
+
+  // --- ' ??? sisa <b>N</b>' arrow di kalimat reseller bonus ---
+  { match: /\}<\/b>\s+\?{3}\s+sisa\s+<b>/g, replace: '}</b> \u2192 sisa <b>', label: 'arrow sisa' },
+
+  // --- 'Penjualan Saya ??? bulanLabel' breadcrumb ---
+  { match: /Penjualan\s+Saya\s+\?{3}\s+\$\{bulanLabel/g, replace: 'Penjualan Saya \u2022 ${bulanLabel', label: 'breadcrumb penjualan' },
+
+  // --- 'durasi ??? 30 hari' / 'berdurasi ??? 30 hari' = greater-equal symbol ---
+  { match: /durasi\s+\?{3}\s+(\d+)\s+hari/g, replace: 'durasi \u2265 $1 hari', label: 'gte hari' },
+
+  // --- Server detail template '???? Harga normal' / '???? Harga reseller' / '???? Quota' / '???? Total akun' ---
+  { match: /`\?{3,4}\s+Harga\s+normal/g, replace: '`\ud83d\udcb5 Harga normal', label: 'detail harga normal' },
+  { match: /`\?{3,4}\s+Harga\s+reseller/g, replace: '`\ud83d\udc8e Harga reseller', label: 'detail harga reseller' },
+  { match: /`\?{3,4}\s+Perkiraan\s+(reseller|harga)/g, replace: '`\ud83d\udcb0 Perkiraan $1', label: 'detail perkiraan' },
+  { match: /`\?{3,4}\s+Harga\s+(\d+)\s+hari/g, replace: '`\ud83d\udcb5 Harga $1 hari', label: 'detail harga days' },
+  { match: /`\?{3,4}\s+Total\s+akun\s+dibuat/g, replace: '`\ud83d\udcca Total akun dibuat', label: 'detail total akun' },
+  { match: /`\?{3,4}\s+<b>\$\{server\.nama_server/g, replace: '`\ud83d\udda5\ufe0f <b>${server.nama_server', label: 'detail server name' },
+  { match: /`\?{3,4}\s+Quota\s+/g, replace: '`\ud83d\udcca Quota ', label: 'detail quota' },
+
+  // --- Server detail tambahan ---
+  { match: /`\?{3,4}\s+Limit\s+IP\s+/g, replace: '`\ud83d\udd22 Limit IP ', label: 'detail limit ip' },
+  { match: /`\?{3,4}\s+<b>List\s+Server<\/b>/g, replace: '`\ud83d\udda5\ufe0f <b>List Server</b>', label: 'header list server' },
+
+  // --- 'Masukkan username:' (input prompt) ---
+  { match: /'\?{3,4}\s+<b>Masukkan\s+username/g, replace: "'\ud83d\udc64 <b>Masukkan username", label: 'masukkan username html' },
+  { match: /'\?{3,4}\s+\*Masukkan\s+username\s+yang\s+ingin\s+(dihapus|dibuka|dikunci)/g, replace: (m, action) => {
+    const map = { 'dihapus': '\u274c', 'dibuka': '\ud83d\udd13', 'dikunci': '\ud83d\udd12' };
+    return "'" + map[action] + ' *Masukkan username yang ingin ' + action;
+  }, label: 'username action prompt' },
+
+  // --- VPN type icon (case statement) ---
+  { match: /'\?{3,4}\s+SSH'/g, replace: "'\ud83d\uddff SSH'", label: 'type ssh' },
+  { match: /'\?{3,4}\s+VMess'/g, replace: "'\ud83d\udd17 VMess'", label: 'type vmess' },
+  { match: /'\?{3,4}\s+VLess'/g, replace: "'\ud83d\udd17 VLess'", label: 'type vless' },
+  { match: /'\?{3,4}\s+Trojan'/g, replace: "'\ud83c\udfa0 Trojan'", label: 'type trojan' },
+  { match: /'\?{3,4}\s+Shadowsocks'/g, replace: "'\ud83d\udc7b Shadowsocks'", label: 'type shadowsocks' },
+
+  // --- 'Riwayat Akun Kamu' header ---
+  { match: /<b>\?{3,4}\s+Riwayat\s+Akun\s+Kamu/g, replace: '<b>\ud83d\udcc8 Riwayat Akun Kamu', label: 'header riwayat akun' },
+
+  // --- '"???? Kirim Pengumuman"' inline mention text ---
+  { match: /"\?{3,4}\s+Kirim\s+Pengumuman"/g, replace: '"\ud83d\udce2 Kirim Pengumuman"', label: 'mention kirim pengumuman' },
+
+  // --- Preview Pengumuman headers ---
+  { match: /`\?{3,4}\s+<b>Preview\s+Pengumuman\s+Maintenance/g, replace: '`\ud83d\udccb <b>Preview Pengumuman Maintenance', label: 'preview maintenance' },
+  { match: /`\?{3,4}\s+<b>Preview\s+Pengumuman\s+Promo/g, replace: '`\ud83d\udccb <b>Preview Pengumuman Promo', label: 'preview promo' },
+  { match: /`\?{3,4}\s+<b>Preview\s+Pengumuman</g, replace: '`\ud83d\udccb <b>Preview Pengumuman<', label: 'preview pengumuman generic' },
+
+  // --- Pengumuman maintenance + promo body ---
+  { match: /'\?{3,4}\s+<b>PENGUMUMAN\s+MAINTENANCE/g, replace: "'\ud83d\udee0\ufe0f <b>PENGUMUMAN MAINTENANCE", label: 'pengumuman maintenance body' },
+  { match: /'\?{3,4}\s+<b>PROMO\s+\/\s+DISKON/g, replace: "'\ud83c\udf81 <b>PROMO / DISKON", label: 'pengumuman promo body' },
+  { match: /`\?{3,4}\s+Waktu\s+mulai\s*:/g, replace: '`\u23f0 Waktu mulai :', label: 'waktu mulai' },
+  { match: /`\?{3,4}\s+Berlaku\s+sampai:/g, replace: '`\ud83d\udcc5 Berlaku sampai:', label: 'berlaku sampai' },
+
+  // --- Logger info '???? Poll QRIS GoPay: ' ---
+  { match: /`\?{3,4}\s+Poll\s+QRIS\s+GoPay/g, replace: '`\ud83d\udd0d Poll QRIS GoPay', label: 'log poll qris' },
+
+  // --- Tombol QRIS '???? Buat QRIS Baru' / '???? Cek Status' ---
+  { match: /'\?{3,4}\s+Buat\s+QRIS\s+Baru'/g, replace: "'\ud83d\udcb3 Buat QRIS Baru'", label: 'btn buat qris baru' },
+  { match: /'\?{3,4}\s+Cek\s+Status'/g, replace: "'\ud83d\udd04 Cek Status'", label: 'btn cek status' },
+
+  // --- QRIS invoice template detail '???? <b>Invoice</b>' / '???? <b>Nominal</b>' / '???? <b>Kode unik</b>' / '???? <b>Total bayar</b>' ---
+  { match: /`\?{3,4}\s+<b>Invoice<\/b>/g, replace: '`\ud83e\uddfe <b>Invoice</b>', label: 'qris detail invoice' },
+  { match: /`\?{3,4}\s+<b>Nominal<\/b>/g, replace: '`\ud83d\udcb0 <b>Nominal</b>', label: 'qris detail nominal' },
+  { match: /`\?{3,4}\s+<b>Kode\s+unik<\/b>/g, replace: '`\ud83d\udd22 <b>Kode unik</b>', label: 'qris detail kode unik' },
+  { match: /`\?{3,4}\s+<b>Total\s+bayar<\/b>/g, replace: '`\ud83d\udcb5 <b>Total bayar</b>', label: 'qris detail total bayar' },
+
+  // --- 'Scan QR lalu bayar' instruksi ---
+  { match: /`\?{3,4}\s+Scan\s+QR\s+/g, replace: '`\ud83d\udcf2 Scan QR ', label: 'scan qr' },
+
+  // --- 'Link Pembayaran:' ---
+  { match: /\\n\\n\?{3,4}\s+Link\s+Pembayaran:/g, replace: '\\n\\n\ud83d\udd17 Link Pembayaran:', label: 'link pembayaran' },
+
+  // --- Konfirmasi Topup QRIS template ---
+  { match: /'\?{3,4}\s+<b>Konfirmasi\s+Topup\s+QRIS/g, replace: "'\ud83d\udcb3 <b>Konfirmasi Topup QRIS", label: 'konfirmasi topup' },
+  { match: /`\?{3,4}\s+Nominal\s+topup:/g, replace: '`\ud83d\udcb0 Nominal topup:', label: 'nominal topup' },
+  { match: /`\?{3,4}\s+Jumlah\s+yang\s+harus\s+dibayar:/g, replace: '`\ud83d\udcb5 Jumlah yang harus dibayar:', label: 'jumlah dibayar' },
+  { match: /'\?{3,4}\s+Bonus\s+topup:/g, replace: "'\ud83c\udf81 Bonus topup:", label: 'bonus topup tidak' },
+  { match: /`\?{3,4}\s+Estimasi\s+saldo\s+masuk:/g, replace: '`\ud83d\udcb0 Estimasi saldo masuk:', label: 'estimasi saldo' },
+  { match: /'\?{3,4}\s+Tekan\s+<b>/g, replace: "'\u2139\ufe0f Tekan <b>", label: 'tekan tombol info' },
+  { match: /<b>\?{3}\s+Lanjut\s+Topup<\/b>/g, replace: '<b>\u27a1\ufe0f Lanjut Topup</b>', label: 'mention lanjut topup' },
+
+  // --- 'Catatan saat ini: ' template ---
+  { match: /\\n\?{3,4}\s+Catatan\s+saat\s+ini:/g, replace: '\\n\ud83d\udccc Catatan saat ini:', label: 'catatan saat ini' },
+
+  // --- Header 'Data user' / 'RIWAYAT SALDO USER' ---
+  { match: /`\?{3,4}\s+\*Data\s+user:/g, replace: '`\ud83d\udc64 *Data user:', label: 'header data user' },
+  { match: /<b>\?{3,4}\s+RIWAYAT\s+SALDO\s+USER<\/b>/g, replace: '<b>\ud83d\udcdc RIWAYAT SALDO USER</b>', label: 'header riwayat saldo' },
+
+  // --- 'Silakan topup saldo' inline mention ---
+  { match: /\*\?{3,4}\s+TopUp\s+Saldo/g, replace: '*\ud83d\udcb3 TopUp Saldo', label: 'mention topup saldo bold' },
+
+  // --- Range '3???20 karakter' = endash ---
+  { match: /(\d+)\?{3,4}(\d+)\s+karakter/g, replace: '$1\u2013$2 karakter', label: 'range karakter' },
+
+  // --- console.log informational icons ---
+  { match: /'\?{3,4}\s+ID\s+Pengguna:/g, replace: "'\ud83c\udd94 ID Pengguna:", label: 'log id pengguna' },
+  { match: /'\?{3,4}\s+Daftar\s+Ressel:/g, replace: "'\ud83d\udcdc Daftar Ressel:", label: 'log daftar ressel' },
+
+  // --- Input prompts dengan markdown bold '*Silakan masukkan ...*' ---
+  { match: /'\?{3,4}\s+\*Masukkan\s+password:/g, replace: "'\ud83d\udd11 *Masukkan password:", label: 'masukkan password' },
+  { match: /'\?{3,4}\s+\*Silakan\s+masukkan\s+(auth|quota|limit|batas|harga)/g, replace: "'\u270f\ufe0f *Silakan masukkan $1", label: 'silakan masukkan generic' },
+  { match: /'\?{3,4}\s+Masukkan\s+(auth|harga)\s+server/g, replace: "'\u270f\ufe0f Masukkan $1 server", label: 'masukkan generic server' },
+
+  // --- Detail server pada notif setelah create '???? *Detail Server:*' ---
+  { match: /\\n\\n\?{3,4}\s+\*Detail\s+Server:/g, replace: '\\n\\n\ud83d\udcdd *Detail Server:', label: 'detail server label' },
+
+  // --- 'msg.includes("???")' (case lookup msg di provider response) ---
+  // Ini bukan emoji corrupt, tapi pattern check '???' literal dari API response.
+  // Skip: keep as-is.
+
+  // --- Admin prompt server config ---
+  { match: /'\?{3,4}\s+Masukkan\s+(nama|quota|IP\s+limit|batas|jumlah)\s+/g, replace: "'\u270f\ufe0f Masukkan $1 ", label: 'masukkan admin prompt' },
+  { match: /'\?{3,4}\s+Silakan\s+cek\s+saldo/g, replace: "'\u2139\ufe0f Silakan cek saldo", label: 'info cek saldo' },
+
+  // --- logger info startup '???? Proses ...' ---
+  { match: /'\?{3,4}\s+Proses\s+(tambah|detail|daftar)/g, replace: "'\u23f3 Proses $1", label: 'log proses' },
+
+  // --- Admin list server header '???? *Daftar Server* ????' ---
+  { match: /'\?{3,4}\s+\*Daftar\s+Server\*\s+\?{3,4}/g, replace: "'\ud83d\uddd1\ufe0f *Daftar Server* \ud83d\uddd1\ufe0f", label: 'header daftar server bangsa' },
+
+  // --- Numbered list item server '???? ${index + 1}. ${server.domain}' ---
+  { match: /`\?{3,4}\s+\$\{index\s*\+\s*1\}\./g, replace: '`\u2022 ${index + 1}.', label: 'list server bullet' },
+
+  // --- 'PERHATIAN!' warning admin destructive ---
+  { match: /'\?{3,4}\s+\*PERHATIAN!/g, replace: "'\u26a0\ufe0f *PERHATIAN!", label: 'perhatian warning' },
+
+  // --- 'Saldo user sekarang' inline result ---
+  { match: /\\n\?{3,4}\s+Saldo\s+user\s+sekarang:/g, replace: '\\n\ud83d\udcb0 Saldo user sekarang:', label: 'saldo user sekarang' },
+
+  // --- '???? *Detail:*' ---
+  { match: /'\?{3,4}\s+\*Detail:\*/g, replace: "'\ud83d\udccb *Detail:*", label: 'detail label admin' },
+
+  // --- Inline mention '*Silakan pilih server untuk melihat detail*' ---
+  { match: /'\?{3,4}\s+\*Silakan\s+pilih\s+server/g, replace: "'\ud83d\udd0d *Silakan pilih server", label: 'silakan pilih server' },
+  { match: /'\?{3,4}\s+\*Silakan\s+masukkan\s+domain/g, replace: "'\u270f\ufe0f *Silakan masukkan domain", label: 'silakan masukkan domain' },
+
+  // --- Delete/confirm button (admin server) '???' standalone ---
+  { match: /text:\s*'\?{3}',\s*callback_data:\s*'delete'/g, replace: "text: '\ud83d\uddd1\ufe0f', callback_data: 'delete'", label: 'btn delete admin' },
+  { match: /text:\s*'\?{3}',\s*callback_data:\s*'confirm'/g, replace: "text: '\u2705', callback_data: 'confirm'", label: 'btn confirm admin' },
+
+  // --- 'MANAGEMEN SERVER' header 7-char '??????? MANAGEMEN' ---
+  { match: /<b>\?{7}\s+MANAGEMEN\s+SERVER/g, replace: '<b>\ud83d\uddd1\ufe0f MANAGEMEN SERVER', label: 'header managemen server 7' },
+
+  // --- 'IP limit' admin prompt sisa ---
+  { match: /'\?{3,4}\s+Masukkan\s+IP\s+limit/g, replace: "'\u270f\ufe0f Masukkan IP limit", label: 'masukkan ip limit' },
+
   // --- Template string gLines.push('???? <b>...:</b> ...') = label icon ---
   // Pattern aman: list line di notifikasi topup. Default ke '\u2022' (bullet) tapi
   // beberapa khusus: User=👤 ID=🆔 Metode=💳 Nominal=💰 Bonus=🎁
