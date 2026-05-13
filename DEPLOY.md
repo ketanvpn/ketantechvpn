@@ -558,6 +558,52 @@ pm2 restart sellvpn --update-env
 
 Flag `--update-env` penting kalau kamu ubah `.env`, bukan cuma `.vars.json`. Tanpa flag itu PM2 masih pakai env lama.
 
+**Alternatif / tambahan: backup folder lengkap via cron (recommended untuk migrasi ke VPS lain).**
+
+Auto-backup built-in di atas cuma kirim 1 file `sellvpn.db`. Untuk backup lengkap (DB + `.env` + `.vars.json` + `qris.jpg` + config trial) pakai script `scripts/backup_botvpn.sh` yang ter-bundle di repo:
+
+```bash
+# 1. Pastikan executable
+chmod +x /root/BotVPN/scripts/backup_botvpn.sh
+
+# 2. Test manual dulu
+/root/BotVPN/scripts/backup_botvpn.sh
+# Cek di Telegram admin kamu, harus ada file botvpn_YYYY-MM-DD_HH-MM.tar.gz
+
+# 3. Setup cron tiap 12 jam (jam 00:00 dan 12:00 waktu server)
+( crontab -l 2>/dev/null; echo '0 */12 * * * /root/BotVPN/scripts/backup_botvpn.sh >> /var/log/botvpn-backup.log 2>&1' ) | crontab -
+
+# 4. Verify cron tersimpan
+crontab -l | grep backup_botvpn
+```
+
+Yang script ini lakukan:
+- Baca `BOT_TOKEN` + chat tujuan dari `.env` (tidak hardcode).
+- Bundle folder `/root/BotVPN` ke `.tar.gz` (exclude `node_modules/`, `.git/`, `logs/`, file backup lama).
+- Pakai `pigz` (parallel gzip) kalau tersedia, fallback ke `gzip`.
+- Kirim ke Telegram admin dengan caption ukuran + jumlah file + status bot.
+- Retry 3x kalau gagal, terakhir kirim notif plain text ke admin.
+- Simpan lokal di `/root/botvpn_backups/` dengan retention 7 hari.
+- Lock file via `flock` supaya tidak overlap.
+
+**Restore dari backup tar.gz** (misalnya saat migrasi ke VPS baru):
+
+```bash
+# Di VPS baru, setelah installer jalan
+pm2 stop sellvpn
+cd /root
+tar -xzf /path/ke/botvpn_YYYY-MM-DD_HH-MM.tar.gz
+# File akan extract ke /root/BotVPN/ (overwrite config + DB lama)
+pm2 restart sellvpn --update-env
+```
+
+**Cek log backup + debugging:**
+
+```bash
+tail -f /var/log/botvpn-backup.log
+ls -lh /root/botvpn_backups/
+```
+
 **Off-site backup (rekomendasi tambahan ke VPS lain):**
 
 ```bash
