@@ -231,11 +231,12 @@ Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dik
 
 ### Integration test & CI
 
-- [x] `tests/integration/` dengan sqlite3 `:memory:` — helper bootstrap (migrations otomatis) di `tests/integration/helpers.js`. Commit: `0753437`.
+- [x] `tests/integration/` dengan sqlite3 `:memory:` — helper bootstrap (migrations otomatis) di `tests/integration/helpers.js`. Commit: `0753437` + `<TBD>` (qris-invoice).
   - [x] `account-service.test.js` (4 test): race condition `processAccountPayment` saldo tipis, `refundAccountPayment` balikin saldo, pembelian sequential, kontrak paralel (SQLITE_BUSY acceptable).
   - [x] `deposit-manager.test.js` (3 test): `creditDeposit` double-process guard (hanya 1 kredit saldo), `findAvailableTopupAmount` collision fallback, suffix tersedia → non-bentrok.
   - [x] `smoke.test.js` (1 test): verifikasi semua table utama ter-migrate.
-  - Total: **8 integration test, semua PASS.**
+  - [x] `qris-invoice.test.js` (13 test): happy path, `forcedUniqueSuffix` explicit, clamp amount ke max (diff>=50 vs <50), validasi base amount + api key; `checkQrisInvoiceStatus` invoice tidak ada, PENDING sebelum grace lewat, PAID/EXPIRED/CANCELED/PENDING state dari provider. **Test ini juga mendokumentasikan bug carry-over**: `forcedUniqueSuffix=null` default di-treat suffix 0 karena `Number.isFinite(Number(null))===true`.
+  - Total: **21 integration test, semua PASS.**
   - Script npm: `npm run test:integration` (tests/integration/*.test.js) + `npm run test:all` (unit + integration).
 - [x] Scheduler fake-timer test (`node:test` `mock.timers`) untuk 4 scheduler — `tests/scheduler.test.js`, 6 test: auto-backup disabled/enabled/restart, daily-report jam target + no double-send, expiry-reminder H-n, reseller-target day-1 of month only. Total 59 unit test (dari 53).
 - [x] Smoke boot (`scripts/smoke-boot.js`) + GitHub Actions step: verifikasi semua module bisa di-require + semua factory bisa di-construct dengan stub deps + DB `:memory:` migrations sukses. Tidak perlu BOT_TOKEN valid. CI workflow juga sekarang jalankan `npm run test:integration` + syntax check untuk semua folder split (`db/`, `payment/`, `accounts/`, `admin/`, `scheduler/`).
