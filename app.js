@@ -11624,6 +11624,9 @@ bot.action('detailserver', async (ctx) => {
 
 bot.action('listserver', async (ctx) => {
   try {
+    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+      return ctx.answerCbQuery('\ud83d\udeab Khusus admin.', { show_alert: true }).catch(() => {});
+    }
     logger.info('⏳ Proses daftar server dimulai');
     await ctx.answerCbQuery();
 
