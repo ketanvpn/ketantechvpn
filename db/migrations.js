@@ -245,13 +245,16 @@ function runMigrations(db, logger, helpers) {
   )`, (err) => {
     if (err) logger.error('Kesalahan membuat tabel broadcast_jobs:', err.message);
     else logger.info('broadcast_jobs table created or already exists');
+    // Index dibuat setelah tabel selesai (di dalam callback CREATE TABLE)
+    // supaya tidak race dengan CREATE INDEX (yang sebelumnya bisa kepanggil
+    // sebelum table siap, lalu warn 'no such table').
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_broadcast_jobs_status ON broadcast_jobs(status, started_at)',
+      (err2) => {
+        if (err2) logger.warn('Gagal bikin idx_broadcast_jobs_status: ' + err2.message);
+      }
+    );
   });
-  db.run(
-    'CREATE INDEX IF NOT EXISTS idx_broadcast_jobs_status ON broadcast_jobs(status, started_at)',
-    (err) => {
-      if (err) logger.warn('Gagal bikin idx_broadcast_jobs_status: ' + err.message);
-    }
-  );
 }
 
 module.exports = { runMigrations };
