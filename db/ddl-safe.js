@@ -66,7 +66,12 @@ function createDdlHelpers(db, logger) {
         return;
       }
       if (row) {
-        log.warn(`Index unik ${indexName} dilewati karena masih ada data duplikat di ${tableName}.${columnName}`);
+        log.warn(
+          `Index unik ${indexName} dilewati: masih ada duplikat di ${tableName}.${columnName} ` +
+            `(contoh value: ${JSON.stringify(row.value)}). ` +
+            `Clean duplikat lalu restart bot supaya proteksi aktif. ` +
+            `Query cepat cek: SELECT ${columnName}, COUNT(*) FROM ${tableName} GROUP BY ${columnName} HAVING COUNT(*) > 1;`
+        );
         return;
       }
       db.run(`CREATE UNIQUE INDEX IF NOT EXISTS ${indexName} ON ${tableName}(${columnName})${whereSql}`, (indexErr) => {
@@ -100,7 +105,11 @@ function createDdlHelpers(db, logger) {
         return;
       }
       if (row) {
-        log.warn(`Index unik ${indexName} dilewati karena masih ada data duplikat di ${tableName}(${columns})`);
+        log.warn(
+          `Index unik ${indexName} dilewati: masih ada duplikat di ${tableName}(${columns}). ` +
+            `Clean duplikat lalu restart bot supaya proteksi aktif. ` +
+            `Query cepat cek: SELECT ${columns}, COUNT(*) FROM ${tableName} GROUP BY ${columns} HAVING COUNT(*) > 1;`
+        );
         return;
       }
       db.run(

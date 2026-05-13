@@ -138,7 +138,8 @@ const DEFAULT_TRIAL_CONFIG = {
   enabled: true,          // trial awalnya AKTIF
   maxPerDay: 1,           // berapa kali trial per user per hari
   durationHours: 1,       // lama trial dalam satuan JAM
-  minBalanceForTrial: 0   // minimal saldo untuk bisa trial (0 = bebas)
+  minBalanceForTrial: 0,  // minimal saldo untuk bisa trial (0 = bebas)
+  watchlistMaxPerDay: 1   // batas trial per hari khusus user WATCHLIST
 };
 // Cache in-memory untuk konfigurasi trial
 let trialConfigCache = null;
@@ -187,11 +188,17 @@ async function getTrialConfig() {
         ? cfg.minBalanceForTrial
         : DEFAULT_TRIAL_CONFIG.minBalanceForTrial;
 
+    const watchlistMaxPerDay =
+      Number.isInteger(cfg.watchlistMaxPerDay) && cfg.watchlistMaxPerDay >= 0
+        ? cfg.watchlistMaxPerDay
+        : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay;
+
     const result = {
       enabled,
       maxPerDay,
       durationHours,
       minBalanceForTrial,
+      watchlistMaxPerDay,
     };
 
     // Simpan ke cache
@@ -5529,48 +5536,144 @@ async function sendBroadcastFromMenu(ctx, target, message) {
       return;
     }
 
-    let sukses = 0;
-    let gagal = 0;
+    // Persist job ke broadcast_jobs supaya bisa di-resume kalau bot restart
+    // di tengah pengiriman.
+    const targetList = Array.from(targets).map((x) => Number(x));
+    const jobId = await createBroadcastJob({
+      adminId: ctx.from?.id || 0,
+      targetType: target,
+      message,
+      targetList,
+    });
 
-    for (const id of targets) {
-      // Retry 1x untuk 429 (rate-limit), sesuai retry_after yang dikirim Telegram.
-      let sent = false;
-      for (let attempt = 0; attempt < 2 && !sent; attempt++) {
-        try {
-          await bot.telegram.sendMessage(id, message, { parse_mode: 'HTML' });
-          sukses++;
-          sent = true;
-        } catch (e) {
-          const status = e?.response?.error_code || e?.code;
-          const retryAfter = Number(
-            e?.response?.parameters?.retry_after ||
-              e?.parameters?.retry_after ||
-              0
+    const { sukses, gagal } = await runBroadcastJob(jobId, 0);
+    await emitBroadcastSummary(ctx, target, targetList.length, sukses, gagal, message);
+  } catch (err) {
+    logger.error('❌ Error di sendBroadcastFromMenu:', err);
+    await ctx.reply('❌ Terjadi kesalahan saat mengirim pengumuman.');
+  }
+}
+
+// ============================================================================
+// Broadcast job persistence (table broadcast_jobs)
+// - createBroadcastJob: insert job, return id
+// - loadBroadcastJob: ambil row
+// - updateBroadcastJobProgress: update cursor + counter (per 10 pesan)
+// - markBroadcastJobDone: tandai status final
+// - runBroadcastJob: loop kirim pesan, support resume dari startIndex
+// - emitBroadcastSummary: kirim ringkasan ke admin + MASTER_ID + simpan in-memory
+// - resumePendingBroadcastJobs: dipanggil saat startup
+// ============================================================================
+function createBroadcastJob({ adminId, targetType, message, targetList }) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO broadcast_jobs
+         (admin_id, target_type, message, parse_mode, target_list_json,
+          total_target, cursor, sent_count, gagal_count, status, started_at)
+       VALUES (?, ?, ?, 'HTML', ?, ?, 0, 0, 0, 'running', ?)`,
+      [
+        Number(adminId),
+        String(targetType),
+        String(message),
+        JSON.stringify(targetList),
+        targetList.length,
+        Date.now(),
+      ],
+      function (err) {
+        if (err) return reject(err);
+        resolve(this.lastID);
+      }
+    );
+  });
+}
+
+function loadBroadcastJob(jobId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM broadcast_jobs WHERE job_id = ?',
+      [Number(jobId)],
+      (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      }
+    );
+  });
+}
+
+function updateBroadcastJobProgress(jobId, cursor, sukses, gagal) {
+  return new Promise((resolve) => {
+    db.run(
+      'UPDATE broadcast_jobs SET cursor = ?, sent_count = ?, gagal_count = ? WHERE job_id = ?',
+      [cursor, sukses, gagal, Number(jobId)],
+      () => resolve()
+    );
+  });
+}
+
+function markBroadcastJobDone(jobId, status) {
+  return new Promise((resolve) => {
+    db.run(
+      'UPDATE broadcast_jobs SET status = ?, finished_at = ? WHERE job_id = ?',
+      [status, Date.now(), Number(jobId)],
+      () => resolve()
+    );
+  });
+}
+
+async function runBroadcastJob(jobId, startIndex = 0) {
+  const job = await loadBroadcastJob(jobId);
+  if (!job) throw new Error('Broadcast job tidak ditemukan: ' + jobId);
+
+  const targetList = JSON.parse(job.target_list_json || '[]');
+  const message = job.message;
+  let sukses = Number(job.sent_count) || 0;
+  let gagal = Number(job.gagal_count) || 0;
+
+  for (let i = startIndex; i < targetList.length; i++) {
+    const id = targetList[i];
+    let sent = false;
+    for (let attempt = 0; attempt < 2 && !sent; attempt++) {
+      try {
+        await bot.telegram.sendMessage(id, message, { parse_mode: 'HTML' });
+        sukses++;
+        sent = true;
+      } catch (e) {
+        const status = e?.response?.error_code || e?.code;
+        const retryAfter = Number(
+          e?.response?.parameters?.retry_after ||
+            e?.parameters?.retry_after ||
+            0
+        );
+        if (status === 429 && attempt === 0) {
+          const delayMs = (retryAfter > 0 ? retryAfter + 1 : 3) * 1000;
+          logger.warn(
+            `⏳ Kena limit Telegram (429) saat broadcast job=${jobId} ke ${id}. retry_after=${retryAfter}s`
           );
-          if (status === 429 && attempt === 0) {
-            const delayMs = (retryAfter > 0 ? retryAfter + 1 : 3) * 1000;
-            logger.warn(
-              `⏳ Kena limit Telegram (429) saat broadcast menu ke ${id}. retry_after=${retryAfter}s`
-            );
-            await sleep(delayMs);
-            // Loop lanjut ke attempt = 1
-          } else {
-            gagal++;
-            logger.error(
-              `⚠️ Gagal kirim pengumuman ke ${id}:`,
-              e.message
-            );
-            sent = true; // keluar loop, hitung gagal
-          }
+          await sleep(delayMs);
+        } else {
+          gagal++;
+          logger.error(
+            `⚠️ Gagal kirim pengumuman ke ${id}:`,
+            e.message
+          );
+          sent = true;
         }
       }
-
-      // Jeda antar target supaya aman dari limit global Telegram (30 msg/s).
-      // 80 ms = ~12.5 msg/s.
-      await sleep(80);
     }
 
-    // Simpan ringkasan ke memori
+    if ((i + 1) % 10 === 0) {
+      await updateBroadcastJobProgress(jobId, i + 1, sukses, gagal);
+    }
+    await sleep(80);
+  }
+
+  await updateBroadcastJobProgress(jobId, targetList.length, sukses, gagal);
+  await markBroadcastJobDone(jobId, 'done');
+  return { sukses, gagal };
+}
+
+async function emitBroadcastSummary(ctx, target, totalTarget, sukses, gagal, message) {
+  try {
     const now = new Date();
     const timeLabel = now.toLocaleString('id-ID', {
       timeZone: TIME_ZONE,
@@ -5581,7 +5684,6 @@ async function sendBroadcastFromMenu(ctx, target, message) {
       minute: '2-digit',
     });
 
-    // Potong pesan kalau terlalu panjang (biar ringkasan enak dibaca)
     const maxPreviewLen = 300;
     let previewMessage = message;
     if (previewMessage.length > maxPreviewLen) {
@@ -5591,46 +5693,101 @@ async function sendBroadcastFromMenu(ctx, target, message) {
     lastBroadcastInfo = {
       time: timeLabel,
       target,
-      totalTarget: targets.size,
+      totalTarget,
       sukses,
       gagal,
       messagePreview: previewMessage,
       fullMessage: message,
     };
 
-    // Kirim ringkasan ke admin yang menjalankan
-    await ctx.reply(
-      `✅ Pengumuman selesai dikirim.\n` +
-      `Waktu   : <b>${timeLabel}</b>\n` +
-      `Target  : <b>${target}</b>\n` +
-      `Total   : <b>${targets.size}</b> user\n` +
-      `Berhasil: <b>${sukses}</b>, Gagal: <b>${gagal}</b>.`,
-      { parse_mode: 'HTML' }
-    );
+    if (ctx && ctx.reply) {
+      await ctx.reply(
+        `✅ Pengumuman selesai dikirim.\n` +
+          `Waktu   : <b>${timeLabel}</b>\n` +
+          `Target  : <b>${target}</b>\n` +
+          `Total   : <b>${totalTarget}</b> user\n` +
+          `Berhasil: <b>${sukses}</b>, Gagal: <b>${gagal}</b>.`,
+        { parse_mode: 'HTML' }
+      );
+    }
 
-    // Kirim ringkasan ke MASTER_ID (kalau beda dengan pengirim)
     try {
-      if (MASTER_ID && ctx.from && ctx.from.id !== MASTER_ID) {
+      if (MASTER_ID && ctx?.from && ctx.from.id !== MASTER_ID) {
         await bot.telegram.sendMessage(
           MASTER_ID,
           `📋 <b>Ringkasan Pengumuman</b>\n` +
-          `Dikirim oleh: <code>${ctx.from.id}</code>\n` +
-          `Waktu   : <b>${timeLabel}</b>\n` +
-          `Target  : <b>${target}</b>\n` +
-          `Total   : <b>${targets.size}</b> user\n` +
-          `Berhasil: <b>${sukses}</b>, Gagal: <b>${gagal}</b>\n\n` +
-          `<b>Preview Pesan:</b>\n` +
-          previewMessage,
+            `Dikirim oleh: <code>${ctx.from.id}</code>\n` +
+            `Waktu   : <b>${timeLabel}</b>\n` +
+            `Target  : <b>${target}</b>\n` +
+            `Total   : <b>${totalTarget}</b> user\n` +
+            `Berhasil: <b>${sukses}</b>, Gagal: <b>${gagal}</b>\n\n` +
+            `<b>Preview Pesan:</b>\n` +
+            previewMessage,
           { parse_mode: 'HTML' }
         );
       }
     } catch (e) {
       logger.error('⚠️ Gagal kirim ringkasan broadcast ke MASTER_ID:', e.message);
     }
-  } catch (err) {
-    logger.error('❌ Error di sendBroadcastFromMenu:', err);
-    await ctx.reply('❌ Terjadi kesalahan saat mengirim pengumuman.');
+  } catch (e) {
+    logger.error('⚠️ Gagal emit broadcast summary:', e.message || e);
   }
+}
+
+// Resume semua broadcast_jobs yang state-nya masih 'running' (mis. bot crash
+// di tengah loop kirim). Lanjut dari cursor terakhir, kirim pesan ke user
+// sisa, lalu mark done. Notif ringkasan akhir dikirim ke admin (kalau bisa).
+async function resumePendingBroadcastJobs() {
+  return new Promise((resolve) => {
+    db.all(
+      "SELECT * FROM broadcast_jobs WHERE status = 'running' ORDER BY started_at ASC",
+      [],
+      async (err, rows) => {
+        if (err) {
+          logger.error('⚠️ Gagal cek broadcast jobs pending:', err.message);
+          return resolve();
+        }
+        if (!rows || rows.length === 0) return resolve();
+        logger.info(`⏮️ Resume ${rows.length} broadcast job(s) yang sempat terputus`);
+        for (const job of rows) {
+          const startIdx = Number(job.cursor) || 0;
+          try {
+            const total = Number(job.total_target) || 0;
+            if (startIdx >= total) {
+              await markBroadcastJobDone(job.job_id, 'done');
+              continue;
+            }
+            logger.info(
+              `⏮️ Lanjut broadcast job=${job.job_id} dari ${startIdx}/${total} (target=${job.target_type})`
+            );
+            const { sukses, gagal } = await runBroadcastJob(job.job_id, startIdx);
+            // Notif ringkasan ke admin dengan ctx ringan (cuma adminId)
+            try {
+              if (job.admin_id) {
+                await bot.telegram.sendMessage(
+                  Number(job.admin_id),
+                  `✅ Broadcast yang sempat terputus sudah selesai.\n` +
+                    `Job   : <b>#${job.job_id}</b>\n` +
+                    `Target: <b>${job.target_type}</b>\n` +
+                    `Total : <b>${total}</b> user\n` +
+                    `Berhasil: <b>${sukses}</b>, Gagal: <b>${gagal}</b>.`,
+                  { parse_mode: 'HTML' }
+                );
+              }
+            } catch (notifErr) {
+              logger.warn(
+                `Tidak bisa kirim notif resume broadcast ke admin ${job.admin_id}: ${notifErr.message}`
+              );
+            }
+          } catch (e) {
+            logger.error(`⚠️ Gagal resume broadcast job=${job.job_id}:`, e.message || e);
+            await markBroadcastJobDone(job.job_id, 'failed');
+          }
+        }
+        resolve();
+      }
+    );
+  });
 }
 
 // ==== MENU ?→ PENGUMUMAN DI ADMIN ====
@@ -10352,8 +10509,19 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
         const flagStatus = await getUserFlagStatus(ctx.from.id);
 
         if (flagStatus === 'WATCHLIST') {
-          // Contoh aturan: WATCHLIST hanya boleh 1x trial per hari
-          const watchlistLimit = 1;
+          // Batas trial per hari untuk user WATCHLIST, dikonfigurasi lewat
+          // `trial_config.json` field watchlistMaxPerDay (default 1).
+          let watchlistLimit = DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay;
+          try {
+            const cfg = await getTrialConfig();
+            if (
+              cfg &&
+              Number.isInteger(cfg.watchlistMaxPerDay) &&
+              cfg.watchlistMaxPerDay >= 0
+            ) {
+              watchlistLimit = cfg.watchlistMaxPerDay;
+            }
+          } catch (_) {}
           const usedToday = await getTrialUsageToday(ctx.from.id);
 
           if (usedToday >= watchlistLimit) {
@@ -12438,6 +12606,13 @@ if (EXPIRE_DATE) {
 bot.launch()
   .then(() => {
     logger.info('Bot telah dimulai (build QRIS AUTO v3)');
+    // Resume broadcast job yang state-nya masih 'running' setelah restart.
+    // Pakai setImmediate biar tidak blocking startup.
+    setImmediate(() => {
+      resumePendingBroadcastJobs().catch((e) =>
+        logger.error('⚠️ resumePendingBroadcastJobs gagal:', e.message || e)
+      );
+    });
   })
   .catch((error) => {
     logger.error('Error saat memulai bot:', error);

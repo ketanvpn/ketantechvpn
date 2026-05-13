@@ -223,6 +223,35 @@ function runMigrations(db, logger, helpers) {
     if (err) logger.error('Kesalahan membuat tabel trial_usage:', err.message);
     else logger.info('trial_usage table created or already exists');
   });
+
+  // ============================================================================
+  // Broadcast jobs: persist progres broadcast supaya bisa di-resume kalau bot
+  // restart di tengah pengiriman. Target list disimpan sebagai JSON array user_id.
+  // ============================================================================
+  db.run(`CREATE TABLE IF NOT EXISTS broadcast_jobs (
+    job_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER NOT NULL,
+    target_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    parse_mode TEXT DEFAULT 'HTML',
+    target_list_json TEXT NOT NULL,
+    total_target INTEGER NOT NULL,
+    cursor INTEGER NOT NULL DEFAULT 0,
+    sent_count INTEGER NOT NULL DEFAULT 0,
+    gagal_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'running',
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER
+  )`, (err) => {
+    if (err) logger.error('Kesalahan membuat tabel broadcast_jobs:', err.message);
+    else logger.info('broadcast_jobs table created or already exists');
+  });
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_broadcast_jobs_status ON broadcast_jobs(status, started_at)',
+    (err) => {
+      if (err) logger.warn('Gagal bikin idx_broadcast_jobs_status: ' + err.message);
+    }
+  );
 }
 
 module.exports = { runMigrations };
