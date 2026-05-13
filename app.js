@@ -2079,6 +2079,45 @@ async function getUserSaldo(dbArg, userId) {
   return _accountGetUserSaldo(userId);
 }
 
+// Helper: ambil flag_status user dari tabel users.
+// Return string: 'NORMAL' | 'WATCHLIST' | 'NAKAL'. Kalau error / user tidak ada
+// → 'NORMAL' (default aman, tidak memblokir user).
+async function getUserFlagStatus(userId) {
+  return await new Promise((resolve) => {
+    db.get(
+      'SELECT flag_status FROM users WHERE user_id = ?',
+      [userId],
+      (err, row) => {
+        if (err) {
+          logger.warn('getUserFlagStatus error: ' + (err.message || err));
+          return resolve('NORMAL');
+        }
+        const raw = row && row.flag_status ? String(row.flag_status).trim().toUpperCase() : 'NORMAL';
+        if (raw === 'WATCHLIST' || raw === 'NAKAL') {
+          resolve(raw);
+        } else {
+          resolve('NORMAL');
+        }
+      }
+    );
+  });
+}
+
+// Helper: ambil username Telegram dari bot.telegram.getChat.
+// Dipakai untuk label laporan harian + daftar user admin. Return string atau '' kalau gagal.
+async function getUsernameById(userId) {
+  try {
+    const chat = await bot.telegram.getChat(userId);
+    if (chat && chat.username) return String(chat.username);
+    if (chat && chat.first_name) {
+      return chat.last_name ? (chat.first_name + ' ' + chat.last_name) : chat.first_name;
+    }
+  } catch (e) {
+    // Telegram mungkin balikin 400 kalau user belum /start ke bot. Silent.
+  }
+  return '';
+}
+
 
 
 
