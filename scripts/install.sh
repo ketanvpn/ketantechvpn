@@ -161,56 +161,68 @@ fi
 # =================== step 6: .env setup ===================
 log "Step 6/10: Setup konfigurasi .env"
 ENV_FILE="$TARGET_DIR/.env"
+ENV_EXAMPLE="$TARGET_DIR/.env.example"
 
 if [ -f "$ENV_FILE" ]; then
   ok "File .env sudah ada, skip pembuatan. Edit manual kalau perlu: nano $ENV_FILE"
 else
-  # Ambil dari env var kalau ada, kalau tidak prompt
+  # Strategy: copy dari .env.example (semua field visible + kosong), lalu
+  # isi field wajib + optional yang umum. Pendekatan ini memastikan semua
+  # field dari .env.example masuk ke .env walaupun user tidak mengisinya,
+  # jadi admin bisa edit manual nanti tanpa bingung field-nya di mana.
+  if [ ! -f "$ENV_EXAMPLE" ]; then
+    err "File template .env.example tidak ditemukan di $ENV_EXAMPLE. Repo corrupt?"
+    exit 1
+  fi
+
+  # Prompt mandatory (kecuali env var sudah set)
   if [ -z "${BOT_TOKEN:-}" ]; then
     if [ "$ASSUME_YES" -eq 1 ]; then
-      warn "Mode --yes tapi BOT_TOKEN tidak di-set. Skip setup .env, isi manual nanti."
-      touch "$ENV_FILE"
-      chmod 600 "$ENV_FILE"
+      warn "Mode --yes tapi BOT_TOKEN tidak di-set. Copy .env.example kosong, isi manual nanti."
     else
       echo
       echo "  Isi konfigurasi bot. Field bertanda (*) wajib."
       read -rp "  (*) BOT_TOKEN (dari @BotFather): " BOT_TOKEN
       read -rp "  (*) USER_ID (ID Telegram kamu, dari @userinfobot): " USER_ID
-      read -rp "      MASTER_ID (biasanya sama dengan USER_ID): " MASTER_ID
-      read -rp "  (*) ADMIN_IDS (pisahkan koma kalau banyak): " ADMIN_IDS
-      read -rp "  (*) GROUP_ID (ID grup notifikasi, biasanya negatif): " GROUP_ID
+      read -rp "      MASTER_ID (kosongkan = sama dengan USER_ID): " MASTER_ID
+      read -rp "  (*) ADMIN_IDS (pisahkan koma kalau banyak, contoh: 123,456): " ADMIN_IDS
+      read -rp "  (*) GROUP_ID (ID grup notifikasi, mulai dengan -100...): " GROUP_ID
+      read -rp "      BACKUP_CHAT_ID (kosongkan = sama dengan USER_ID): " BACKUP_CHAT_ID
+      read -rp "      NAMA_STORE (opsional, nama toko kamu): " NAMA_STORE
       echo
     fi
   fi
 
   MASTER_ID="${MASTER_ID:-${USER_ID:-}}"
+  BACKUP_CHAT_ID="${BACKUP_CHAT_ID:-${USER_ID:-}}"
 
-  if [ -n "${BOT_TOKEN:-}" ]; then
-    if [ "$DRY_RUN" -eq 1 ]; then
-      echo "  [dry-run] tulis .env dengan BOT_TOKEN (redacted), USER_ID=$USER_ID, ADMIN_IDS=$ADMIN_IDS, GROUP_ID=$GROUP_ID"
-    else
-      cat > "$ENV_FILE" <<ENV
-BOT_TOKEN=$BOT_TOKEN
-USER_ID=$USER_ID
-MASTER_ID=$MASTER_ID
-ADMIN_IDS=$ADMIN_IDS
-GROUP_ID=$GROUP_ID
-PORT=6969
-HTTP_BIND=127.0.0.1
-TIME_ZONE=Asia/Jayapura
-LOG_LEVEL=info
-NODE_ENV=production
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "  [dry-run] copy .env.example -> .env + fill BOT_TOKEN=(redacted), USER_ID=$USER_ID, ADMIN_IDS=$ADMIN_IDS, GROUP_ID=$GROUP_ID, BACKUP_CHAT_ID=$BACKUP_CHAT_ID"
+  else
+    cp "$ENV_EXAMPLE" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
 
-# Payment gateway (optional, isi kalau mau auto-topup QRIS)
-# GOPAY_API_KEY=
-# GOPAY_API_BASE_URL=https://v1-gateway.autogopay.site
-# GOPAY_BASE_QR=
-# ORDERKUOTA_AUTH_USERNAME=
-# ORDERKUOTA_AUTH_TOKEN=
-ENV
-      chmod 600 "$ENV_FILE"
-      ok ".env tersimpan di $ENV_FILE"
-    fi
+    # Sed helper: set KEY=value kalau baris 'KEY=' masih kosong / belum di-fill.
+    set_env() {
+      local key="$1"
+      local value="$2"
+      # Escape '&' '/' '\\' di value biar aman di replacement sed
+      local escaped
+      escaped=$(printf '%s' "$value" | sed -e 's/[\\/&]/\\&/g')
+      # Ganti baris '^KEY=' (dengan atau tanpa value) jadi 'KEY=value'
+      sed -i "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
+    }
+
+    [ -n "${BOT_TOKEN:-}" ]       && set_env BOT_TOKEN       "$BOT_TOKEN"
+    [ -n "${USER_ID:-}" ]         && set_env USER_ID         "$USER_ID"
+    [ -n "${MASTER_ID:-}" ]       && set_env MASTER_ID       "$MASTER_ID"
+    [ -n "${ADMIN_IDS:-}" ]       && set_env ADMIN_IDS       "$ADMIN_IDS"
+    [ -n "${GROUP_ID:-}" ]        && set_env GROUP_ID        "$GROUP_ID"
+    [ -n "${BACKUP_CHAT_ID:-}" ]  && set_env BACKUP_CHAT_ID  "$BACKUP_CHAT_ID"
+    [ -n "${NAMA_STORE:-}" ]      && set_env NAMA_STORE      "$NAMA_STORE"
+
+    ok ".env tersimpan di $ENV_FILE (semua field dari .env.example ikut,"
+    echo "     yang belum diisi tinggal edit manual: nano $ENV_FILE)"
   fi
 fi
 
