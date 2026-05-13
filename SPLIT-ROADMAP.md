@@ -48,6 +48,11 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
   - `checkQrisInvoiceStatus`: grace period 2 menit sebelum mark EXPIRED.
   - `pollQrisPaymentsStartup`: guard stuck >90 detik, auto-reset flag.
   - Daily report + expiry reminder persist `lastDateKey` ke `.vars.json`.
+- [x] **Paket 5 Security Audit Lanjutan** - `5f7281d`
+  - Audit privilege escalation di semua `bot.action`/`bot.command` admin handler.
+  - Fix: `bot.action('listserver')` tambah guard `ADMIN_IDS.includes` (sebelumnya bocor list domain server kalau callback dipalsukan).
+  - Verifikasi aman (no patch perlu): trial flow (PK atomic + trialLock), reseller bonus (Math.floor + dual idempotency `transactions.reference_id` & `reseller_bonus_logs(user_id, period_month)`), broadcast (persist DB + retry-after 429 + sleep 80ms), session in-memory (yang penting sudah di DB).
+  - Nice-to-have (belum dikerjakan): trial `isError` detection diganti object return dari `modules/trial.js`, TTL untuk `userState`/`broadcastSessions`, `global.depositState` pindah ke module scope.
 
 ---
 
