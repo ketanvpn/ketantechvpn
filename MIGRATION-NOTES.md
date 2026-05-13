@@ -202,19 +202,112 @@ Kalau ECONNREFUSED, internet bermasalah atau IP VPS di-block oleh Telegram
 
 ### "`update.sh` minta stash perubahan lokal"
 
-Berarti ada file di repo yang kamu edit. Cek file mana:
+Pesan dari `update.sh` kira-kira begini:
 
-```bash
-git status --short
+```
+Ada perubahan lokal yang belum di-commit di /root/BotVPN.
+Pilihan:
+  1) git stash  (simpan perubahan dulu, lalu jalankan update ulang)
+  2) git checkout -- <file>  (buang perubahan lokal kalau tidak perlu)
+  3) commit dulu kalau memang perubahan penting
+ M cek-port.sh
+ M scripts/backup_botvpn.sh
+ M scripts/install.sh
+ M update.sh
 ```
 
-Kalau itu file system (cek-port.sh, install.sh, update.sh), buang aja:
+#### Langkah 1 — Cek dulu apakah perubahannya benar-benar penting
 
 ```bash
-git checkout -- cek-port.sh scripts/install.sh update.sh
+cd /root/BotVPN
+git diff --stat cek-port.sh scripts/backup_botvpn.sh scripts/install.sh update.sh
 ```
 
-Lalu coba `update.sh` lagi.
+Kalau hasilnya seperti ini (semua `0`), artinya isinya identik dengan repo,
+cuma metadata file (mtime / line ending / permission) yang sempat dibaca
+git sebagai "modified":
+
+```
+ cek-port.sh              | 0
+ scripts/backup_botvpn.sh | 0
+ scripts/install.sh       | 0
+ update.sh                | 0
+ 4 files changed, 0 insertions(+), 0 deletions(-)
+```
+
+→ **Aman dibuang** dengan `git checkout --` (lihat Langkah 2A).
+
+Kalau diff-nya **bukan 0** (ada angka insert/delete), berarti file itu benar-benar
+kamu / installer ubah. Baca dulu isinya sebelum buang:
+
+```bash
+git diff update.sh
+```
+
+Kalau perubahan terlihat **tidak penting** (whitespace, komentar, path lokal),
+lanjut ke Langkah 2A. Kalau **penting** (tweak konfigurasi yang sengaja kamu
+lakukan), pakai Langkah 2B (stash) supaya tidak hilang.
+
+#### Langkah 2A — Buang perubahan lokal (kasus paling umum)
+
+File system (`cek-port.sh`, `update.sh`, `scripts/install.sh`,
+`scripts/backup_botvpn.sh`) biasanya tidak perlu kamu utak-atik manual.
+Aman dibuang:
+
+```bash
+git checkout -- cek-port.sh scripts/backup_botvpn.sh scripts/install.sh update.sh
+bash ./update.sh
+```
+
+#### Langkah 2B — Stash kalau perubahannya penting
+
+Kalau kamu yakin perlu menyimpan perubahan lokal:
+
+```bash
+git stash push -m "vps-local-tweaks-$(date +%F)" -- \
+  cek-port.sh scripts/backup_botvpn.sh scripts/install.sh update.sh
+bash ./update.sh
+```
+
+Setelah update sukses, kalau mau kembalikan perubahanmu:
+
+```bash
+git stash list                # cek nama stash
+git stash pop                  # ambil stash paling atas
+# kalau ada konflik, edit manual, lalu:
+git checkout -- <file_yg_konflik>   # untuk buang
+# atau git add <file> kalau resolusi sudah benar
+```
+
+#### Kenapa file ini sering muncul "modified"
+
+- `cek-port.sh`, `update.sh`, `scripts/install.sh`, `scripts/backup_botvpn.sh`
+  adalah file yang installer atau migrasi pernah sentuh.
+- Kalau kamu install pakai script otomatis, kadang line ending atau permission
+  berubah → git anggap "modified" walau isinya sama.
+- File `.gitattributes` (yang sudah di-commit di `7c7a105`) seharusnya sudah
+  paksa LF di semua text file, jadi seiring waktu phantom diff ini akan hilang.
+- Kalau masih muncul, **selalu jalankan Langkah 1 dulu** sebelum buang.
+
+#### Setelah `update.sh` sukses
+
+`update.sh` akan otomatis:
+1. Backup DB ke `/root/BotVPN-backup-YYYYMMDD-HHMMSS`.
+2. `git fetch && git pull` (fast-forward).
+3. `npm ci --omit=dev` (kalau lockfile berubah).
+4. `node --check app.js` + smoke audit + unit test.
+5. `pm2 restart sellvpn --update-env`.
+6. Tail 20 baris log untuk verifikasi boot.
+
+Kalau di akhir kamu lihat baris:
+
+```
+==> Update selesai. Bot online.
+    Backup: /root/BotVPN-backup-YYYYMMDD-HHMMSS
+```
+
+→ deployment sukses. Sanity check di Telegram: `/start`, `/admin`, klik
+menu utama beberapa kali untuk pastikan tidak ada error.
 
 ### "Disk penuh"
 
