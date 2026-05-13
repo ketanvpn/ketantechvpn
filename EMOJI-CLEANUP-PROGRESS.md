@@ -77,13 +77,78 @@ Banyak `❌` (x merah) muncul di tempat yang harusnya `✅` (check), `⚠️` (w
 
 ---
 
+### Phase 3: MENU ADMIN context-aware cleanup (sesi 13-05-2026)
+
+Total ❌ sebelum sesi ini: **385**. Setelah 5 batch patch: **205** (turun 180, ±47%).
+Sisa 205 = mostly `logger.error`, `Terjadi kesalahan`, `Gagal ...`, validation messages yang memang error asli.
+
+**Batch 1 — tombol & toggle** (`scripts/fix-emoji-admin-1.js`, 21 replace):
+- Tombol `Pengaturan Trial` ❌ → 🧪; `Pengingat Expired` ❌ → 🔔
+- Toggle Nyalakan Pengingat / Nyalakan Auto Backup ❌ → 🔔 / 💾
+- Arithmetic buttons `Jam -1/+1`, `Menit -5/+5`, `-1 jam/+1 jam` ❌ → ➖ / ➕
+- Tombol `Kirim Sekarang` (broadcast) ❌ → 📢 (tombol `Batal` tetap ❌)
+- Reset DB: `Ya` ❌ → ✅, `Tidak` ❌ → ⛔
+- `Tambah Server` / `Hapus Server` ❌ → ➕ / 🗑️
+- `Lanjut Topup` (QRIS) ❌ → ➡️
+- Status lisensi `HARI INI` di `sendAdminMenu` ❌ → ⚠️
+
+**Batch 2 — success & logger info** (`scripts/fix-emoji-admin-2.js`, 41 replace):
+- Success messages: `Saldo user berhasil`, `Server baru berhasil ditambahkan`, `Akun berhasil dibuat`, edit nama/domain/auth/harga/quota server, edit fieldName server, saldo sebesar Rp... berhasil → semua ✅
+- Loading: `Sedang membuat QRIS...`, `Sedang membuat akun...` ❌ → ⏳
+- Info cancel: Pengumuman/Topup/Edit nama/Edit domain/Edit auth/Tandai user/Tambah server/Reset DB/Tambah saldo dibatalkan ❌ → ⛔
+- Logger.info sukses: akun unlock/lock/dihapus, QRIS paid → ✅; QRIS expired → ⏰; hapus server dimulai / QRIS polling aktif → ℹ️
+- Bullet detail edit domain/auth (Sebelumnya/Menjadi/Server/Domain) ❌ → •
+
+**Batch 3 + 3b — bullets & labels** (`scripts/fix-emoji-admin-3.js` + `3b.js`, 76 replace):
+- Header Pengaturan Trial ❌ → 🧪; tombol Simpan Pengaturan ❌ → 💾
+- Header `Broadcast selesai` / `Pengumuman selesai dikirim` ❌ → ✅
+- Broadcast target/mode/contoh (Semua User, Reseller, Member, manual, maintenance, promo, SG-1/SG-2, durasi 30 menit/1 jam/2 jam, waktu contoh, promo detail) ❌ → •
+- Timezone menu bullet (Laporan harian, Pengingat expired) ❌ → •
+- Monitor panel (Total user, Total reseller, Total akun, Akun expired) ❌ → •
+- Managemen Server header bullet (Tambah/Hapus, Edit harga/nama/domain/auth, Edit quota/limit/batas, Lihat list) ❌ → •
+- Trial confirm info (Masa aktif, Batas trial, Minimal saldo) ❌ → •
+- Riwayat saya: Total dibuat / Aktif sekarang / Sudah expired ❌ → •
+- Reseller bonus progress (Akun valid, Omzet valid, Min durasi, Min omzet, Tier tercapai, Target berikutnya, Akun pendek, Hari omzet kurang) ❌ → •
+- Penjualan saya (Total akun terjual, Akun durasi ≥30, Total hari, Target minimal) ❌ → •
+- Status target: `Tercapai` ❌ → ✅ (ternary); `Belum tercapai` tetap ❌
+- Flag user detail bullet (ID/Saldo/Status) ❌ → •; label `NORMAL` default ❌ → ✅ (WATCHLIST/NAKAL tetap ⚠️ / ⛔)
+- Cek QRIS `Dibayar` bullet ❌ → •; /health `Mode` bullet ❌ → •
+- Info `Ketik *batal*`, `Kalau ingin batal` ❌ → ℹ️
+
+**Batch 4 — context messages & QRIS templates** (`scripts/fix-emoji-admin-4.js`, 29 replace):
+- /health HARI INI ❌ → ⚠️
+- Rate-limit warn broadcast/res/mem ❌ → ⏳ (ini warn, bukan error)
+- QRIS header `QRIS EXPIRED` ❌ → ⏰, `QRIS TOPUP DIBUAT` ❌ → 💳, `Berlaku X menit` ❌ → ⏳
+- Warning user-facing: `Fitur trial dimatikan`, `Batas trial watchlist/harian`, `Batas pembuatan akun watchlist` ❌ → ⛔
+- Warning soft: `Saldo kurang`, `Kamu belum memenuhi syarat saldo trial`, `Perintah tidak dikenali`, `Tidak bisa membaca data pengguna` ❌ → ⚠️
+- `Fitur Penjualan hanya reseller`, `Server penuh` ❌ → 🚫 / ⛔
+- Prompt input `Masukkan username/masa aktif/nama server baru` ❌ → ✏️
+- `Pilih server yang ingin dihapus` ❌ → 🗑️
+- Legend `Sudah expired` ❌ → 🔒
+- Detail server `Nama Server` bullet ❌ → •
+
+**Batch 5 — permission denials** (`scripts/fix-emoji-admin-5.js`, 13 replace):
+- `Menu ini khusus admin` (10 occurrences) ❌ → 🚫
+- `Fitur ini hanya untuk Ressel VPN` (3 occurrences) ❌ → 🚫
+
+Side-effect bug yang ketangkep & dibereskan dalam sesi ini:
+- 3x `ctx.reply('... *Masukkan ...*, { parse_mode: ... })` kehilangan tanda petik penutup dari rule batch-4 prompt — patched ulang jadi `*Masukkan ...:*'`.
+- 1x `ctx.reply('🗑️ *Pilih server yang ingin dihapus:*, {` — patched.
+
+Verifikasi akhir sesi:
+- `node --check app.js` → OK
+- `node scripts/smoke-audit.js` → SMOKE AUDIT PASSED
+- `node --test tests/*.test.js` → 59/59 pass
+
+---
+
 ## Status Sekarang
 
 - **Menu user**: sudah rapi semua tampilan (main menu, submenu protocol, trial flow, program reseller, help text).
 - **Create akun**: berhasil untuk VMess (ada di log produksi). Protocol lain (VLess/Trojan/SSH/Shadowsocks) perlu test lanjutan.
 - **Trial akun**: semua protocol bisa jalan setelah fix `0a8dd52` (dispatcher per-signature).
 - **Notif grup**: dibiarkan. User belum add bot ke grup, akan jalan otomatis setelah `GROUP_ID` di-set + bot invited.
-- **Menu admin**: belum di-scan ulang. Kemungkinan masih ada banyak ❌ yang salah konteks + emoji aneh di template seperti notifikasi broadcast summary, management server prompts, reseller target menu, dll.
+- **Menu admin**: sudah di-sweep context-aware (385 → 205 ❌). Sisa 205 = error asli (logger.error, Gagal..., Terjadi kesalahan, validation, permission). Tampilan tombol, bullet, header, prompt, dan status sukses sudah konsisten.
 
 ---
 
@@ -96,14 +161,10 @@ Banyak `❌` (x merah) muncul di tempat yang harusnya `✅` (check), `⚠️` (w
 
 ### Prioritas B — Emoji menu admin
 
-1. **Menu admin top-level**: `/admin` atau tombol `⚙️ MENU ADMIN`. Cek tombol-tombol utama (Menu Reseller, Monitor User, List Semua User, Tandai User, Backup Database, Auto Backup, Timezone, Upload QRIS, Kirim Pengumuman, Template Promosi).
-2. **Submenu Admin Reseller**: `🧾 Menu Reseller & Saldo` → Target Reseller, Bonus Reseller Aktif, Tambah Saldo, Riwayat Saldo, List Reseller/Member, Upload QRIS.
-3. **Admin Server management**: `🗑️ MANAGEMEN SERVER` → List Server, Tambah Server, Detail Server, Delete Server, edit harga/nama/auth/quota/iplimit/batas_create/total_create. Prompt input (`🌐 Masukkan domain`, `✏️ Silakan masukkan...`).
-4. **Admin Flag User**: `🚩 Tandai User` flow, status `⚠️ WATCHLIST` / `⛔ NAKAL` / `👤 Member`.
-5. **Broadcast flow** (template manual, maintenance VPN, promo diskon): preview + confirm + summary terkirim.
-6. **Trial admin config menu**: toggle on/off, max per hari, durationHours, minBalance, save config.
-7. **License admin** (`/addhari`, `/kurangihari`): success/error message.
-8. **Topup manual admin** (tambah/kurang saldo user): success message + banner TOPUP MANUAL / PENGURANGAN SALDO.
+Sudah di-sweep di sesi ini (Batch 1–5). Sisa item kalau mau di-polish manual nanti (skip kalau tidak urgent):
+- Beberapa `Terjadi kesalahan saat ...` mungkin bisa dipisah: yang hard error → ❌, yang retry hint → ⚠️.
+- Banner `TOPUP MANUAL` / `PENGURANGAN SALDO` belum di-verify screenshot; lihat `notifTopupManualGroup()` dan related.
+- `/addhari`, `/kurangihari` success/error response belum di-review ulang emoji (hanya `logger.error`-nya yang sempat disentuh).
 
 ---
 
@@ -111,6 +172,11 @@ Banyak `❌` (x merah) muncul di tempat yang harusnya `✅` (check), `⚠️` (w
 
 - `scripts/restore-emoji.js` — 80+ rules untuk restore `???` → emoji pertama kali.
 - `scripts/fix-emoji-context.js` — context-aware rules untuk `❌` yang salah konteks → emoji yang benar.
+- `scripts/fix-emoji-admin-1.js` — batch 1 sesi 13-05-2026: tombol & toggle menu admin.
+- `scripts/fix-emoji-admin-2.js` — batch 2 sesi 13-05-2026: success, logger.info, loading states.
+- `scripts/fix-emoji-admin-3.js` + `scripts/fix-emoji-admin-3b.js` — batch 3 sesi 13-05-2026: bullets & labels.
+- `scripts/fix-emoji-admin-4.js` — batch 4 sesi 13-05-2026: context messages & QRIS/broadcast templates.
+- `scripts/fix-emoji-admin-5.js` — batch 5 sesi 13-05-2026: permission denials.
 
 Kedua script bisa di-run ulang. Pattern baru bisa ditambahkan sebagai object `{ re, rep, label }` di array `rules`.
 
