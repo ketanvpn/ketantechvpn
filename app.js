@@ -3487,23 +3487,16 @@ ${commandPanelText}
       { text: '🖥️ Cek Server', callback_data: 'cek_service' }
     ],
     [
+      { text: '📊 Riwayat Saya', callback_data: 'my_stats:0' },
       { text: '❓ Bantuan', callback_data: 'help_user' }
     ],
     [
-      { text: '📊 Riwayat Saya', callback_data: 'my_stats:0' }
+      { text: '💎 Upgrade ke Reseller (harga murah)', callback_data: 'jadi_reseller' }
     ],
-    [
-      { text: '💎 Jadi Reseller harga lebih murah!!', callback_data: 'jadi_reseller' }
-    ],
-	// ========================================================================
     // SECTION: PAYMENT - TOMBOL TOPUP SALDO
-    // ========================================================================
-	[
-   { text: '💳 TopUp Saldo OTOMATIS (QRIS)', callback_data: 'topupqris_btn' }
-	],
-    //[
-     // { text: '?→ TopUp Saldo MANUAL via (QRIS)', callback_data: 'topup_manual' }
-    //]
+    [
+      { text: '💳 TopUp Saldo (QRIS Otomatis)', callback_data: 'topupqris_btn' }
+    ]
   ];
 
   // Tambah tombol "Penjualan Saya" khusus reseller
@@ -12667,4 +12660,3 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   logger.error(`uncaughtException: ${err && err.message ? err.message : err}`);
 });
-
