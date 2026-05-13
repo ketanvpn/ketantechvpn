@@ -1,8 +1,15 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Semua text file di repo ini dipaksa LF (Unix-style), konsisten antara
+# Windows dan Linux VPS. Ini menghindari "phantom changes" di git status
+# gara-gara core.autocrlf auto-convert CRLF <-> LF.
+*           text eol=lf
 
-# Shell scripts harus LF supaya bisa dieksekusi di Linux VPS (CRLF bikin error "bad interpreter").
-*.sh text eol=lf
-update.sh text eol=lf
-start text eol=lf
-cek-port.sh text eol=lf
+# File binary yang tidak boleh di-convert.
+*.jpg       binary
+*.jpeg      binary
+*.png       binary
+*.gif       binary
+*.ico       binary
+*.db        binary
+*.tar       binary
+*.tar.gz    binary
+*.zip       binary
