@@ -98,16 +98,15 @@ function createMyAccountsHandlers({
             return;
           }
 
-          const activeLabel = filterNormalized === 'active' ? '\u2705 Aktif \u2022' : '\u2705 Aktif';
-          const expiredLabel = filterNormalized === 'expired' ? '\u274c Expired \u2022' : '\u274c Expired';
-          const allLabel = filterNormalized === 'all' ? '\ud83d\udccb Semua \u2022' : '\ud83d\udccb Semua';
+          const mark = (label, isActive) => (isActive ? '\u2022 ' + label + ' \u2022' : label);
+          const activeLabel = mark('\u2705 Aktif', filterNormalized === 'active');
+          const expiredLabel = mark('\u274c Expired', filterNormalized === 'expired');
+          const allLabel = mark('\ud83d\udccb Semua', filterNormalized === 'all');
 
           const keyboard = [
             [
               { text: activeLabel, callback_data: 'my_accounts_active' },
               { text: expiredLabel, callback_data: 'my_accounts_expired' },
-            ],
-            [
               { text: allLabel, callback_data: 'my_accounts_all' },
             ],
           ];
