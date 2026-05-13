@@ -30,8 +30,14 @@ jobs:
         run: npm run smoke:audit
       - name: Unit tests
         run: npm test
-      - name: Check modules syntax
+      - name: Integration tests
+        run: npm run test:integration
+      - name: Smoke boot (require + factory check)
+        run: npm run smoke:boot
+      - name: Check modules syntax (all split folders)
         run: |
-          for f in modules/*.js lib/*.js scripts/*.js; do
-            node --check "$f"
+          for f in modules/*.js lib/*.js db/*.js payment/*.js accounts/*.js admin/*.js scheduler/*.js scripts/*.js tests/integration/*.js; do
+            if [ -f "$f" ]; then
+              node --check "$f"
+            fi
           done

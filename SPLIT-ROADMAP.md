@@ -238,7 +238,7 @@ Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dik
   - Total: **8 integration test, semua PASS.**
   - Script npm: `npm run test:integration` (tests/integration/*.test.js) + `npm run test:all` (unit + integration).
 - [x] Scheduler fake-timer test (`node:test` `mock.timers`) untuk 4 scheduler — `tests/scheduler.test.js`, 6 test: auto-backup disabled/enabled/restart, daily-report jam target + no double-send, expiry-reminder H-n, reseller-target day-1 of month only. Total 59 unit test (dari 53).
-- [ ] GitHub Actions matrix: tambah smoke boot test (spawn bot dengan dummy token & dummy DB, cek exit 0 dalam 5 detik).
+- [x] Smoke boot (`scripts/smoke-boot.js`) + GitHub Actions step: verifikasi semua module bisa di-require + semua factory bisa di-construct dengan stub deps + DB `:memory:` migrations sukses. Tidak perlu BOT_TOKEN valid. CI workflow juga sekarang jalankan `npm run test:integration` + syntax check untuk semua folder split (`db/`, `payment/`, `accounts/`, `admin/`, `scheduler/`).
 
 ### Nice-to-have (bukan refactor)
 
