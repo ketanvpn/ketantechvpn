@@ -122,3 +122,39 @@ node --test tests/*.test.js
 ```
 
 Kalau semua lolos, repo sehat.
+
+---
+
+## Template 6: Lanjut Emoji Cleanup Menu Admin
+
+```
+Halo, kita lanjut fix emoji di Ketantech VPN Bot.
+
+Status cleanup sampai sesi kemarin ada di `EMOJI-CLEANUP-PROGRESS.md`.
+- Phase 1 + 2 sudah selesai untuk menu USER (komit `bfa208c`).
+- Hari ini target: **MENU ADMIN**.
+
+Tolong:
+1. Baca `EMOJI-CLEANUP-PROGRESS.md` dulu (terutama section "Yang Belum" di bawah).
+2. Scan area admin yang disebut di daftar to-do (admin top-level, reseller submenu, server management, flag user, broadcast, trial config, license, topup manual).
+3. Gunakan `scripts/fix-emoji-context.js` pattern yang sudah ada sebagai referensi. Tambah rules baru context-aware.
+4. Untuk tiap area:
+   - Cari `❌` yang salah konteks (bukan benar-benar error).
+   - Cari pattern 'tanpa emoji' di tombol/pesan yang harusnya punya icon.
+   - Replace context-aware, jangan global replace buta.
+5. Verify tiap beberapa rule:
+   - `node --check app.js`
+   - `node scripts/smoke-audit.js`
+   - `node --test tests/*.test.js`
+6. Commit + push batch per area (mis. "fix(emoji-admin): reseller submenu", "fix(emoji-admin): server management").
+7. Update `EMOJI-CLEANUP-PROGRESS.md` dengan area yang sudah di-cover di sesi ini.
+
+Aturan penting:
+- Satu area (mis. admin server management) = satu commit. Gampang revert kalau rusak.
+- Jangan ubah struktur callback_data atau callback handler name. Cuma ubah `text:` / template string yang visible.
+- Kalau ragu emoji yang tepat, tanya saya dulu dengan context line-nya.
+
+Mulai dari: admin top-level (tombol `/admin` + submenu MENU ADMIN).
+```
+
+---
