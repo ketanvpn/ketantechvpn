@@ -3337,7 +3337,7 @@ async function sendMainMenu(ctx) {
   // Tentukan status user + badge
   let userStatus = '👤 Member';
   if (isAdmin) {
-    userStatus = '⚡�� Admin';
+    userStatus = '👑 Admin';
   } else if (isReseller) {
     userStatus = '💎 Reseller';
   }
@@ -3350,15 +3350,15 @@ async function sendMainMenu(ctx) {
       if (info.daysLeft > 0) {
         licenseInfoText =
           `✅ Lisensi aktif sampai: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          `❌ Sisa: <b>${info.daysLeft}</b> hari\n`;
+          `📅 Sisa: <b>${info.daysLeft}</b> hari\n`;
       } else if (info.daysLeft === 0) {
         licenseInfoText =
           `⚠️ Lisensi berakhir: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          '❌ Status: <b>HARI INI</b>\n';
+          '⚠️ Status: <b>HARI INI</b>\n';
       } else {
         licenseInfoText =
           `❌ Lisensi habis: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          `❌ Lewat: <b>${Math.abs(info.daysLeft)}</b> hari lalu\n`;
+          `📅 Lewat: <b>${Math.abs(info.daysLeft)}</b> hari lalu\n`;
       }
     } else {
       licenseInfoText = '⚠️ Tidak dapat membaca informasi lisensi.\n';
@@ -3405,15 +3405,15 @@ ${commandPanelText}
 
   let keyboard = [
     [
-      { text: '❌ Buat Akun', callback_data: 'service_create' },
+      { text: '🛍️ Buat Akun', callback_data: 'service_create' },
       { text: '📂 Akun Saya', callback_data: 'my_accounts' }
     ],
     [
-      { text: '❌ Trial Akun', callback_data: 'service_trial' },
+      { text: '🆓 Trial Akun', callback_data: 'service_trial' },
       { text: '🖥️ Cek Server', callback_data: 'cek_service' }
     ],
     [
-      { text: '❌ Bantuan', callback_data: 'help_user' }
+      { text: '❓ Bantuan', callback_data: 'help_user' }
     ],
     [
       { text: '📊 Riwayat Saya', callback_data: 'my_stats:0' }
@@ -7423,10 +7423,10 @@ Pengen jualan akun VPN sendiri dengan modal lebih hemat?
 Kamu bisa daftar sebagai <b>reseller resmi</b> di ${storeName}.
 
 <b>✨ Keuntungan jadi reseller:</b>
-• ✨ Dapat harga akun lebih murah dari harga user biasa.
-• ✨ Bebas atur harga jual ke pelanggan kamu sendiri.
-• ✨ Prioritas akses server & bantuan kalau ada kendala teknis.
-• ✨ Support langsung dari admin ${adminName} lewat chat.
+• 💰 Dapat harga akun lebih murah dari harga user biasa.
+• 💵 Bebas atur harga jual ke pelanggan kamu sendiri.
+• ⚡ Prioritas akses server & bantuan kalau ada kendala teknis.
+• 💬 Support langsung dari admin ${adminName} lewat chat.
 
 <b>✍️ Cara daftar reseller:</b>
 1. Salin format pesan di bawah ini.
