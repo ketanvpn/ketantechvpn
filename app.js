@@ -4774,9 +4774,9 @@ async function handleServiceAction(ctx, action) {
         { text: '🔗 Buat VLess', callback_data: 'create_vless' }
       ],
       [
-        { text: '🎠 Buat Trojan', callback_data: 'create_trojan' },
-        { text: '🔙 Kembali', callback_data: 'send_main_menu' }
-      ]
+        { text: '🛡️ Buat Trojan', callback_data: 'create_trojan' }
+      ],
+      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
     ];
   } else if (action === 'trial') {
     keyboard = [
@@ -4786,9 +4786,9 @@ async function handleServiceAction(ctx, action) {
         { text: '🔗 Trial VLess', callback_data: 'trial_vless' }
       ],
       [
-        { text: '🎠 Trial Trojan', callback_data: 'trial_trojan' },
-        { text: '🔙 Kembali', callback_data: 'send_main_menu' }
+        { text: '🛡️ Trial Trojan', callback_data: 'trial_trojan' }
       ],
+      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
     ];
   } else if (action === 'renew') {
     keyboard = [
@@ -4798,9 +4798,9 @@ async function handleServiceAction(ctx, action) {
         { text: '♻️ Perpanjang VLess', callback_data: 'renew_vless' }
       ],
       [
-        { text: '♻️ Perpanjang Trojan', callback_data: 'renew_trojan' },
-        { text: '🔙 Kembali', callback_data: 'send_main_menu' }
+        { text: '♻️ Perpanjang Trojan', callback_data: 'renew_trojan' }
       ],
+      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
     ];
   } else if (action === 'del') {
     keyboard = [
@@ -4810,9 +4810,9 @@ async function handleServiceAction(ctx, action) {
         { text: '🗑️ Hapus VLess', callback_data: 'del_vless' }
       ],
       [
-        { text: '🗑️ Hapus Trojan', callback_data: 'del_trojan' },
-        { text: '🔙 Kembali', callback_data: 'send_main_menu' }
+        { text: '🗑️ Hapus Trojan', callback_data: 'del_trojan' }
       ],
+      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
     ];
   } else if (action === 'lock') {
     keyboard = [
@@ -4822,9 +4822,9 @@ async function handleServiceAction(ctx, action) {
         { text: '🔒 Lock VLess', callback_data: 'lock_vless' }
       ],
       [
-        { text: '🔒 Lock Trojan', callback_data: 'lock_trojan' },
-        { text: '🔙 Kembali', callback_data: 'send_main_menu' }
+        { text: '🔒 Lock Trojan', callback_data: 'lock_trojan' }
       ],
+      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
     ];
   } else if (action === 'unlock') {
     keyboard = [
@@ -4834,9 +4834,9 @@ async function handleServiceAction(ctx, action) {
         { text: '🔓 Unlock VLess', callback_data: 'unlock_vless' }
       ],
       [
-        { text: '🔓 Unlock Trojan', callback_data: 'unlock_trojan' },
-        { text: '🔙 Kembali', callback_data: 'send_main_menu' }
+        { text: '🔓 Unlock Trojan', callback_data: 'unlock_trojan' }
       ],
+      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
     ];
   }
 
