@@ -12687,6 +12687,40 @@ startResellerTargetScheduler();
 
 // HTTP server
 const HTTP_BIND = envOr('HTTP_BIND', '127.0.0.1');
+
+// === Health check endpoint ===
+// Bind ke 127.0.0.1, jadi cuma bisa diakses dari local machine.
+// Berguna untuk monitoring eksternal: cron, systemd watcher, atau reverse proxy.
+// Return JSON ringkas: status, uptime, db reachable, scheduler state, version.
+const HTTP_BOOT_TS = Date.now();
+app.get('/healthz', (req, res) => {
+  const uptimeSec = Math.floor((Date.now() - HTTP_BOOT_TS) / 1000);
+  const checkDb = () => new Promise((resolve) => {
+    try {
+      db.get('SELECT 1 AS ok', [], (err, row) => {
+        if (err || !row) return resolve(false);
+        resolve(row.ok === 1);
+      });
+    } catch (e) {
+      resolve(false);
+    }
+  });
+  checkDb().then((dbOk) => {
+    const payload = {
+      status: dbOk ? 'ok' : 'degraded',
+      uptime_sec: uptimeSec,
+      db: dbOk ? 'ok' : 'down',
+      ts: new Date().toISOString(),
+    };
+    res.status(dbOk ? 200 : 503).json(payload);
+  });
+});
+
+// Endpoint tambahan untuk liveness sederhana (tanpa DB check) — selalu 200 selama proses idup.
+app.get('/livez', (req, res) => {
+  res.status(200).json({ status: 'alive', uptime_sec: Math.floor((Date.now() - HTTP_BOOT_TS) / 1000) });
+});
+
 app.listen(port, HTTP_BIND, () => {
   logger.info(`HTTP server listening on ${HTTP_BIND}:${port}`);
 });
