@@ -56,6 +56,15 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
     - [x] TTL cleanup state in-memory (`c50b4a1`): sweeper 5 menit, hapus entri `userState`/`broadcastSessions`/`adminState`/`adminTrialTemp`/`global.depositState` yang idle > 30 menit. Stamp `__t` retro-active waktu sweeper jalan.
     - [x] Trial `isError` detection (`61a0c76`): ganti `includes('❌')` ke prefix-match (`trim().startsWith('❌') || includes('???')`). Lebih robust kalau provider script ubah body pesan sukses.
     - [ ] `global.depositState` pindah ke `state/deposit-state.js` module: SKIP. 23 callsite tersebar di `app.js` + `payment/deposit.js`, refactor cosmetic (bukan bug security). Sudah ter-cover oleh sweeper TTL di `c50b4a1`. Bisa dikerjakan kalau ada sesi refactor khusus (1 sesi).
+- [x] **Paket 6 Dependency Hardening** - `5502b96`
+  - `npm audit` triage manual: 25 advisories awal (4 low, 5 mod, 16 high) → 10 sisa (2 low, 0 mod, 8 high).
+  - Fix: bump `axios ^1.13.2` → `^1.15` (lockfile resolve ke `1.16.1`) + `npm audit fix --omit=dev` untuk transitive sqlite3 build chain. **15 vuln cleaned** (1 low, 5 mod, 9 high).
+  - Sisa 10 advisory **diabaikan dengan alasan** (didokumentasikan):
+    - `tar`, `node-gyp`, `make-fetch-happen`, `cacache`, `http-proxy-agent`, `@tootallnate/once`, `@mapbox/node-pre-gyp` → build-tooling chain dari `sqlite3` + `canvas`. Hanya jalan saat `npm install`, tidak load runtime. Tidak ada attack surface produksi.
+    - `express ^4.21.2` (high via body-parser/path-to-regexp/qs) → fix butuh major upgrade ke express 5 (breaking). HTTP server bot bind `127.0.0.1` only, no external attack surface.
+    - `qs ^6.14.1` (low DoS) → same reasoning, attack surface lokal saja.
+    - `autoft-qris 0.0.12` + `autoft-orkut 0.0.2` (high via canvas) → alpha 0.0.x, fix downstream butuh fork internal (sudah di-flag di Nice-to-have section).
+  - Workflow: `npm install` + `npm audit fix` jalan di VPS (akses npm registry bersih), lalu commit + push dari VPS sekali ini saja. Setelah ini balik ke alur normal (develop di local → push GitHub → VPS pull).
 
 ---
 
