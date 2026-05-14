@@ -65,6 +65,11 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
     - `qs ^6.14.1` (low DoS) → same reasoning, attack surface lokal saja.
     - `autoft-qris 0.0.12` + `autoft-orkut 0.0.2` (high via canvas) → alpha 0.0.x, fix downstream butuh fork internal (sudah di-flag di Nice-to-have section).
   - Workflow: `npm install` + `npm audit fix` jalan di VPS (akses npm registry bersih), lalu commit + push dari VPS sekali ini saja. Setelah ini balik ke alur normal (develop di local → push GitHub → VPS pull).
+- [x] **Paket 7 Polish & Hygiene** - `00ff863`
+  - `feat(http): /healthz + /livez endpoint` (`b550433`): bind `127.0.0.1` (sama seperti app utama), return JSON status (uptime, db reachable). Berguna untuk monitoring eksternal (cron health check / systemd watcher / reverse proxy).
+  - `refactor(state): depositState/pendingDeposits ke state/deposit-state.js` (`4e77ec8`): hapus 14 referensi `global.*`, ganti ke module-scope object yang di-share lewat module cache. Tidak ada breaking change — object reference sama, hanya namespace pindah. Test integration `deposit-manager.test.js` ikut di-update.
+  - `feat(lib): lib/db-async.js promise wrapper sqlite3` (`00ff863`): export `dbRun` / `dbGet` / `dbAll` / `dbExec` untuk adopsi gradual. Test integration helper di-DRY-kan (reuse dari `lib/db-async`). 5 unit test baru. Total test: 64 unit + 31 integration = **95 test**.
+  - Catatan: refactor existing callsite callback hell ke `lib/db-async` belum dikerjakan (skala besar, perlu sesi sendiri). Helper sudah siap dipakai untuk fitur baru.
 
 ---
 
