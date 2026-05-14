@@ -10644,9 +10644,11 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
       }
 
       if (msg) {
-        // Deteksi success: msg dari modules/trial.js mengandung '❌' / '???'
-        // pada path error. Counter trial hanya naik kalau benar-benar sukses.
-        const isError = msg.includes('❌') || msg.includes('???');
+        // Deteksi success: error path di modules/trial.js selalu return string
+        // yang DIAWALI '❌'. Pesan sukses panjang dan tidak pernah dimulai '❌'.
+        // '???' = placeholder template gagal di-render → anggap error juga.
+        const trimmed = String(msg).trimStart();
+        const isError = !trimmed || trimmed.startsWith('❌') || trimmed.includes('???');
         if (!isError) {
           await recordAccountTransaction(ctx.from.id, type);
           await saveTrialAccess(ctx.from.id);
