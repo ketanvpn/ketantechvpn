@@ -52,7 +52,10 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
   - Audit privilege escalation di semua `bot.action`/`bot.command` admin handler.
   - Fix: `bot.action('listserver')` tambah guard `ADMIN_IDS.includes` (sebelumnya bocor list domain server kalau callback dipalsukan).
   - Verifikasi aman (no patch perlu): trial flow (PK atomic + trialLock), reseller bonus (Math.floor + dual idempotency `transactions.reference_id` & `reseller_bonus_logs(user_id, period_month)`), broadcast (persist DB + retry-after 429 + sleep 80ms), session in-memory (yang penting sudah di DB).
-  - Nice-to-have (belum dikerjakan): trial `isError` detection diganti object return dari `modules/trial.js`, TTL untuk `userState`/`broadcastSessions`, `global.depositState` pindah ke module scope.
+  - Nice-to-have follow-up:
+    - [x] TTL cleanup state in-memory (`c50b4a1`): sweeper 5 menit, hapus entri `userState`/`broadcastSessions`/`adminState`/`adminTrialTemp`/`global.depositState` yang idle > 30 menit. Stamp `__t` retro-active waktu sweeper jalan.
+    - [x] Trial `isError` detection (`61a0c76`): ganti `includes('❌')` ke prefix-match (`trim().startsWith('❌') || includes('???')`). Lebih robust kalau provider script ubah body pesan sukses.
+    - [ ] `global.depositState` pindah ke `state/deposit-state.js` module: SKIP. 23 callsite tersebar di `app.js` + `payment/deposit.js`, refactor cosmetic (bukan bug security). Sudah ter-cover oleh sweeper TTL di `c50b4a1`. Bisa dikerjakan kalau ada sesi refactor khusus (1 sesi).
 
 ---
 
