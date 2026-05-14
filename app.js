@@ -2171,6 +2171,54 @@ const adminTrialTemp = {}; // key: adminId, value: config trial sementara
 
 const userState = {};
 
+// === Session TTL cleanup (anti memory leak) ===
+// Setiap entry di userState/broadcastSessions/adminState/adminTrialTemp/global.depositState
+// di-stamp `__t` pertama kali ketemu sweeper. Kalau entry sudah ada > TTL, dihapus.
+// User yang masih aktif akan reset state lewat /start atau klik tombol baru.
+const SESSION_TTL_MS = 30 * 60 * 1000;
+const SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+function sweepStaleEntries(bag, label) {
+  if (!bag || typeof bag !== 'object') return 0;
+  const now = Date.now();
+  let purged = 0;
+  for (const key of Object.keys(bag)) {
+    const entry = bag[key];
+    if (entry && typeof entry === 'object') {
+      if (typeof entry.__t !== 'number') {
+        entry.__t = now;
+        continue;
+      }
+      if (now - entry.__t > SESSION_TTL_MS) {
+        delete bag[key];
+        purged++;
+      }
+    } else {
+      // Entry primitif (jarang) atau null — hapus saja kalau bukan kosong.
+      if (entry === null || entry === undefined) delete bag[key];
+    }
+  }
+  if (purged > 0) {
+    logger.info(`Session sweeper: ${purged} entri ${label} stale dihapus (TTL ${SESSION_TTL_MS / 60000}m).`);
+  }
+  return purged;
+}
+
+if (!global.__sessionSweeperStarted) {
+  global.__sessionSweeperStarted = true;
+  setInterval(() => {
+    try {
+      sweepStaleEntries(userState, 'userState');
+      sweepStaleEntries(broadcastSessions, 'broadcastSessions');
+      sweepStaleEntries(adminState, 'adminState');
+      sweepStaleEntries(adminTrialTemp, 'adminTrialTemp');
+      if (global.depositState) sweepStaleEntries(global.depositState, 'depositState');
+    } catch (e) {
+      logger.error('Session sweeper error:', e.message || e);
+    }
+  }, SESSION_SWEEP_INTERVAL_MS).unref?.();
+}
+
 // --- Fase 4 split: handler 'Akun Saya' dipindah ke accounts/my-accounts.js
 const { createMyAccountsHandlers } = require('./accounts/my-accounts');
 const myAccountsHandlers = createMyAccountsHandlers({
