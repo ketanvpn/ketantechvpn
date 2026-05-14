@@ -3,6 +3,7 @@
 const { createConnection } = require('../../db/connection');
 const { createDdlHelpers } = require('../../db/ddl-safe');
 const { runMigrations } = require('../../db/migrations');
+const { dbRun, dbGet, dbAll } = require('../../lib/db-async');
 
 function silentLogger() {
   return {
@@ -32,33 +33,6 @@ async function setupMemoryDb() {
 
 function closeDb(db) {
   return new Promise((resolve) => db.close(() => resolve()));
-}
-
-function dbRun(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) return reject(err);
-      resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
-}
-
-function dbGet(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) return reject(err);
-      resolve(row || null);
-    });
-  });
-}
-
-function dbAll(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows || []);
-    });
-  });
 }
 
 async function seedUser(db, userId, saldo = 0) {
