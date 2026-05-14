@@ -2158,7 +2158,9 @@ async function getUsernameById(userId) {
 
 // --- Fase 3 split: fungsi markDepositExpired / creditDeposit / pollMutasi / startAutoTopupMutasi
 // dipindah ke payment/deposit.js (createDepositManager). Wrapper di-assign di bagian bawah.
-global.pendingDeposits = global.pendingDeposits || {};
+// State in-memory deposit dipindah ke `state/deposit-state.js` supaya tidak nempel
+// di `global.*`. Object yang sama di-share antar file lewat module cache.
+const { depositState, pendingDeposits } = require('./state/deposit-state');
 
 // ======================= END SECTION: PAYMENT - DATABASE TABLES =============
 
@@ -2172,7 +2174,7 @@ const adminTrialTemp = {}; // key: adminId, value: config trial sementara
 const userState = {};
 
 // === Session TTL cleanup (anti memory leak) ===
-// Setiap entry di userState/broadcastSessions/adminState/adminTrialTemp/global.depositState
+// Setiap entry di userState/broadcastSessions/adminState/adminTrialTemp/depositState
 // di-stamp `__t` pertama kali ketemu sweeper. Kalau entry sudah ada > TTL, dihapus.
 // User yang masih aktif akan reset state lewat /start atau klik tombol baru.
 const SESSION_TTL_MS = 30 * 60 * 1000;
@@ -2212,7 +2214,7 @@ if (!global.__sessionSweeperStarted) {
       sweepStaleEntries(broadcastSessions, 'broadcastSessions');
       sweepStaleEntries(adminState, 'adminState');
       sweepStaleEntries(adminTrialTemp, 'adminTrialTemp');
-      if (global.depositState) sweepStaleEntries(global.depositState, 'depositState');
+      sweepStaleEntries(depositState, 'depositState');
     } catch (e) {
       logger.error('Session sweeper error:', e.message || e);
     }
@@ -6129,8 +6131,7 @@ bot.action('qris_auto_topup', async (ctx) => {
     const userId = String(ctx.from.id);
 
     // pastikan object-nya ada
-    global.depositState = global.depositState || {};
-    global.depositState[userId] = { amount: '' };
+    depositState[userId] = { amount: '' };
 
     const msg =
       `💰 *Silakan masukkan jumlah nominal saldo yang Anda ingin tambahkan ke akun Anda:*\n\n` +
@@ -12073,7 +12074,7 @@ bot.on('callback_query', async (ctx) => {
   const data = ctx.callbackQuery.data;
   const userStateData = userState[ctx.chat.id];
 
-  if (global.depositState && global.depositState[userId] && global.depositState[userId].action === 'request_amount') {
+  if (depositState[userId] && depositState[userId].action === 'request_amount') {
     await handleDepositState(ctx, userId, data);
   } else if (userStateData) {
     switch (userStateData.step) {
@@ -12154,7 +12155,7 @@ case 'addsaldo_amount':
 });
 
 async function handleDepositState(ctx, userId, data) {
-  let currentAmount = global.depositState[userId].amount;
+  let currentAmount = depositState[userId].amount;
 
   if (data === 'delete') {
     currentAmount = currentAmount.slice(0, -1);
@@ -12165,7 +12166,7 @@ async function handleDepositState(ctx, userId, data) {
     if (parseInt(currentAmount) < 5000) {
       return await ctx.answerCbQuery('⚠️ Jumlah minimal adalah 5.000 !', { show_alert: true });
     }
-    global.depositState[userId].action = 'confirm_amount';
+    depositState[userId].action = 'confirm_amount';
     await processDeposit(ctx, currentAmount);
     return;
   } else {
@@ -12176,7 +12177,7 @@ async function handleDepositState(ctx, userId, data) {
     }
   }
 
-  global.depositState[userId].amount = currentAmount;
+  depositState[userId].amount = currentAmount;
   const newMessage = `💰 *Silakan masukkan jumlah nominal saldo yang Anda ingin tambahkan ke akun Anda:*\n\nJumlah saat ini: *Rp ${currentAmount || '0'}*`;
 
   try {
@@ -12519,8 +12520,7 @@ function generateRandomAmount(baseAmount) {
 }
 
 // --- Fase 3 split: state topup dikelola depositManager (payment/deposit.js)
-global.depositState = global.depositState || {};
-global.pendingDeposits = global.pendingDeposits || {};
+// State sudah di-require di atas via `state/deposit-state.js`. Tidak perlu deklarasi ulang.
 
 db.all('SELECT * FROM pending_deposits WHERE status = "pending"', [], (err, rows) => {
   if (err) { logger.error('Gagal load pending_deposits:', err.message); return; }
@@ -12545,7 +12545,7 @@ db.all('SELECT * FROM pending_deposits WHERE status = "pending"', [], (err, rows
       expiredOnBoot++;
       return;
     }
-    global.pendingDeposits[row.unique_code] = {
+    pendingDeposits[row.unique_code] = {
       amount,
       originalAmount,
       adminFee,

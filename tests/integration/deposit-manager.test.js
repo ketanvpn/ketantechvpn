@@ -4,6 +4,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createDepositManager } = require('../../payment/deposit');
+const { pendingDeposits } = require('../../state/deposit-state');
 const {
   setupMemoryDb,
   closeDb,
@@ -69,7 +70,7 @@ test('creditDeposit: dua call paralel → hanya satu yang menambah saldo', async
     'INSERT INTO pending_deposits (unique_code, user_id, amount, original_amount, timestamp, status, qr_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [uniqueCode, userId, 12345, 10000, Date.now(), 'pending', 999]
   );
-  global.pendingDeposits[uniqueCode] = {
+  pendingDeposits[uniqueCode] = {
     amount: 12345,
     originalAmount: 10000,
     adminFee: 2345,
@@ -99,7 +100,7 @@ test('creditDeposit: dua call paralel → hanya satu yang menambah saldo', async
   assert.equal(trx.length, 1, 'Hanya satu transaksi qris_auto_topup yang boleh tercatat');
 
   // cleanup global state supaya test lain bersih
-  delete global.pendingDeposits[uniqueCode];
+  delete pendingDeposits[uniqueCode];
   await closeDb(db);
 });
 

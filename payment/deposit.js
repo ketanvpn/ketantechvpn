@@ -1,6 +1,8 @@
 // payment/deposit.js - QRIS mutasi deposit manager (factory)
 // Dependency: db, bot, logger, gopayClient, helper QRIS, dan sejumlah getter config.
 
+const { depositState, pendingDeposits } = require('../state/deposit-state');
+
 function createDepositManager({
   db,
   bot,
@@ -45,8 +47,7 @@ function createDepositManager({
   const getQrBase = typeof getBaseQr === 'function' ? getBaseQr : () => '';
   const getKey = typeof getApiKey === 'function' ? getApiKey : () => '';
 
-  global.pendingDeposits = global.pendingDeposits || {};
-  global.depositState = global.depositState || {};
+  // depositState & pendingDeposits di-require di atas dari `state/deposit-state.js`.
 
   const POLL_INTERVAL = Number(pollIntervalMs || 10000);
   const DEPOSIT_EXPIRE_MS = Number(depositExpireMs || 5 * 60 * 1000);
@@ -78,7 +79,7 @@ function createDepositManager({
       );
     });
 
-    const d = global.pendingDeposits[uniqueCode];
+    const d = pendingDeposits[uniqueCode];
     if (d) {
       try {
         const text =
@@ -100,11 +101,11 @@ function createDepositManager({
       } catch (_) {}
     }
 
-    delete global.pendingDeposits[uniqueCode];
+    delete pendingDeposits[uniqueCode];
   }
 
   async function creditDeposit(uniqueCode, matchedTx = null) {
-    const d = global.pendingDeposits[uniqueCode];
+    const d = pendingDeposits[uniqueCode];
     if (!d) return false;
 
     const now = Date.now();
@@ -220,7 +221,7 @@ function createDepositManager({
       });
     } catch (_) {}
 
-    delete global.pendingDeposits[uniqueCode];
+    delete pendingDeposits[uniqueCode];
     return true;
   }
 
@@ -232,7 +233,7 @@ function createDepositManager({
     if (now - lastPollTime < POLL_INTERVAL) return;
     lastPollTime = now;
 
-    const pendingList = Object.entries(global.pendingDeposits)
+    const pendingList = Object.entries(pendingDeposits)
       .filter(([_, d]) => d.status === 'pending');
 
     if (pendingList.length === 0) return;
@@ -274,7 +275,7 @@ function createDepositManager({
 
   async function checkQRISStatus() {
     try {
-      const entries = Object.entries(global.pendingDeposits || {}).filter(
+      const entries = Object.entries(pendingDeposits || {}).filter(
         ([, d]) => d.status === 'pending'
       );
       if (entries.length === 0) return;
@@ -357,7 +358,7 @@ function createDepositManager({
         '❌ *Nominal tidak valid!*\n\nMinimal: *Rp ' + min.toLocaleString('id-ID') + '*\nMaksimal: *Rp ' + max.toLocaleString('id-ID') + '*',
         { parse_mode: 'Markdown' }
       );
-      delete global.depositState[userId];
+      delete depositState[userId];
       return;
     }
 
@@ -367,7 +368,7 @@ function createDepositManager({
         '❌ *API_KEY belum diisi.*\n\nIsi `API_KEY` di `.vars.json` dengan apikey dari rajaserverpremium.',
         { parse_mode: 'Markdown' }
       );
-      delete global.depositState[userId];
+      delete depositState[userId];
       return;
     }
 
@@ -377,7 +378,7 @@ function createDepositManager({
         '❌ *QR String belum benar.*\n\nCek `GOPAY_BASE_QR` / `DATA_QRIS` di `.vars.json` (`ORDERKUOTA_BASE_QR` masih didukung sebagai fallback).',
         { parse_mode: 'Markdown' }
       );
-      delete global.depositState[userId];
+      delete depositState[userId];
       return;
     }
 
@@ -415,7 +416,7 @@ function createDepositManager({
 
       try { await ctx.deleteMessage(); } catch (_) {}
 
-      global.pendingDeposits[uniqueCode] = {
+      pendingDeposits[uniqueCode] = {
         amount: finalAmount,
         originalAmount: amountNum,
         adminFee,
@@ -436,7 +437,7 @@ function createDepositManager({
         }
       );
 
-      delete global.depositState[userId];
+      delete depositState[userId];
       logger.info('✅ QR dynamic sent: user=' + userId + ' amount=' + finalAmount + ' ref=' + referenceId);
     } catch (error) {
       logger.error('❌ Deposit error: ' + (error?.message || error));
@@ -446,7 +447,7 @@ function createDepositManager({
           { parse_mode: 'Markdown' }
         );
       } catch (_) {}
-      delete global.depositState[userId];
+      delete depositState[userId];
     }
   }
 
