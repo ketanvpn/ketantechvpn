@@ -221,6 +221,26 @@ function runMigrations(db, logger, helpers) {
   ensureSqliteColumn('reseller_bonus_logs', 'note', 'TEXT');
 
   // ============================================================================
+  // Linkage akun bot ke akun web (ketantech.my.id).
+  // Tabel `users` di bot adalah master untuk telegram-only user. Kalau user
+  // sudah daftar di web dan mau pakai akun yang sama lewat bot, kolom-kolom
+  // di bawah dipakai untuk menandai linkage:
+  //   - web_user_id: id user di tabel users web (Postgres)
+  //   - web_linked_at: timestamp epoch ms saat pertama kali link
+  // Kalau web_user_id NULL = user belum link, bot pakai data lokal (legacy).
+  // Kalau web_user_id ada = bot prefer ambil saldo & data dari API web.
+  // Migration idempotent (ensureSqliteColumn cek sebelum tambah).
+  // ============================================================================
+  ensureSqliteColumn('users', 'web_user_id', 'INTEGER');
+  ensureSqliteColumn('users', 'web_linked_at', 'INTEGER');
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_users_web_user_id ON users(web_user_id)',
+    (err) => {
+      if (err) logger.error('Gagal create index idx_users_web_user_id:', err.message);
+    }
+  );
+
+  // ============================================================================
   // Trial counter harian (menggantikan trial.db JSON, atomic upsert)
   // ============================================================================
   db.run(`CREATE TABLE IF NOT EXISTS trial_usage (

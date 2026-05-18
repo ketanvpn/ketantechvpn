@@ -2285,6 +2285,52 @@ const { createEdukasiService } = require('./modules/edukasi');
 const { createEdukasiHandlers } = require('./modules/edukasi-handlers');
 const { createEdukasiAdminHandlers } = require('./admin/edukasi');
 
+// ============================================================================
+// SECTION: WEB API LINKAGE (ketantech.my.id)
+// Bot Telegram bisa "link" ke akun di web ketantech.my.id supaya 1 user
+// punya saldo & data yang konsisten antar platform. Bot pakai axios client
+// untuk panggil endpoint web. Konfigurasi di .vars.json:
+//   WEB_LINK_ENABLED  - master switch (default: false sampai web siap)
+//   WEB_API_BASE_URL  - mis. "https://ketantech.my.id/api"
+//   WEB_DOMAIN        - URL public web (untuk pesan ke user)
+//   WEB_API_BOT_KEY   - shared secret antara bot & web (hardcoded, jangan publik)
+//   WEB_API_TIMEOUT_MS - default 15000
+// Kalau salah satu kosong, fitur link otomatis di-disable (bot fallback ke
+// SQLite lokal seperti sebelumnya).
+// ============================================================================
+const { createWebApiClient } = require('./modules/web-api-client');
+function getWebApiBaseUrl() {
+  return String(envOr('WEB_API_BASE_URL', '') || '').trim();
+}
+function getWebApiBotKey() {
+  return String(envOr('WEB_API_BOT_KEY', '') || '').trim();
+}
+function getWebApiTimeout() {
+  const v = Number(envOr('WEB_API_TIMEOUT_MS', 15000));
+  return Number.isFinite(v) && v > 0 ? v : 15000;
+}
+function getWebDomain() {
+  return String(envOr('WEB_DOMAIN', '') || '').trim();
+}
+function isWebLinkEnabled() {
+  const flag = envOr('WEB_LINK_ENABLED', false);
+  if (typeof flag === 'boolean') return flag;
+  if (typeof flag === 'string') return flag.toLowerCase() === 'true';
+  return !!flag;
+}
+const webApiClient = createWebApiClient({
+  getBaseUrl: getWebApiBaseUrl,
+  getBotKey: getWebApiBotKey,
+  getTimeout: getWebApiTimeout,
+  logger,
+});
+logger.info(
+  'Web API linkage init: enabled=' + isWebLinkEnabled() +
+  ', baseUrl=' + (getWebApiBaseUrl() || '<empty>') +
+  ', domain=' + (getWebDomain() || '<empty>') +
+  ', botKey=' + (getWebApiBotKey() ? maskToken(getWebApiBotKey()) : '<empty>')
+);
+
 function getVpnbizApiKey() {
   const envKey = process.env.VPNBIZ_API_KEY;
   if (envKey && String(envKey).trim()) return String(envKey).trim();
@@ -2480,7 +2526,252 @@ bot.command(['start', 'menu'], async (ctx) => {
     }
   });
 
+  // Deep link dari web: /start link_<token>
+  // Web punya tombol "Hubungkan ke Telegram" yang generate URL
+  //   https://t.me/<botname>?start=link_<token>
+  // Saat user klik, Telegram kirim /start dengan parameter "link_<token>".
+  // Bot baca token, panggil API web /telegram/verify-link-token,
+  // kalau sukses kita simpan web_user_id ke DB lokal bot.
+  try {
+    const startPayload = (ctx.startPayload || ctx.message?.text || '')
+      .replace(/^\/start(?:@\w+)?\s*/i, '')
+      .trim();
+    if (startPayload && startPayload.startsWith('link_') && isWebLinkEnabled()) {
+      const token = startPayload.slice(5).trim();
+      await handleWebLinkToken(ctx, token);
+      return; // sudah dihandle, tidak perlu lanjut ke main menu
+    }
+  } catch (e) {
+    logger.error('Gagal handle web link payload di /start:', e.message || e);
+  }
+
   await sendMainMenu(ctx);
+});
+
+// === Handler verifikasi token "link akun" dari web ===
+// Dipakai oleh /start link_<token> dan tombol "Hubungkan ke Web" di menu user.
+async function handleWebLinkToken(ctx, token) {
+  const userId = ctx.from.id;
+  if (!token || token.length < 8) {
+    return ctx.reply(
+      '⚠️ Token koneksi tidak valid.\n' +
+      'Silakan klik ulang link dari halaman <b>Hubungkan ke Telegram</b> di web.',
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  // Cek dulu kalau user ini sudah punya web_user_id sebelumnya
+  const existing = await new Promise((resolve) => {
+    db.get(
+      'SELECT web_user_id FROM users WHERE user_id = ?',
+      [userId],
+      (err, row) => resolve(err ? null : row)
+    );
+  });
+
+  await ctx.reply('⏳ Sedang menghubungkan akun ke web...', { parse_mode: 'HTML' });
+
+  let res;
+  try {
+    res = await webApiClient.verifyLinkToken({ token, telegramId: userId });
+  } catch (e) {
+    logger.error('Gagal verifikasi link token: ' + (e.message || e));
+    const status = e.status;
+    if (status === 404 || status === 410) {
+      return ctx.reply(
+        '⚠️ Token sudah tidak berlaku atau sudah dipakai.\n' +
+        'Silakan buka kembali halaman <b>Hubungkan ke Telegram</b> di web,\n' +
+        'klik tombol <b>Generate Link Baru</b>, lalu klik link-nya.',
+        { parse_mode: 'HTML' }
+      );
+    }
+    if (status === 401 || status === 403) {
+      return ctx.reply(
+        '❌ Konfigurasi koneksi web bermasalah. Silakan hubungi admin.',
+        { parse_mode: 'HTML' }
+      );
+    }
+    return ctx.reply(
+      '❌ Gagal menghubungkan ke web: ' + htmlEscape(e.message || 'Unknown error') +
+      '\n\nSilakan coba lagi atau hubungi admin.',
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  const webUser = (res && (res.user || res.data)) || null;
+  if (!webUser || !webUser.id) {
+    return ctx.reply(
+      '⚠️ Respon dari web tidak valid. Silakan coba lagi atau hubungi admin.',
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  // Simpan web_user_id ke DB bot. Pastikan baris user ada dulu.
+  await new Promise((resolve) => {
+    db.run(
+      'INSERT OR IGNORE INTO users (user_id) VALUES (?)',
+      [userId],
+      () => resolve()
+    );
+  });
+  await new Promise((resolve) => {
+    db.run(
+      'UPDATE users SET web_user_id = ?, web_linked_at = ? WHERE user_id = ?',
+      [Number(webUser.id), Date.now(), userId],
+      (err) => {
+        if (err) logger.error('Gagal simpan web_user_id: ' + (err.message || err));
+        resolve();
+      }
+    );
+  });
+
+  const webBalance = Number(webUser.balance || 0);
+  const username = webUser.username || webUser.email || ('User #' + webUser.id);
+  const wasLinked = existing && existing.web_user_id;
+
+  const lines = [];
+  lines.push(wasLinked
+    ? '✅ <b>Akun web kamu sudah terhubung ulang.</b>'
+    : '🎉 <b>Akun web kamu berhasil terhubung!</b>');
+  lines.push('');
+  lines.push('🌐 Web: <b>' + htmlEscape(getWebDomain() || 'web') + '</b>');
+  lines.push('👤 Username web: <code>' + htmlEscape(username) + '</code>');
+  lines.push('💰 Saldo web: <b>Rp ' + webBalance.toLocaleString('id-ID') + '</b>');
+  lines.push('');
+  lines.push('Mulai sekarang, transaksi di bot ini & di web akan menggunakan akun yang sama.');
+
+  await ctx.reply(lines.join('\n'), {
+    parse_mode: 'HTML',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🌐 Buka Web', url: getWebDomain() || 'https://ketantech.my.id' }],
+        [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
+      ],
+    },
+  });
+}
+
+// === Handler tombol "🔗 Hubungkan ke Web" di menu utama bot ===
+bot.action('web_link_menu', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
+  if (!ctx.from) return;
+  if (!isWebLinkEnabled()) {
+    return sendCleanMenu(ctx,
+      '⚠️ Fitur hubungkan akun web sedang nonaktif.\n' +
+      'Silakan hubungi admin kalau membutuhkan.',
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  const userId = ctx.from.id;
+  const webDomain = getWebDomain() || 'https://ketantech.my.id';
+
+  // Cek apakah user sudah punya web_user_id
+  const row = await new Promise((resolve) => {
+    db.get(
+      'SELECT web_user_id, web_linked_at FROM users WHERE user_id = ?',
+      [userId],
+      (err, r) => resolve(err ? null : r)
+    );
+  });
+
+  if (row && row.web_user_id) {
+    // Sudah link → tampilkan info + opsi unlink
+    let webUser = null;
+    try {
+      webUser = await webApiClient.getUserByTelegramId(userId);
+    } catch (e) {
+      logger.warn('Gagal ambil info user web (web_link_menu): ' + (e.message || e));
+    }
+
+    const lines = [];
+    lines.push('🔗 <b>Akun Web Sudah Terhubung</b>');
+    lines.push('');
+    lines.push('🌐 Web: ' + htmlEscape(webDomain));
+    if (webUser) {
+      lines.push('👤 Username: <code>' + htmlEscape(webUser.username || webUser.email || ('User #' + webUser.id)) + '</code>');
+      lines.push('💰 Saldo web: <b>Rp ' + Number(webUser.balance || 0).toLocaleString('id-ID') + '</b>');
+    } else {
+      lines.push('<i>(Tidak bisa ambil info terbaru dari web. Coba lagi nanti.)</i>');
+    }
+    lines.push('');
+    lines.push('Saldo & transaksi kamu sinkron antara bot ini dan web.');
+
+    return sendCleanMenu(ctx, lines.join('\n'), {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🌐 Buka Web', url: webDomain }],
+          [{ text: '🔌 Putuskan Koneksi', callback_data: 'web_link_unlink' }],
+          [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }],
+        ],
+      },
+    });
+  }
+
+  // Belum link → kasih instruksi
+  const lines = [];
+  lines.push('🔗 <b>Hubungkan Akun ke Web</b>');
+  lines.push('');
+  lines.push('Kamu bisa menghubungkan akun bot ini dengan akun di:');
+  lines.push('🌐 <b>' + htmlEscape(webDomain) + '</b>');
+  lines.push('');
+  lines.push('Setelah terhubung, <b>saldo dan akun</b> kamu akan sinkron antara bot dan web.');
+  lines.push('');
+  lines.push('<b>Cara menghubungkan:</b>');
+  lines.push('1. Login (atau daftar) di ' + htmlEscape(webDomain));
+  lines.push('2. Buka menu <b>Profil</b> → <b>Hubungkan ke Telegram</b>');
+  lines.push('3. Klik link yang diberikan oleh web');
+  lines.push('4. Akun akan otomatis terhubung');
+  lines.push('');
+  lines.push('Belum punya akun web? Daftar dulu lewat tombol di bawah.');
+
+  return sendCleanMenu(ctx, lines.join('\n'), {
+    parse_mode: 'HTML',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🌐 Buka Web Sekarang', url: webDomain }],
+        [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }],
+      ],
+    },
+  });
+});
+
+// Putuskan koneksi web ↔ bot
+bot.action('web_link_unlink', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
+  if (!ctx.from) return;
+  const userId = ctx.from.id;
+
+  // Optional: kasih tahu web supaya web juga reset telegramId
+  try {
+    if (isWebLinkEnabled()) await webApiClient.unlinkTelegram(userId);
+  } catch (e) {
+    logger.warn('Gagal unlink di sisi web: ' + (e.message || e));
+  }
+
+  // Hapus link di sisi bot
+  await new Promise((resolve) => {
+    db.run(
+      'UPDATE users SET web_user_id = NULL, web_linked_at = NULL WHERE user_id = ?',
+      [userId],
+      () => resolve()
+    );
+  });
+
+  await sendCleanMenu(ctx,
+    '🔌 <b>Akun web sudah diputuskan dari bot ini.</b>\n\n' +
+    'Saldo & transaksi kamu di bot kembali memakai data lokal.\n' +
+    'Kamu bisa hubungkan ulang kapan saja lewat menu <b>🔗 Hubungkan ke Web</b>.',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }],
+        ],
+      },
+    }
+  );
 });
 
 // ============================================================================
@@ -3729,6 +4020,27 @@ ${commandPanelText}
       { text: '💳 TopUp Saldo (QRIS Otomatis)', callback_data: 'topupqris_btn' }
     ]
   ];
+
+  // Tombol hubungkan ke web (cuma muncul kalau master switch WEB_LINK_ENABLED=true).
+  // Kalau user sudah link, label diganti & ada indicator centang.
+  if (isWebLinkEnabled()) {
+    let webLinkLabel = '🔗 Hubungkan Akun ke Web';
+    try {
+      const linkRow = await new Promise((resolve) => {
+        db.get(
+          'SELECT web_user_id FROM users WHERE user_id = ?',
+          [userId],
+          (err, row) => resolve(err ? null : row)
+        );
+      });
+      if (linkRow && linkRow.web_user_id) {
+        webLinkLabel = '✅ Akun Web Terhubung';
+      }
+    } catch (e) {
+      logger.warn('sendMainMenu: gagal cek status link web: ' + (e && e.message ? e.message : e));
+    }
+    keyboard.push([{ text: webLinkLabel, callback_data: 'web_link_menu' }]);
+  }
 
 
   // Tambah tombol "Penjualan Saya" khusus reseller
