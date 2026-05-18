@@ -2625,9 +2625,82 @@ async function handleWebLinkToken(ctx, token) {
     );
   });
 
-  const webBalance = Number(webUser.balance || 0);
-  const username = webUser.username || webUser.email || ('User #' + webUser.id);
+  // === Migrate saldo SQLite -> web (sekali, saat first link) ===
+  // OPSI 1 (per pilihan user): saldo lokal SQLite di-transfer ke saldo web,
+  // lalu saldo SQLite di-set ke 0 supaya tidak ada double-counting. Dari titik
+  // ini bot pakai saldo web sebagai single source of truth.
+  // refId pakai pola tetap 'migrate_<userId>' supaya idempotent di sisi web —
+  // kalau bot ulangi proses link untuk user yang sama, tidak akan double-credit.
+  let migratedAmount = 0;
+  let migrateError = null;
   const wasLinked = existing && existing.web_user_id;
+  if (!wasLinked) {
+    // Cuma migrate saat FIRST link, bukan saat re-link.
+    const localSaldo = await new Promise((resolve) => {
+      db.get(
+        'SELECT saldo FROM users WHERE user_id = ?',
+        [userId],
+        (err, row) => resolve(err ? 0 : Number(row?.saldo || 0))
+      );
+    });
+    if (localSaldo > 0) {
+      try {
+        const creditRes = await webApiClient.creditBalance({
+          telegramId: userId,
+          amount: localSaldo,
+          description: 'Migrasi saldo Bot Telegram saat link akun',
+          refId: 'migrate_telegram_' + userId,
+        });
+        if (creditRes && creditRes.ok) {
+          migratedAmount = creditRes.applied ? localSaldo : 0;
+          // Zero-kan saldo lokal HANYA setelah credit ke web sukses, dan
+          // catat di tabel transactions supaya audit trail jelas.
+          await new Promise((resolve) => {
+            db.run(
+              'UPDATE users SET saldo = 0 WHERE user_id = ?',
+              [userId],
+              () => resolve()
+            );
+          });
+          try {
+            recordSaldoTransaction(
+              userId,
+              -localSaldo,
+              'web_link_migration',
+              'migrate_to_web_user_' + webUser.id
+            );
+          } catch (e) {
+            logger.warn('Gagal catat tx migration ke transactions: ' + (e.message || e));
+          }
+          logger.info('Saldo bot ' + localSaldo + ' di-migrate ke web user ' + webUser.id + ' (telegramId ' + userId + ')');
+        } else {
+          migrateError = 'Web tidak ack credit (response.ok = false)';
+          logger.error('Migrate saldo gagal: ' + migrateError);
+        }
+      } catch (e) {
+        migrateError = e.message || String(e);
+        logger.error('Gagal migrate saldo SQLite ke web: ' + migrateError);
+      }
+    }
+  }
+
+  // Ambil saldo web TERBARU setelah migrate (kalau migrate sukses, web sudah
+  // bertambah; kalau gagal, fallback ke balance dari verifyLinkToken response).
+  let finalWebBalance = Number(webUser.balance || 0);
+  if (migratedAmount > 0) {
+    try {
+      const fresh = await webApiClient.getBalanceByTelegramId(userId);
+      if (fresh && typeof fresh.balance === 'number') {
+        finalWebBalance = fresh.balance;
+      } else {
+        finalWebBalance = Number(webUser.balance || 0) + migratedAmount;
+      }
+    } catch (_) {
+      finalWebBalance = Number(webUser.balance || 0) + migratedAmount;
+    }
+  }
+
+  const username = webUser.username || webUser.email || ('User #' + webUser.id);
 
   const lines = [];
   lines.push(wasLinked
@@ -2636,7 +2709,13 @@ async function handleWebLinkToken(ctx, token) {
   lines.push('');
   lines.push('🌐 Web: <b>' + htmlEscape(getWebDomain() || 'web') + '</b>');
   lines.push('👤 Username web: <code>' + htmlEscape(username) + '</code>');
-  lines.push('💰 Saldo web: <b>Rp ' + webBalance.toLocaleString('id-ID') + '</b>');
+  if (migratedAmount > 0) {
+    lines.push('🔄 Saldo lokal bot di-migrate: <b>+Rp ' + migratedAmount.toLocaleString('id-ID') + '</b>');
+  } else if (migrateError) {
+    lines.push('⚠️ <i>Migrasi saldo lokal gagal:</i> <code>' + htmlEscape(migrateError) + '</code>');
+    lines.push('<i>Saldo lokal kamu tidak hilang — silakan hubungi admin untuk migrasi manual.</i>');
+  }
+  lines.push('💰 Saldo sekarang: <b>Rp ' + finalWebBalance.toLocaleString('id-ID') + '</b>');
   lines.push('');
   lines.push('Mulai sekarang, transaksi di bot ini & di web akan menggunakan akun yang sama.');
 

@@ -161,6 +161,48 @@ function createWebApiClient({ getBaseUrl, getBotKey, getTimeout, logger }) {
     }
   }
 
+  // Tambah saldo user web. Dipakai oleh:
+  //   1. Migrate saldo SQLite -> web saat user pertama kali link akun
+  //   2. (future) Topup di bot yang langsung masuk ke saldo web
+  // refId opsional: kalau diisi, server akan idempotent (request yang sama
+  // tidak double-credit). Penting untuk operasi network-retry yang aman.
+  // Endpoint: POST /telegram/credit
+  // body: { telegramId, amount, description?, refId? }
+  // response: { ok: true, applied: boolean, newBalance: number }
+  async function creditBalance({ telegramId, amount, description, refId }) {
+    try {
+      const res = await _http(true).post('/telegram/credit', {
+        telegramId: Number(telegramId || 0),
+        amount: Number(amount || 0),
+        description: description ? String(description) : undefined,
+        refId: refId ? String(refId) : undefined,
+      });
+      return res.data || { ok: false };
+    } catch (err) {
+      throw _wrapError(err, 'creditBalance');
+    }
+  }
+
+  // Kurangi saldo user web. Dipakai bot saat user beli akun, perpanjang, dll.
+  // refId mandatory di production supaya tidak double-debit kalau bot retry.
+  // Endpoint: POST /telegram/debit
+  // body: { telegramId, amount, description?, refId? }
+  // response: { ok: true, applied: boolean, newBalance: number }
+  // Throw error dengan status 400 + newBalance kalau saldo kurang.
+  async function debitBalance({ telegramId, amount, description, refId }) {
+    try {
+      const res = await _http(true).post('/telegram/debit', {
+        telegramId: Number(telegramId || 0),
+        amount: Number(amount || 0),
+        description: description ? String(description) : undefined,
+        refId: refId ? String(refId) : undefined,
+      });
+      return res.data || { ok: false };
+    } catch (err) {
+      throw _wrapError(err, 'debitBalance');
+    }
+  }
+
   return {
     // public
     ping,
@@ -171,6 +213,8 @@ function createWebApiClient({ getBaseUrl, getBotKey, getTimeout, logger }) {
     getUserByTelegramId,
     getBalanceByTelegramId,
     unlinkTelegram,
+    creditBalance,
+    debitBalance,
     // utils
     _baseUrl,
   };
