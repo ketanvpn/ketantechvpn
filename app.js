@@ -11767,6 +11767,23 @@ bot.telegram
 //   `edit_<field>_<id>` yang sudah ada. Sebelum ini, tombol-tombol di submenu
 //   server tidak punya handler sehingga klik = tidak terjadi apa-apa.
 // =====================================================================
+// Mapping fieldKey (callback) -> { dbColumn, displayLabel, formatter }
+// Dipakai picker untuk ambil nilai lama dari kolom yang tepat lalu simpan ke
+// userState supaya handler edit_<field> bisa tampilkan before/after.
+const _EDIT_FIELD_MAP = {
+  harga:                 { col: 'harga',              fmt: (v) => 'Rp ' + Number(v || 0).toLocaleString('id-ID') },
+  nama:                  { col: 'nama_server',        fmt: (v) => String(v || '-') },
+  domain:                { col: 'domain',             fmt: (v) => String(v || '-') },
+  auth:                  { col: 'auth',               fmt: (v) => {
+    const s = String(v || '');
+    return s.length > 8 ? s.slice(0, 4) + '...' + s.slice(-4) : (s || '-');
+  } },
+  quota:                 { col: 'quota',              fmt: (v) => Number(v || 0) + ' GB' },
+  limit_ip:              { col: 'iplimit',            fmt: (v) => Number(v || 0) + ' IP' },
+  batas_create_akun:     { col: 'batas_create_akun',  fmt: (v) => Number(v || 0).toLocaleString('id-ID') + ' akun' },
+  total_create_akun:     { col: 'total_create_akun',  fmt: (v) => Number(v || 0).toLocaleString('id-ID') + ' akun' },
+};
+
 function _registerEditServerPicker(callbackName, fieldKey, label) {
   bot.action(callbackName, async (ctx) => {
     try {
@@ -11775,7 +11792,18 @@ function _registerEditServerPicker(callbackName, fieldKey, label) {
         return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
       }
 
-      db.all('SELECT id, nama_server, domain FROM Server ORDER BY id ASC', [], async (err, servers) => {
+      const meta = _EDIT_FIELD_MAP[fieldKey];
+      const dbCol = meta ? meta.col : null;
+      const fmt = meta ? meta.fmt : ((v) => String(v == null ? '-' : v));
+
+      // Ambil daftar server beserta nilai field yang akan diedit, supaya tombol
+      // bisa tampilkan "Nama (nilai sekarang)" dan kita bisa cache nilainya
+      // di userState saat user klik salah satu server.
+      const sql = dbCol
+        ? 'SELECT id, nama_server, domain, ' + dbCol + ' AS val FROM Server ORDER BY id ASC'
+        : 'SELECT id, nama_server, domain FROM Server ORDER BY id ASC';
+
+      db.all(sql, [], async (err, servers) => {
         if (err) {
           logger.error('Gagal ambil daftar server (' + callbackName + '):', err.message);
           return ctx.reply('⚠️ Gagal mengambil daftar server.', { parse_mode: 'Markdown' });
@@ -11785,18 +11813,28 @@ function _registerEditServerPicker(callbackName, fieldKey, label) {
             { parse_mode: 'Markdown' });
         }
 
-        // Buat tombol per server -> callback ke handler edit_<field>_<id>
         const inlineButtons = [];
+        const lines = [];
+        lines.push('✏️ *Edit ' + label + '*');
+        lines.push('');
+        lines.push('Pilih server yang ingin diedit. Nilai sekarang ditampilkan di bawah:');
+        lines.push('');
         for (const srv of servers) {
           const safeName = (srv.nama_server || srv.domain || ('Server #' + srv.id)).slice(0, 60);
+          const valNow = (typeof srv.val !== 'undefined') ? fmt(srv.val) : null;
+          if (valNow) {
+            lines.push('• *' + safeName + '* — sekarang: `' + valNow + '`');
+          } else {
+            lines.push('• *' + safeName + '*');
+          }
           inlineButtons.push([{
-            text: safeName,
+            text: safeName + (valNow ? ' (' + valNow + ')' : ''),
             callback_data: 'edit_' + fieldKey + '_' + srv.id,
           }]);
         }
         inlineButtons.push([{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }]);
 
-        await ctx.reply('✏️ *Edit ' + label + '*\n\nPilih server yang ingin diedit:',
+        await ctx.reply(lines.join('\n'),
           {
             parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: inlineButtons },
@@ -12010,15 +12048,40 @@ bot.action('deleteserver', async (ctx) => {
 });
 bot.action(/edit_harga_(\d+)/, async (ctx) => {
   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   }
+  await ctx.answerCbQuery().catch(() => {});
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit harga server dengan ID: ${serverId}`);
-  userState[ctx.chat.id] = { step: 'edit_harga', serverId: serverId };
 
-  await ctx.reply('?? *Silakan masukkan harga server baru:*', {
-    reply_markup: { inline_keyboard: keyboard_nomor() },
-    parse_mode: 'Markdown'
+  // Ambil nilai lama dari DB supaya bisa ditampilkan di header & pesan sukses (before/after).
+  db.get('SELECT nama_server, domain, harga FROM Server WHERE id = ?', [serverId], async (err, row) => {
+    if (err) {
+      logger.error('Gagal ambil server untuk edit harga:', err.message);
+      return ctx.reply('⚠️ Gagal mengambil data server.', { parse_mode: 'Markdown' });
+    }
+    if (!row) return ctx.reply('⚠️ Server tidak ditemukan.', { parse_mode: 'Markdown' });
+
+    const oldHarga = Number(row.harga) || 0;
+    const namaServer = row.nama_server || row.domain || ('Server #' + serverId);
+    userState[ctx.chat.id] = {
+      step: 'edit_harga',
+      serverId: serverId,
+      oldValue: oldHarga,
+      serverName: namaServer,
+    };
+
+    await ctx.reply(
+      '✏️ *Edit Harga Server (paket 30 hari)*\n\n' +
+        '📍 Server: *' + namaServer + '*\n' +
+        '💰 Harga sekarang: *Rp ' + oldHarga.toLocaleString('id-ID') + '*\n\n' +
+        '_Silakan masukkan harga baru menggunakan keypad di bawah._\n' +
+        '_Tekan ❌ Batal untuk membatalkan._',
+      {
+        reply_markup: { inline_keyboard: keyboard_nomor() },
+        parse_mode: 'Markdown',
+      }
+    );
   });
 });
 
@@ -12535,6 +12598,24 @@ async function handleEditDomain(ctx, userStateData, data) {
 async function handleEditHarga(ctx, userStateData, data) {
   let currentAmount = userStateData.amount || '';
 
+  // Tombol "❌ Batal" di keypad: hentikan flow & kembali ke menu server.
+  // Sebelumnya callback 'cancel' jatuh ke else → "Hanya angka yang diperbolehkan".
+  if (data === 'cancel') {
+    delete userState[ctx.chat.id];
+    try { await ctx.answerCbQuery('⛔ Dibatalkan'); } catch (_) {}
+    try {
+      await ctx.editMessageText('⛔ *Edit harga dibatalkan.*', {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
+          ],
+        },
+      });
+    } catch (_) {}
+    return;
+  }
+
   if (data === 'delete') {
     currentAmount = currentAmount.slice(0, -1);
   } else if (data === 'confirm') {
@@ -12545,9 +12626,24 @@ async function handleEditHarga(ctx, userStateData, data) {
     if (isNaN(hargaBaru) || hargaBaru <= 0) {
       return ctx.reply('❌ *Harga tidak valid. Masukkan angka yang valid.*', { parse_mode: 'Markdown' });
     }
+    const oldHarga = Number(userStateData.oldValue) || 0;
+    const serverName = userStateData.serverName || ('Server #' + userStateData.serverId);
     try {
       await updateServerField(userStateData.serverId, hargaBaru, 'UPDATE Server SET harga = ? WHERE id = ?');
-      ctx.reply(`✅ *Harga server berhasil diupdate.*\n\n📝 *Detail Server:*\n- Harga Baru: *Rp ${hargaBaru}*`, { parse_mode: 'Markdown' });
+      ctx.reply(
+        '✅ *Harga server berhasil diubah.*\n\n' +
+          '📍 Server: *' + serverName + '*\n' +
+          '• Sebelumnya : Rp ' + oldHarga.toLocaleString('id-ID') + '\n' +
+          '• Sekarang   : *Rp ' + Number(hargaBaru).toLocaleString('id-ID') + '*',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
+            ],
+          },
+        }
+      );
     } catch (err) {
       ctx.reply('❌ *Terjadi kesalahan saat mengupdate harga server.*', { parse_mode: 'Markdown' });
     }
@@ -12565,12 +12661,24 @@ async function handleEditHarga(ctx, userStateData, data) {
   }
 
   userStateData.amount = currentAmount;
- const newMessage = `💰 *Silakan masukkan harga server baru (paket 30 hari):*\n\nJumlah saat ini: *Rp ${currentAmount}*`;
-  if (newMessage !== ctx.callbackQuery.message.text) {
-    await ctx.editMessageText(newMessage, {
-      reply_markup: { inline_keyboard: keyboard_nomor() },
-      parse_mode: 'Markdown'
-    });
+  const oldHarga = Number(userStateData.oldValue) || 0;
+  const serverName = userStateData.serverName || ('Server #' + userStateData.serverId);
+  const newMessage =
+    '✏️ *Edit Harga Server (paket 30 hari)*\n\n' +
+    '📍 Server: *' + serverName + '*\n' +
+    '💰 Harga sekarang: *Rp ' + oldHarga.toLocaleString('id-ID') + '*\n' +
+    '🆕 Input baru: *Rp ' + (currentAmount || '0') + '*\n\n' +
+    '_Tekan ✅ untuk simpan atau ❌ Batal untuk membatalkan._';
+  const oldText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || '';
+  if (newMessage !== oldText) {
+    try {
+      await ctx.editMessageText(newMessage, {
+        reply_markup: { inline_keyboard: keyboard_nomor() },
+        parse_mode: 'Markdown',
+      });
+    } catch (e) {
+      // "message is not modified" / pesan asli sudah hilang, ignore
+    }
   }
 }
 function keyboard_nomor() {
