@@ -2324,6 +2324,11 @@ const edukasiHandlers = createEdukasiHandlers({
   userState,
   getPriceConfig: getEdukasiPriceConfig,
   getIlmupediaLinks: () => __ilmupediaLinks,
+  // Notif grup pakai flag yang sama dengan notif topup/buat akun lokal,
+  // supaya admin cukup atur 1 toggle (NOTIF_TOPUP_GROUP) di .vars.json.
+  getGroupId: () => GROUP_ID,
+  isGroupNotifyEnabled: () => !!NOTIF_TOPUP_GROUP,
+  getTimeZone: () => TIME_ZONE,
 });
 edukasiHandlers.register();
 

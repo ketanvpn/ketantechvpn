@@ -58,6 +58,16 @@ function resolveServerShort(sid) {
 
 
 
+// Escape karakter untuk pesan HTML Telegram. Dipakai untuk username, nama
+// server, dan label lain yang mungkin punya karakter < > &.
+function htmlEscape(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function createEdukasiHandlers({
   bot,
   logger,
@@ -68,6 +78,9 @@ function createEdukasiHandlers({
   userState,
   getPriceConfig,
   getIlmupediaLinks,
+  getGroupId,
+  isGroupNotifyEnabled,
+  getTimeZone,
 }) {
   if (!bot) throw new Error('createEdukasiHandlers: bot required');
   if (!logger) throw new Error('createEdukasiHandlers: logger required');
@@ -92,6 +105,125 @@ function createEdukasiHandlers({
   const _getIlpedLinks = typeof getIlmupediaLinks === 'function'
     ? getIlmupediaLinks
     : () => [];
+
+  // Group notification helpers (opsional). Kalau tidak di-wire, notif grup
+  // otomatis tidak dikirim - tidak akan crash.
+  const _getGroupId = typeof getGroupId === 'function' ? getGroupId : () => '';
+  const _isGroupNotifyEnabled = typeof isGroupNotifyEnabled === 'function'
+    ? isGroupNotifyEnabled
+    : () => false;
+  const _getTimeZone = typeof getTimeZone === 'function'
+    ? getTimeZone
+    : () => 'Asia/Jakarta';
+
+  // Format timestamp ke string lokal sesuai timezone bot.
+  function formatGroupDate(ts) {
+    try {
+      return new Date(ts).toLocaleString('id-ID', {
+        timeZone: _getTimeZone() || 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (_) {
+      return new Date(ts).toISOString();
+    }
+  }
+
+  // Ambil display name dari ctx.from (untuk notif grup). Prioritas: @username,
+  // first_name, fallback "ID:<id>".
+  function pickUserDisplay(ctx) {
+    const from = ctx.from || {};
+    if (from.username) return '@' + from.username;
+    if (from.first_name) {
+      return from.last_name ? from.first_name + ' ' + from.last_name : from.first_name;
+    }
+    return 'ID:' + from.id;
+  }
+
+  // Kirim notif grup untuk transaksi Akun Direct EDU. Trial sengaja silent
+  // supaya grup tidak terisi notif gratisan.
+  // kind = 'created' | 'renewed'
+  async function sendGroupNotificationEdu(ctx, kind, result) {
+    try {
+      if (!_isGroupNotifyEnabled()) return;
+      const groupId = _getGroupId();
+      if (!groupId) return;
+      if (!result || !result.apiData) return;
+      if (result.isTrial) return; // trial silent
+
+      const apiData = result.apiData;
+      const userId = ctx.from && ctx.from.id;
+      const userDisplay = pickUserDisplay(ctx);
+      const role = isResellerId(userId) ? 'Reseller' : 'Member';
+
+      const SERVICE_LABELS = (edukasiService && edukasiService.SERVICE_LABELS) || {};
+      const typeLabel = SERVICE_LABELS[apiData.service]
+        || (apiData.service ? String(apiData.service).toUpperCase() : 'VPN');
+      const periodLabel = apiData.billing_period === 'weekly' ? 'Mingguan' : 'Bulanan';
+      const serverName = (result.server && result.server.name)
+        || apiData.server || '-';
+      const harga = (result.priceInfo && result.priceInfo.price)
+        || apiData.price || 0;
+
+      // Hitung durasi & sisa hari dari expired_at API.
+      let durasiText = '-';
+      let expiredText = '-';
+      try {
+        if (apiData.expired_at) {
+          const expDate = new Date(apiData.expired_at);
+          const tz = _getTimeZone() || 'Asia/Jakarta';
+          expiredText = expDate.toLocaleDateString('id-ID', {
+            timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+          });
+          const diffDays = Math.max(
+            1,
+            Math.round((expDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+          );
+          durasiText = diffDays + ' Hari';
+        }
+      } catch (_) {}
+
+      const headerText = (kind === 'renewed')
+        ? '<b>EDU ACCOUNT RENEWED</b>'
+        : '<b>EDU ACCOUNT CREATED</b>';
+
+      const emoji = kind === 'renewed' ? '\u267B\uFE0F' : '\uD83C\uDF93';
+      const lines = [];
+      lines.push('<blockquote>');
+      lines.push('<code>━━━━━━━━━━━━━━━━━━━━</code>');
+      lines.push(emoji + ' ' + headerText);
+      lines.push('<code>━━━━━━━━━━━━━━━━━━━━</code>');
+      lines.push('<b>Akun Direct EDU</b>');
+      lines.push('<code>');
+      lines.push('-> Client  : ' + htmlEscape(userDisplay));
+      lines.push('-> Role    : ' + role);
+      lines.push('-> User    : ' + htmlEscape(apiData.username || '-'));
+      lines.push('-> Type    : ' + typeLabel + ' (' + periodLabel + ')');
+      lines.push('-> Server  : ' + htmlEscape(serverName));
+      if (Number(harga) > 0) {
+        lines.push('-> Harga   : Rp ' + Number(harga).toLocaleString('id-ID'));
+      }
+      lines.push('-> Durasi  : ' + durasiText);
+      lines.push('-> Expired : ' + expiredText);
+      if (apiData.order_id) {
+        lines.push('-> OrderID : ' + htmlEscape(apiData.order_id));
+      }
+      lines.push('-> Waktu   : ' + formatGroupDate(Date.now()));
+      lines.push('</code>');
+      lines.push('<code>━━━━━━━━━━━━━━━━━━━━</code>');
+      lines.push('</blockquote>');
+
+      await bot.telegram.sendMessage(groupId, lines.join('\n'), {
+        parse_mode: 'HTML',
+      });
+    } catch (e) {
+      // Notif grup tidak boleh ganggu flow utama
+      logger.warn('sendGroupNotificationEdu gagal: ' + (e && e.message ? e.message : e));
+    }
+  }
 
   // === RENDER FUNCTIONS ===
 
@@ -506,6 +638,7 @@ function createEdukasiHandlers({
       const msg = edukasiService.formatAccountMessage(result);
       await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
       await sendIlmupediaFollowup(ctx);
+      await sendGroupNotificationEdu(ctx, 'created', result);
       logger.info('Edukasi order sukses untuk user ' + userId
         + ' service=' + state.service + ' period=' + state.period
         + ' order_id=' + (result.apiData && result.apiData.order_id));
@@ -531,6 +664,7 @@ function createEdukasiHandlers({
       const msg = edukasiService.formatAccountMessage(result);
       await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
       await sendIlmupediaFollowup(ctx);
+      // Trial silent untuk grup (sengaja tidak notif).
       logger.info('Edukasi trial sukses user=' + userId + ' service=' + service);
     } catch (err) {
       await ctx.reply('\u274C *Gagal membuat trial edukasi.*\n\n_' + (err.message || 'Unknown error') + '_',
@@ -590,6 +724,7 @@ function createEdukasiHandlers({
       const msg = edukasiService.formatAccountMessage(result);
       await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
       await sendIlmupediaFollowup(ctx);
+      await sendGroupNotificationEdu(ctx, 'renewed', result);
       logger.info('Edukasi renew sukses user=' + userId + ' accountId=' + accountId + ' period=' + period);
     } catch (err) {
       const refunded = !!err.refunded;
