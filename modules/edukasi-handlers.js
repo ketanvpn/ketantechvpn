@@ -17,27 +17,45 @@ function buildPeriodLabel(p) {
   return String(p || '-');
 }
 
-// Telegram callback_data dibatasi 64 bytes (UTF-8). Kalau lewat, Telegram
-// nolak seluruh pesan dengan error "BUTTON_DATA_INVALID". Kita pendekkan
-// kalau perlu (jarang terjadi karena server_code dari vpnbiz pendek).
-function safeCb(data) {
-  const str = String(data || '');
-  if (Buffer.byteLength(str, 'utf8') <= 64) return str;
-  // Kalau terlalu panjang, hash sederhana ke 8 char hex agar muat.
-  const crypto = require('crypto');
-  const prefix = str.split(':').slice(0, 1).join(':');
-  const hash = crypto.createHash('sha1').update(str).digest('hex').slice(0, 12);
-  return prefix + ':' + hash;
+// Telegram callback_data dibatasi 64 bytes (UTF-8). Server code vpnbiz pakai
+// UUID 36-char, jadi callback `edukasi_svc:<uuid>:bundle_shadowsocks` (67 byte)
+// langsung melewati batas itu. Solusinya: kita pakai short-id mapping in-memory:
+//   server UUID -> 8-char hex (sha1 first 8)
+//   service -> 1 char (v/l/t/s)
+// Mapping disimpan di Map yang refresh tiap kali listServers dipanggil.
+const crypto = require('crypto');
+
+const SERVICE_TO_SHORT = {
+  bundle_vmess: 'v',
+  bundle_vless: 'l',
+  bundle_trojan: 't',
+  bundle_shadowsocks: 's',
+};
+const SHORT_TO_SERVICE = {
+  v: 'bundle_vmess',
+  l: 'bundle_vless',
+  t: 'bundle_trojan',
+  s: 'bundle_shadowsocks',
+};
+
+function shortServerId(code) {
+  return crypto.createHash('sha1').update(String(code)).digest('hex').slice(0, 8);
 }
 
-// Escape karakter yang sensitif untuk parse_mode Markdown legacy.
-// `_`, `*`, `[`, `` ` `` sering muncul di nama server vpnbiz dan bikin parser
-// telegram menolak teks (walau tidak jadi BUTTON_DATA_INVALID, tapi bisa bikin
-// edit pesan gagal).
-function mdSafe(s) {
-  if (s === null || s === undefined) return '';
-  return String(s).replace(/[_*`\[\]]/g, (m) => '\\' + m);
+// Cache mapping server short id -> full code untuk session bot ini.
+// Refresh setiap call listServers (via getProducts cache yg 5 menit).
+const __serverShortMap = new Map();
+
+function rememberServer(code) {
+  if (!code) return null;
+  const sid = shortServerId(code);
+  __serverShortMap.set(sid, code);
+  return sid;
 }
+function resolveServerShort(sid) {
+  return __serverShortMap.get(String(sid)) || null;
+}
+
 
 
 function createEdukasiHandlers({
@@ -109,32 +127,15 @@ function createEdukasiHandlers({
     lines.push('Pilih server di bawah:');
 
     const keyboard = [];
-    let skipped = 0;
     for (const s of servers) {
-      // Validasi server.code: hanya boleh karakter aman untuk callback_data.
-      // Telegram nolak callback_data yang mengandung null/whitespace/non-ascii
-      // dengan error BUTTON_DATA_INVALID (400). Kita skip + log kalau aneh.
-      if (!s.code || typeof s.code !== 'string' || !/^[A-Za-z0-9_-]+$/.test(s.code)) {
-        logger.warn('Edukasi: server di-skip karena code tidak valid: ' + JSON.stringify(s));
-        skipped++;
-        continue;
-      }
+      if (!s || !s.code) continue;
+      const sid = rememberServer(s.code); // 8-char hex
       const slotInfo = s.slot && typeof s.slot.available === 'number'
         ? ' (' + s.slot.available + ' slot)' : '';
-      const cbData = 'edukasi_srv:' + s.code;
-      // Cek panjang callback_data (Telegram batasi 64 byte)
-      if (Buffer.byteLength(cbData, 'utf8') > 64) {
-        logger.warn('Edukasi: server di-skip karena callback_data > 64 byte: ' + cbData);
-        skipped++;
-        continue;
-      }
       keyboard.push([{
         text: '\uD83C\uDF10 ' + (s.name || s.code) + slotInfo,
-        callback_data: cbData,
+        callback_data: 'edukasi_srv:' + sid,
       }]);
-    }
-    if (skipped > 0) {
-      logger.warn('Edukasi: ' + skipped + ' server di-skip dari list (lihat warning di atas)');
     }
     if (keyboard.length === 0) {
       await sendCleanMenu(ctx, '\u26A0\uFE0F Tidak ada server valid yang bisa ditampilkan.\n\nKemungkinan API vpnbiz mengembalikan format yang tidak terduga. Cek `pm2 logs` untuk detail.',
@@ -179,11 +180,14 @@ function createEdukasiHandlers({
     lines.push('');
     lines.push('Pilih layanan VPN:');
 
+    const sid = rememberServer(server.code);
     const keyboard = [];
     for (const svc of services) {
+      const svcShort = SERVICE_TO_SHORT[svc.service];
+      if (!svcShort) continue;
       keyboard.push([{
         text: '\u26A1 ' + svc.label,
-        callback_data: 'edukasi_svc:' + server.code + ':' + svc.service,
+        callback_data: 'edukasi_svc:' + sid + ':' + svcShort,
       }]);
     }
     keyboard.push([{ text: '\u2B05\uFE0F Pilih Server Lain', callback_data: 'edukasi_menu' }]);
@@ -235,24 +239,26 @@ function createEdukasiHandlers({
     }
     lines.push('\uD83C\uDD93 *Trial*: Gratis (30 menit, 2 GB)');
 
+    const sid = rememberServer(server.code);
+    const svcShort = SERVICE_TO_SHORT[service] || service;
     const keyboard = [];
     if (periods.includes('monthly')) {
       keyboard.push([{
         text: '\uD83D\uDCC5 Bulanan - ' + formatRupiah(monthlyPrice),
-        callback_data: 'edukasi_period:' + serverCode + ':' + service + ':monthly',
+        callback_data: 'edukasi_period:' + sid + ':' + svcShort + ':m',
       }]);
     }
     if (periods.includes('weekly')) {
       keyboard.push([{
         text: '\uD83D\uDDD3\uFE0F Mingguan - ' + formatRupiah(weeklyPrice),
-        callback_data: 'edukasi_period:' + serverCode + ':' + service + ':weekly',
+        callback_data: 'edukasi_period:' + sid + ':' + svcShort + ':w',
       }]);
     }
     keyboard.push([{
       text: '\uD83C\uDD93 Trial Gratis (30 menit)',
-      callback_data: 'edukasi_period:' + serverCode + ':' + service + ':trial',
+      callback_data: 'edukasi_period:' + sid + ':' + svcShort + ':t',
     }]);
-    keyboard.push([{ text: '\u2B05\uFE0F Layanan Lain', callback_data: 'edukasi_srv:' + serverCode }]);
+    keyboard.push([{ text: '\u2B05\uFE0F Layanan Lain', callback_data: 'edukasi_srv:' + sid }]);
     keyboard.push([{ text: '\uD83D\uDD19 Menu Utama', callback_data: 'send_main_menu' }]);
 
     await sendCleanMenu(ctx, lines.join('\n'), {
@@ -312,9 +318,11 @@ function createEdukasiHandlers({
     lines.push('');
     lines.push('Lanjut buat trial?');
 
+    const sid = rememberServer(server.code);
+    const svcShort = SERVICE_TO_SHORT[service] || service;
     const keyboard = [
-      [{ text: '\u2705 Ya, Buat Trial', callback_data: 'edukasi_trial_do:' + serverCode + ':' + service }],
-      [{ text: '\u274C Batal', callback_data: 'edukasi_svc:' + serverCode + ':' + service }],
+      [{ text: '\u2705 Ya, Buat Trial', callback_data: 'edukasi_trial_do:' + sid + ':' + svcShort }],
+      [{ text: '\u274C Batal', callback_data: 'edukasi_svc:' + sid + ':' + svcShort }],
     ];
 
     await sendCleanMenu(ctx, lines.join('\n'), {
@@ -532,29 +540,62 @@ function createEdukasiHandlers({
     };
   }
 
+  // Helper: kalau short-id tidak ada di map (mis. bot baru restart, user
+  // klik tombol lama), refresh produk dulu supaya map terisi.
+  async function ensureShortIdResolved(sid) {
+    let full = resolveServerShort(sid);
+    if (full) return full;
+    try {
+      const products = await edukasiService.getProducts({ force: true });
+      const servers = edukasiService.listServers(products);
+      for (const s of servers) {
+        if (s && s.code) rememberServer(s.code);
+      }
+    } catch (_) {}
+    return resolveServerShort(sid);
+  }
+
   function register() {
     bot.action('edukasi_menu', safeAction('edukasi_menu', async (ctx) => {
       await renderMainMenu(ctx);
     }));
 
     bot.action(/^edukasi_srv:([A-Za-z0-9_-]+)$/, safeAction('edukasi_srv', async (ctx) => {
-      const code = ctx.match[1];
-      logger.info('Edukasi user ' + ctx.from.id + ' pilih server: ' + code);
+      const sid = ctx.match[1];
+      const code = await ensureShortIdResolved(sid);
+      if (!code) {
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        return;
+      }
+      logger.info('Edukasi user ' + ctx.from.id + ' pilih server: ' + sid + ' (' + code + ')');
       await renderServerMenu(ctx, code);
     }));
 
-    bot.action(/^edukasi_svc:([A-Za-z0-9_-]+):([A-Za-z0-9_]+)$/, safeAction('edukasi_svc', async (ctx) => {
-      const code = ctx.match[1];
-      const service = ctx.match[2];
-      logger.info('Edukasi user ' + ctx.from.id + ' pilih layanan: ' + code + '/' + service);
+    bot.action(/^edukasi_svc:([A-Za-z0-9_-]+):([a-z])$/, safeAction('edukasi_svc', async (ctx) => {
+      const sid = ctx.match[1];
+      const svcShort = ctx.match[2];
+      const code = await ensureShortIdResolved(sid);
+      const service = SHORT_TO_SERVICE[svcShort];
+      if (!code || !service) {
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        return;
+      }
+      logger.info('Edukasi user ' + ctx.from.id + ' pilih layanan: ' + sid + '/' + service);
       await renderServiceMenu(ctx, code, service);
     }));
 
-    bot.action(/^edukasi_period:([A-Za-z0-9_-]+):([A-Za-z0-9_]+):(monthly|weekly|trial)$/, safeAction('edukasi_period', async (ctx) => {
-      const code = ctx.match[1];
-      const service = ctx.match[2];
-      const period = ctx.match[3];
-      logger.info('Edukasi user ' + ctx.from.id + ' pilih period: ' + code + '/' + service + '/' + period);
+    bot.action(/^edukasi_period:([A-Za-z0-9_-]+):([a-z]):(m|w|t)$/, safeAction('edukasi_period', async (ctx) => {
+      const sid = ctx.match[1];
+      const svcShort = ctx.match[2];
+      const periodShort = ctx.match[3];
+      const code = await ensureShortIdResolved(sid);
+      const service = SHORT_TO_SERVICE[svcShort];
+      const period = periodShort === 'm' ? 'monthly' : (periodShort === 'w' ? 'weekly' : 'trial');
+      if (!code || !service) {
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        return;
+      }
+      logger.info('Edukasi user ' + ctx.from.id + ' pilih period: ' + sid + '/' + service + '/' + period);
 
       if (period === 'trial') {
         await startTrialConfirm(ctx, code, service);
@@ -565,9 +606,15 @@ function createEdukasiHandlers({
       await startUsernameInput(ctx, code, service, period);
     }));
 
-    bot.action(/^edukasi_trial_do:([A-Za-z0-9_-]+):([A-Za-z0-9_]+)$/, safeAction('edukasi_trial_do', async (ctx) => {
-      const code = ctx.match[1];
-      const service = ctx.match[2];
+    bot.action(/^edukasi_trial_do:([A-Za-z0-9_-]+):([a-z])$/, safeAction('edukasi_trial_do', async (ctx) => {
+      const sid = ctx.match[1];
+      const svcShort = ctx.match[2];
+      const code = await ensureShortIdResolved(sid);
+      const service = SHORT_TO_SERVICE[svcShort];
+      if (!code || !service) {
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        return;
+      }
       await executeTrial(ctx, code, service);
     }));
 
