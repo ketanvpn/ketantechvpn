@@ -46,6 +46,56 @@ function escapeMarkdownV1(s) {
   return String(s).replace(/`/g, '\\`');
 }
 
+// Bersihkan field `output` dari API vpnbiz:
+// - Hapus baris yang menyebut domain provider asli (vpnbiz.id, panel.vpnbiz, dll)
+// - Hapus duplikasi info yang sudah kita tampilkan di header (Username, Domain,
+//   UUID, Status, Expired, Order ID, Subscription)
+// - Hapus section verbose "--- VMess ---" / "--- Trojan ---" / dll yang
+//   isinya cuma daftar tipe protocol (kita biarkan link API saja).
+// - Sisakan hanya bagian "--- Link API ---" sampai akhir.
+//
+// Return objek { intro: '', links: [{ label, url }, ...] }
+function parseEdukasiOutput(rawOutput) {
+  if (!rawOutput || typeof rawOutput !== 'string') {
+    return { links: [], subscriptionUrl: null };
+  }
+  const lines = rawOutput.split(/\r?\n/);
+  const links = [];
+  let inLinkSection = false;
+  let subscriptionUrl = null;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    // Tangkap "Subscription : https://..." sebelum masuk Link API section
+    if (!inLinkSection) {
+      const sub = line.match(/^Subscription\s*:\s*(https?:\/\/\S+)$/i);
+      if (sub) {
+        subscriptionUrl = sub[1].trim();
+        continue;
+      }
+    }
+
+    if (/^---\s*Link API\s*---/i.test(line)) {
+      inLinkSection = true;
+      continue;
+    }
+    // Section lain (--- VMess ---, --- Trojan ---, dll) -> reset, skip
+    if (/^---\s*[\w\s]+\s*---/i.test(line)) {
+      inLinkSection = false;
+      continue;
+    }
+    if (!inLinkSection) continue;
+    // Format baris link: "Label : protokol://..."
+    const m = line.match(/^(.+?)\s*:\s*((?:vmess|vless|trojan|ss|hysteria2?|tuic|http|https|wss?):\/\/\S+)$/i);
+    if (m) {
+      links.push({ label: m[1].trim(), url: m[2].trim() });
+    }
+  }
+  return { links, subscriptionUrl };
+}
+
 function createEdukasiService({
   db,
   logger,
@@ -601,17 +651,31 @@ function createEdukasiService({
       }
     }
 
-    // API kasih `output` (config detail). Kalau ada, attach apa adanya di code-block.
-    if (apiData.output && typeof apiData.output === 'string' && apiData.output.trim()) {
+    // Parse `output` API jadi list link config bersih (tanpa info duplikat
+    // dan tanpa promosi domain provider). Setiap link di-render sebagai
+    // baris berlabel + inline code block (1 baris) supaya gampang di-copy
+    // tanpa nge-break parse_mode Markdown.
+    const parsed = parseEdukasiOutput(apiData.output || '');
+
+    const subUrl = apiData.subscription_url || apiData.subscription || parsed.subscriptionUrl;
+    if (subUrl) {
       lines.push('');
-      lines.push('\u{1F517} *Detail Konfigurasi*:');
-      lines.push('```');
-      lines.push(String(apiData.output).slice(0, 3500));
-      lines.push('```');
+      lines.push('\u{1F517} *Subscription URL* (tap untuk salin):');
+      lines.push('`' + escapeMarkdownV1(subUrl) + '`');
+    }
+
+    if (parsed.links.length > 0) {
+      lines.push('');
+      lines.push('\u{1F4CB} *Link Konfigurasi (tap untuk salin):*');
+      for (const lnk of parsed.links) {
+        lines.push('');
+        lines.push('_' + escapeMarkdownV1(lnk.label) + '_');
+        lines.push('`' + escapeMarkdownV1(lnk.url) + '`');
+      }
     }
 
     lines.push('');
-    lines.push('_Powered by Paket Edukasi_');
+    lines.push('_Selamat menggunakan Paket Edukasi_');
 
     return lines.join('\n');
   }
