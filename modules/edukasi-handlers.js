@@ -95,13 +95,103 @@ function createEdukasiHandlers({
 
   // === RENDER FUNCTIONS ===
 
+  // Landing page Akun Direct EDU. Tujuan: bantu user awam paham bahwa untuk
+  // pakai layanan ini mereka butuh 2 hal terpisah:
+  //   1. Paket Ilmupedia (kuota Telkomsel) -> beli di MyTelkomsel
+  //   2. Akun VPN Edukasi -> dibuat oleh bot ini
+  // Halaman ini cuma menjelaskan + memberi 2 tombol langkah eksplisit.
+  // Tidak hit API vpnbiz (cepat & tidak bikin error kalau API down).
   async function renderMainMenu(ctx) {
+    const userId = ctx.from.id;
+    const isReseller = !!isResellerId(userId);
+    const cfg = getPriceConfig() || {};
+    const priceMonthly = isReseller ? Number(cfg.RESELLER_MONTHLY || 0) : Number(cfg.MEMBER_MONTHLY || 0);
+    const priceWeekly = isReseller ? Number(cfg.RESELLER_WEEKLY || 0) : Number(cfg.MEMBER_WEEKLY || 0);
+
+    const ilpedLinks = (_getIlpedLinks() || []).filter((l) => l && l.url);
+    const hasIlped = ilpedLinks.length > 0;
+
+    const lines = [];
+    lines.push('\uD83C\uDF93 *AKUN DIRECT EDU*');
+    lines.push('');
+    lines.push('Layanan VPN murah memakai jaringan *Paket Ilmupedia* Telkomsel.');
+    lines.push('Untuk bisa pakai, kamu butuh *2 hal* yang terpisah:');
+    lines.push('');
+    lines.push('1\uFE0F\u20E3 *Paket Ilmupedia* (kuota internet dari Telkomsel)');
+    lines.push('2\uFE0F\u20E3 *Akun VPN Edukasi* (dibuat di bot ini)');
+    lines.push('');
+    lines.push('\uD83D\uDCB0 *Harga akun VPN* (' + (isReseller ? 'Reseller' : 'Member') + '):');
+    lines.push('\u2022 Bulanan : *' + formatRupiah(priceMonthly) + '* (100 GB)');
+    lines.push('\u2022 Mingguan: *' + formatRupiah(priceWeekly) + '* (25 GB)');
+    lines.push('\u2022 Trial   : *Gratis* (30 menit, 2 GB)');
+    lines.push('');
+    lines.push('_Pilih langkah yang mau kamu lakukan:_');
+
+    const keyboard = [];
+    if (hasIlped) {
+      keyboard.push([{
+        text: '\uD83D\uDCF1 Langkah 1 \u2014 Beli Paket Ilmupedia',
+        callback_data: 'edukasi_ilped',
+      }]);
+    }
+    keyboard.push([{
+      text: '\uD83C\uDF10 Langkah 2 \u2014 Buat Akun VPN Edukasi',
+      callback_data: 'edukasi_servers',
+    }]);
+    keyboard.push([{
+      text: '\u2753 Apa Bedanya? Kenapa Butuh 2-2-nya?',
+      callback_data: 'edukasi_help_compare',
+    }]);
+    keyboard.push([{ text: '\uD83D\uDD19 Menu Utama', callback_data: 'send_main_menu' }]);
+
+    await sendCleanMenu(ctx, lines.join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  }
+
+  // Halaman penjelasan untuk user yang masih bingung.
+  async function renderHelpCompare(ctx) {
+    const lines = [];
+    lines.push('\u2753 *Apa Bedanya?*');
+    lines.push('');
+    lines.push('Bayangin kayak nonton di bioskop:');
+    lines.push('\u2022 *Paket Ilmupedia* = tiket masuk bioskop (dari Telkomsel)');
+    lines.push('\u2022 *Akun VPN Edukasi* = filmnya sendiri (dari kami)');
+    lines.push('');
+    lines.push('Tanpa tiket, kamu nggak bisa masuk ke bioskop.');
+    lines.push('Tanpa film, ya nggak ada yang ditonton.');
+    lines.push('Jadi *dua-duanya wajib aktif*.');
+    lines.push('');
+    lines.push('\uD83D\uDD39 *Cara kerjanya:*');
+    lines.push('1. Beli Paket *Ilmupedia* di MyTelkomsel (1/5/11/22 GB)');
+    lines.push('2. Buat *Akun VPN Edukasi* di sini (Bulanan / Mingguan / Trial)');
+    lines.push('3. Pasang konfigurasi VPN ke aplikasi pilihan kamu');
+    lines.push('4. Konek \u2014 internet kamu jalan pakai kuota Ilmupedia');
+    lines.push('');
+    lines.push('\uD83D\uDCA1 Akun trial *30 menit gratis* tersedia kalau kamu mau coba dulu sebelum beli.');
+
+    const keyboard = [
+      [{ text: '\uD83D\uDCF1 Beli Paket Ilmupedia', callback_data: 'edukasi_ilped' }],
+      [{ text: '\uD83C\uDF10 Buat Akun VPN Edukasi', callback_data: 'edukasi_servers' }],
+      [{ text: '\u2B05\uFE0F Kembali', callback_data: 'edukasi_menu' }],
+    ];
+
+    await sendCleanMenu(ctx, lines.join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  }
+
+  // List server VPN. Sebelumnya ini isi default `renderMainMenu`. Sekarang
+  // dipanggil khusus saat user klik "Langkah 2 - Buat Akun VPN Edukasi".
+  async function renderServerListMenu(ctx) {
     let products;
     try {
       products = await edukasiService.getProducts();
     } catch (err) {
       logger.error('Edukasi: gagal ambil produk:', err.message || err);
-      await sendCleanMenu(ctx, '\u274C Gagal ambil daftar Akun Direct EDU.\n\n' +
+      await sendCleanMenu(ctx, '\u274C Gagal ambil daftar server VPN Edukasi.\n\n' +
         '_' + (err.message || 'API tidak merespon') + '_\n\n' +
         'Silakan coba lagi nanti atau hubungi admin.', { parse_mode: 'Markdown' });
       return;
@@ -109,7 +199,7 @@ function createEdukasiHandlers({
 
     const servers = edukasiService.listServers(products);
     if (!servers.length) {
-      await sendCleanMenu(ctx, '\u26A0\uFE0F Belum ada server yang tersedia untuk Akun Direct EDU.', { parse_mode: 'Markdown' });
+      await sendCleanMenu(ctx, '\u26A0\uFE0F Belum ada server VPN Edukasi yang tersedia.', { parse_mode: 'Markdown' });
       return;
     }
 
@@ -120,12 +210,9 @@ function createEdukasiHandlers({
     const priceWeekly = isReseller ? Number(cfg.RESELLER_WEEKLY || 0) : Number(cfg.MEMBER_WEEKLY || 0);
 
     const lines = [];
-    lines.push('\uD83C\uDF93 *AKUN DIRECT EDU*');
+    lines.push('\uD83C\uDF10 *Pilih Server VPN Edukasi*');
     lines.push('');
-    lines.push('Layanan VPN murah meriah dari provider kami.');
-    lines.push('Cocok untuk belajar, browsing, & streaming ringan.');
-    lines.push('');
-    lines.push('\uD83D\uDCB0 *Harga kamu* (' + (isReseller ? 'Reseller' : 'Member') + '):');
+    lines.push('\uD83D\uDCB0 Harga kamu (' + (isReseller ? 'Reseller' : 'Member') + '):');
     lines.push('\u2022 Bulanan : *' + formatRupiah(priceMonthly) + '* (100 GB)');
     lines.push('\u2022 Mingguan: *' + formatRupiah(priceWeekly) + '* (25 GB)');
     lines.push('\u2022 Trial   : *Gratis* (30 menit, 2 GB)');
@@ -133,21 +220,9 @@ function createEdukasiHandlers({
     lines.push('Pilih server di bawah:');
 
     const keyboard = [];
-
-    // Tombol "Beli Paket Ilmupedia" di paling atas (kalau link sudah di-set).
-    // Akun VPN Direct EDU butuh paket Ilmupedia Telkomsel sebagai "tiket"-nya,
-    // jadi kita kasih shortcut ke link pembelian biar user nggak bingung.
-    const ilpedLinks = (_getIlpedLinks() || []).filter((l) => l && l.url);
-    if (ilpedLinks.length > 0) {
-      keyboard.push([{
-        text: '\uD83D\uDCF1 Beli Paket Ilmupedia (Telkomsel)',
-        callback_data: 'edukasi_ilped',
-      }]);
-    }
-
     for (const s of servers) {
       if (!s || !s.code) continue;
-      const sid = rememberServer(s.code); // 8-char hex
+      const sid = rememberServer(s.code);
       const slotInfo = s.slot && typeof s.slot.available === 'number'
         ? ' (' + s.slot.available + ' slot)' : '';
       keyboard.push([{
@@ -160,6 +235,7 @@ function createEdukasiHandlers({
         { parse_mode: 'Markdown' });
       return;
     }
+    keyboard.push([{ text: '\u2B05\uFE0F Kembali', callback_data: 'edukasi_menu' }]);
     keyboard.push([{ text: '\uD83D\uDD19 Menu Utama', callback_data: 'send_main_menu' }]);
 
     await sendCleanMenu(ctx, lines.join('\n'), {
@@ -208,7 +284,7 @@ function createEdukasiHandlers({
         callback_data: 'edukasi_svc:' + sid + ':' + svcShort,
       }]);
     }
-    keyboard.push([{ text: '\u2B05\uFE0F Pilih Server Lain', callback_data: 'edukasi_menu' }]);
+    keyboard.push([{ text: '\u2B05\uFE0F Pilih Server Lain', callback_data: 'edukasi_servers' }]);
     keyboard.push([{ text: '\uD83D\uDD19 Menu Utama', callback_data: 'send_main_menu' }]);
 
     await sendCleanMenu(ctx, lines.join('\n'), {
@@ -633,6 +709,14 @@ function createEdukasiHandlers({
 
     bot.action('edukasi_ilped', safeAction('edukasi_ilped', async (ctx) => {
       await renderIlmupediaMenu(ctx);
+    }));
+
+    bot.action('edukasi_servers', safeAction('edukasi_servers', async (ctx) => {
+      await renderServerListMenu(ctx);
+    }));
+
+    bot.action('edukasi_help_compare', safeAction('edukasi_help_compare', async (ctx) => {
+      await renderHelpCompare(ctx);
     }));
 
     bot.action(/^edukasi_srv:([A-Za-z0-9_-]+)$/, safeAction('edukasi_srv', async (ctx) => {
