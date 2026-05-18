@@ -1255,6 +1255,38 @@ async function sendCleanMenu(ctx, text, extra = {}) {
   if (sent?.message_id) lastMenuMsgId.set(userId, sent.message_id);
 }
 
+// === Helper navigasi menu admin: edit pesan kalau bisa, fallback reply ===
+// Tujuan: saat admin klik tombol di menu, pesan menu di-edit langsung
+// (bukan kirim pesan baru) supaya chat tidak numpuk. Cocok untuk:
+//   - Pindah submenu (admin_menu → admin_server_menu → ...)
+//   - Toggle setting (ON/OFF)
+//   - Konfirmasi/batal aksi dengan tombol
+// JANGAN dipakai untuk:
+//   - Saat admin kirim teks/foto (tidak ada pesan tombol untuk di-edit)
+//   - Saat hasil aksi berupa file/dokumen
+//   - Saat kirim pesan ke user lain
+async function editOrReply(ctx, text, extra = {}) {
+  const opts = { parse_mode: 'HTML', ...extra };
+  // Hanya coba edit kalau dipicu dari callback_query (klik tombol).
+  if (ctx.callbackQuery && ctx.update?.callback_query?.message) {
+    const msg = ctx.update.callback_query.message;
+    try {
+      // Kalau pesan asli berupa foto/dokumen, editMessageText akan gagal —
+      // di catch kita fallback ke reply.
+      if (msg.photo || msg.document || msg.video) {
+        throw new Error('original message is media');
+      }
+      await ctx.editMessageText(text, opts);
+      return;
+    } catch (e) {
+      const desc = e?.response?.description || e?.description || e?.message || '';
+      if (desc.includes('message is not modified')) return;
+      // fallback: kirim pesan baru
+    }
+  }
+  await ctx.reply(text, opts);
+}
+
 // === Helper notifikasi singkat ke user (cbQuery / edit menu) ===
 async function toast(ctx, text, { alert = false } = {}) {
   try { await ctx.answerCbQuery(text, { show_alert: alert }); } catch (_) {}
@@ -5472,6 +5504,9 @@ function getAdminTrialTemp(ctx) {
 // --- Fase 5 lanjutan split: reseller handler "async function renderResellerTargetMenu" dipindah ke admin/reseller.js
 
 async function renderAdminTrialMenu(ctx, cfg, options = {}) {
+  // options.edit dipakai untuk pemanggil internal yang sudah pegang pesan
+  // (mis. saat tombol +/-). Saat options.edit=false (buka pertama dari Menu
+  // Admin), kita pakai editOrReply supaya tidak buat pesan baru.
   const isEdit = options.edit || false;
 
   const statusText = cfg.enabled ? 'Aktif ✅' : 'Nonaktif ⛔';
@@ -5531,7 +5566,9 @@ async function renderAdminTrialMenu(ctx, cfg, options = {}) {
       });
     }
   } else {
-    await ctx.reply(message, {
+    // Buka pertama kali → editOrReply supaya pesan Menu Admin di-edit, tidak
+    // numpuk pesan baru.
+    await editOrReply(ctx, message, {
       parse_mode: 'Markdown',
       reply_markup: replyMarkup
     });
@@ -6013,7 +6050,9 @@ bot.action('broadcast_menu', async (ctx) => {
     ],
   ];
 
-  return ctx.reply(text, {
+  // Edit pesan menu admin saat tombol "Kirim Pengumuman" diklik supaya tidak
+  // numpuk pesan baru. Kalau gagal edit (mis. pesan lama hilang), fallback reply.
+  return editOrReply(ctx, text, {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard },
   });
@@ -6041,7 +6080,9 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
     target,
   };
 
-  await ctx.reply(
+  // Edit pesan pilih target jadi pilih mode (tidak numpuk pesan baru).
+  await editOrReply(
+    ctx,
     `📢 Pengumuman ke <b>${targetLabel}</b>\n\n` +
       'Pilih cara membuat pengumuman:\n' +
       '• ✏️ Tulis manual (ketik bebas)\n' +
@@ -6213,7 +6254,14 @@ bot.action('broadcast_cancel', async (ctx) => {
     delete broadcastSessions[adminId];
   }
 
-  await ctx.reply('⛔ Pengumuman dibatalkan.');
+  // Edit pesan konfirmasi jadi notif "dibatalkan" + tombol kembali ke Menu Admin.
+  await editOrReply(ctx, '⛔ Pengumuman dibatalkan.', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' }],
+      ],
+    },
+  });
 });
 
 // ============================================================================
@@ -6666,7 +6714,8 @@ bot.action('timezone_menu', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
 
   try {
-    await ctx.reply(getTimezoneStatusText(), {
+    // editOrReply: edit pesan menu admin, fallback ke reply kalau gagal
+    await editOrReply(ctx, getTimezoneStatusText(), {
       parse_mode: 'HTML',
       reply_markup: buildTimezoneKeyboard(),
     });
@@ -6915,7 +6964,8 @@ bot.action('backup_auto_menu', async (ctx) => {
 
   await ctx.answerCbQuery().catch(() => {});
   try {
-    await ctx.reply(getAutoBackupStatusText(), {
+    // editOrReply: timpa pesan Menu Admin, fallback reply kalau gagal
+    await editOrReply(ctx, getAutoBackupStatusText(), {
       parse_mode: 'HTML',
       reply_markup: buildAutoBackupKeyboard(),
     });
@@ -7270,7 +7320,8 @@ bot.action('monitor_panel', async (ctx) => {
 
     const text = lines.join('\n');
 
-    await ctx.reply(text, {
+    // Edit pesan menu admin → tampilan monitor (tidak buat pesan baru)
+    await editOrReply(ctx, text, {
       parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
@@ -7294,7 +7345,9 @@ bot.action('list_res_mem', async (ctx) => {
 
   await ctx.answerCbQuery().catch(() => {});
 
-  await ctx.reply('Pilih daftar yang ingin ditampilkan:', {
+  // Edit pesan menu admin → submenu pilih list (tidak buat pesan baru)
+  await editOrReply(ctx, 'Pilih daftar yang ingin ditampilkan:', {
+    parse_mode: 'HTML',
     reply_markup: {
       inline_keyboard: [
         [
@@ -7302,7 +7355,7 @@ bot.action('list_res_mem', async (ctx) => {
           { text: '👤 List Member',  callback_data: 'list_member'  }
         ],
         [
-          { text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' }
+          { text: '🔙 Kembali ke Menu Reseller & Saldo', callback_data: 'admin_reseller_menu' }
         ]
       ]
     }
@@ -7562,7 +7615,15 @@ bot.action('list_reseller', async (ctx) => {
       '<b>💎 DAFTAR RESELLER</b>\n\n' +
       (lines.length ? lines.join('\n') : 'Belum ada reseller yang tercatat di database users.');
 
-    await ctx.reply(message, { parse_mode: 'HTML' });
+    // Edit pesan submenu list, tambah tombol kembali biar ada navigasi.
+    await editOrReply(ctx, message, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali', callback_data: 'list_res_mem' }],
+        ],
+      },
+    });
   } catch (err) {
     logger.error('❌ Error saat menampilkan daftar reseller:', err);
     await ctx.reply('❌ Terjadi kesalahan saat menampilkan daftar reseller.');
@@ -7641,7 +7702,15 @@ bot.action('list_member', async (ctx) => {
     }
 
     const message = '<b>👤 DAFTAR MEMBER</b>\n\n' + lines.join('\n');
-    await ctx.reply(message, { parse_mode: 'HTML' });
+    // Edit pesan submenu list, tambah tombol kembali biar ada navigasi.
+    await editOrReply(ctx, message, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali', callback_data: 'list_res_mem' }],
+        ],
+      },
+    });
   } catch (error) {
     logger.error('❌ Error saat menampilkan daftar member:', error);
     await ctx.reply('❌ Terjadi kesalahan saat menampilkan daftar member.');
