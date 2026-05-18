@@ -11758,6 +11758,67 @@ bot.telegram
 }
 });
 ////////
+// =====================================================================
+// SUBMENU MENU SERVER: tombol "Edit X" di admin_server_menu
+// callback_data: editserver_harga, editserver_nama (alias nama_server_edit),
+// editserver_domain, editserver_auth, editserver_quota, editserver_limit_ip,
+// editserver_batas_create_akun, editserver_total_create_akun.
+// Flow: tombol -> tampilkan list server -> klik server -> callback ke handler
+//   `edit_<field>_<id>` yang sudah ada. Sebelum ini, tombol-tombol di submenu
+//   server tidak punya handler sehingga klik = tidak terjadi apa-apa.
+// =====================================================================
+function _registerEditServerPicker(callbackName, fieldKey, label) {
+  bot.action(callbackName, async (ctx) => {
+    try {
+      await ctx.answerCbQuery().catch(() => {});
+      if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+        return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+      }
+
+      db.all('SELECT id, nama_server, domain FROM Server ORDER BY id ASC', [], async (err, servers) => {
+        if (err) {
+          logger.error('Gagal ambil daftar server (' + callbackName + '):', err.message);
+          return ctx.reply('⚠️ Gagal mengambil daftar server.', { parse_mode: 'Markdown' });
+        }
+        if (!servers || servers.length === 0) {
+          return ctx.reply('⚠️ Belum ada server yang terdaftar. Tambah server dulu lewat tombol *➕ Tambah Server*.',
+            { parse_mode: 'Markdown' });
+        }
+
+        // Buat tombol per server -> callback ke handler edit_<field>_<id>
+        const inlineButtons = [];
+        for (const srv of servers) {
+          const safeName = (srv.nama_server || srv.domain || ('Server #' + srv.id)).slice(0, 60);
+          inlineButtons.push([{
+            text: safeName,
+            callback_data: 'edit_' + fieldKey + '_' + srv.id,
+          }]);
+        }
+        inlineButtons.push([{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }]);
+
+        await ctx.reply('✏️ *Edit ' + label + '*\n\nPilih server yang ingin diedit:',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: inlineButtons },
+          });
+      });
+    } catch (err) {
+      logger.error('Error pada ' + callbackName + ':', err.message || err);
+      try { await ctx.reply('❌ Terjadi kesalahan saat membuka menu edit server.'); } catch (_) {}
+    }
+  });
+}
+
+_registerEditServerPicker('editserver_harga', 'harga', 'Harga Server (paket 30 hari)');
+_registerEditServerPicker('editserver_domain', 'domain', 'Domain Server');
+_registerEditServerPicker('editserver_auth', 'auth', 'Auth Server');
+_registerEditServerPicker('editserver_quota', 'quota', 'Quota (GB)');
+_registerEditServerPicker('editserver_limit_ip', 'limit_ip', 'Limit IP per Akun');
+_registerEditServerPicker('editserver_batas_create_akun', 'batas_create_akun', 'Batas Create Akun');
+_registerEditServerPicker('editserver_total_create_akun', 'total_create_akun', 'Total Create Akun');
+// Alias lama: tombol "✏️ Edit Nama" di submenu pakai callback_data nama_server_edit
+_registerEditServerPicker('nama_server_edit', 'nama', 'Nama Server');
+
 bot.action('addserver', async (ctx) => {
   try {
     if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
