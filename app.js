@@ -12099,60 +12099,84 @@ bot.action(/add_saldo_(\d+)/, async (ctx) => {
   });
 });
 
+// Helper: buka prompt keypad untuk edit field numerik server (selain harga).
+// Ambil nilai sekarang dari DB lalu simpan oldValue + serverName ke userState
+// supaya `handleEditField` bisa tampilkan before/after dengan format unit.
+function _openEditNumericFieldPrompt(ctx, serverId, dbCol, step, label, fmt) {
+  db.get(
+    'SELECT nama_server, domain, ' + dbCol + ' AS val FROM Server WHERE id = ?',
+    [serverId],
+    async (err, row) => {
+      if (err) {
+        logger.error('Gagal ambil server untuk edit ' + dbCol + ':', err.message);
+        return ctx.reply('⚠️ Gagal mengambil data server.', { parse_mode: 'Markdown' });
+      }
+      if (!row) return ctx.reply('⚠️ Server tidak ditemukan.', { parse_mode: 'Markdown' });
+      const oldValue = row.val;
+      const namaServer = row.nama_server || row.domain || ('Server #' + serverId);
+      userState[ctx.chat.id] = {
+        step: step,
+        serverId: serverId,
+        oldValue: oldValue,
+        serverName: namaServer,
+      };
+      await ctx.reply(
+        '✏️ *Edit ' + label + '*\n\n' +
+          '📍 Server: *' + namaServer + '*\n' +
+          '🔢 Nilai sekarang: *' + fmt(oldValue) + '*\n\n' +
+          '_Silakan masukkan nilai baru menggunakan keypad di bawah._\n' +
+          '_Tekan ❌ Batal untuk membatalkan._',
+        {
+          reply_markup: { inline_keyboard: keyboard_nomor() },
+          parse_mode: 'Markdown',
+        }
+      );
+    }
+  );
+}
+
 bot.action(/edit_batas_create_akun_(\d+)/, async (ctx) => {
   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   }
+  await ctx.answerCbQuery().catch(() => {});
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit batas create akun server dengan ID: ${serverId}`);
-  userState[ctx.chat.id] = { step: 'edit_batas_create_akun', serverId: serverId };
-
-  await ctx.reply('?? *Silakan masukkan batas create akun server baru:*', {
-    reply_markup: { inline_keyboard: keyboard_nomor() },
-    parse_mode: 'Markdown'
-  });
+  _openEditNumericFieldPrompt(ctx, serverId, 'batas_create_akun', 'edit_batas_create_akun', 'Batas Create Akun',
+    (v) => Number(v || 0).toLocaleString('id-ID') + ' akun');
 });
 
 bot.action(/edit_total_create_akun_(\d+)/, async (ctx) => {
   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   }
+  await ctx.answerCbQuery().catch(() => {});
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit total create akun server dengan ID: ${serverId}`);
-  userState[ctx.chat.id] = { step: 'edit_total_create_akun', serverId: serverId };
-
-  await ctx.reply('?? *Silakan masukkan total create akun server baru:*', {
-    reply_markup: { inline_keyboard: keyboard_nomor() },
-    parse_mode: 'Markdown'
-  });
+  _openEditNumericFieldPrompt(ctx, serverId, 'total_create_akun', 'edit_total_create_akun', 'Total Create Akun',
+    (v) => Number(v || 0).toLocaleString('id-ID') + ' akun');
 });
 
 bot.action(/edit_limit_ip_(\d+)/, async (ctx) => {
   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   }
+  await ctx.answerCbQuery().catch(() => {});
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit limit IP server dengan ID: ${serverId}`);
-  userState[ctx.chat.id] = { step: 'edit_limit_ip', serverId: serverId };
-
-  await ctx.reply('?? *Silakan masukkan limit IP server baru:*', {
-    reply_markup: { inline_keyboard: keyboard_nomor() },
-    parse_mode: 'Markdown'
-  });
+  _openEditNumericFieldPrompt(ctx, serverId, 'iplimit', 'edit_limit_ip', 'Limit IP per Akun',
+    (v) => Number(v || 0) + ' IP');
 });
 
 bot.action(/edit_quota_(\d+)/, async (ctx) => {
   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
-    return ctx.reply('? *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   }
+  await ctx.answerCbQuery().catch(() => {});
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit quota server dengan ID: ${serverId}`);
-  userState[ctx.chat.id] = { step: 'edit_quota', serverId: serverId };
-
-  await ctx.reply('?? *Silakan masukkan quota server baru:*', {
-    reply_markup: { inline_keyboard: keyboard_nomor() },
-    parse_mode: 'Markdown'
-  });
+  _openEditNumericFieldPrompt(ctx, serverId, 'quota', 'edit_quota', 'Quota',
+    (v) => Number(v || 0) + ' GB');
 });
 
 bot.action(/edit_auth_(\d+)/, async (ctx) => {
@@ -12564,11 +12588,15 @@ async function handleAddSaldo(ctx, userStateData, data) {
 
 
 async function handleEditBatasCreateAkun(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'batasCreateAkun', 'batas create akun', 'UPDATE Server SET batas_create_akun = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'batasCreateAkun', 'Batas Create Akun',
+    'UPDATE Server SET batas_create_akun = ? WHERE id = ?',
+    (v) => Number(v || 0).toLocaleString('id-ID') + ' akun');
 }
 
 async function handleEditTotalCreateAkun(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'totalCreateAkun', 'total create akun', 'UPDATE Server SET total_create_akun = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'totalCreateAkun', 'Total Create Akun',
+    'UPDATE Server SET total_create_akun = ? WHERE id = ?',
+    (v) => Number(v || 0).toLocaleString('id-ID') + ' akun');
 }
 
 async function handleEditiplimit(ctx, userStateData, data) {
@@ -12577,14 +12605,17 @@ async function handleEditiplimit(ctx, userStateData, data) {
     userStateData,
     data,
     'iplimit',
-    'limit IP',
-    'UPDATE Server SET iplimit = ? WHERE id = ?'
+    'Limit IP per Akun',
+    'UPDATE Server SET iplimit = ? WHERE id = ?',
+    (v) => Number(v || 0) + ' IP'
   );
 }
 
 
 async function handleEditQuota(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'quota', 'quota', 'UPDATE Server SET quota = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'quota', 'Quota',
+    'UPDATE Server SET quota = ? WHERE id = ?',
+    (v) => Number(v || 0) + ' GB');
 }
 
 async function handleEditAuth(ctx, userStateData, data) {
@@ -12710,98 +12741,97 @@ async function handleEditNama(ctx, userStateData, data) {
   await handleEditField(ctx, userStateData, data, 'name', 'nama server', 'UPDATE Server SET nama_server = ? WHERE id = ?');
 }
 
-async function handleEditField(ctx, userStateData, data, field, fieldName, query) {
+// Helper generik untuk semua handler edit field numerik di Menu Server
+// (Quota, Limit IP, Batas Create, Total Create). Edit Harga tidak pakai
+// helper ini karena perlu format Rupiah khusus & sudah jadi di handleEditHarga.
+//
+// Behavior baru (konsisten dengan handleEditHarga):
+//   - Header pesan tampilkan: nama server, nilai sekarang, input baru
+//   - Tombol ❌ Batal: clear state + pesan + tombol kembali ke Menu Server
+//   - Tombol ✅ Simpan: tampilkan before/after lengkap dengan unit
+//   - Format unit per-field via callback `formatValue` (mis. "500 GB", "1 IP")
+async function handleEditField(ctx, userStateData, data, field, fieldName, query, formatValue) {
   let currentValue = userStateData[field] || '';
+  const fmt = typeof formatValue === 'function'
+    ? formatValue
+    : (v) => String(v == null ? '-' : v);
 
-if (data === 'cancel') {
-  delete userState[ctx.chat.id];
-  try { await ctx.answerCbQuery('⛔ Dibatalkan'); } catch {}
-
-  const keyboard = [
-    [
-      { text: '➕ Tambah Server', callback_data: 'addserver' },
-      { text: '🗑️ Hapus Server', callback_data: 'deleteserver' }
-    ],
-    [
-      { text: '✏️ Edit Harga', callback_data: 'editserver_harga' },
-      { text: '✏️ Edit Nama', callback_data: 'nama_server_edit' }
-    ],
-    [
-      { text: '✏️ Edit Domain', callback_data: 'editserver_domain' },
-      { text: '✏️ Edit Auth', callback_data: 'editserver_auth' }
-    ],
-    [
-      { text: '✏️ Edit Quota', callback_data: 'editserver_quota' },
-      { text: '✏️ Edit Limit IP', callback_data: 'editserver_limit_ip' }
-    ],
-    [
-      { text: '✏️ Edit Batas Create', callback_data: 'editserver_batas_create_akun' },
-      { text: '✏️ Edit Total Create', callback_data: 'editserver_total_create_akun' }
-    ],
-    [
-      { text: '🗑️ List Server', callback_data: 'listserver' },
-      { text: '⚠️ Reset Server', callback_data: 'resetdb' }
-    ],
-    [
-      { text: '⚠️ Detail Server', callback_data: 'detailserver' }
-    ],
-    [
-      { text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' }
-    ]
-  ];
-
-  try {
-      await ctx.editMessageText(
-        '<b>🗑️ MANAGEMEN SERVER</b>\n\nSilakan pilih menu di bawah:',
-        { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
-      );
-    } catch (err) {
-      // → kalau "message is not modified", abaikan aja (jangan dianggap error)
-      const desc = err?.response?.description || err?.description || '';
-      if (desc.includes('message is not modified')) return;
-
-      // fallback
-      await ctx.reply(
-        '<b>🗑️ MANAGEMEN SERVER</b>\n\nSilakan pilih menu di bawah:',
-        { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
-      );
-    }
-
-    return; // → INI YANG BIKIN TIDAK LANJUT KE KEYPAD LAGI
+  // Tombol "❌ Batal" di keypad: stop flow, kembali ke Menu Server.
+  if (data === 'cancel') {
+    delete userState[ctx.chat.id];
+    try { await ctx.answerCbQuery('⛔ Dibatalkan'); } catch (_) {}
+    try {
+      await ctx.editMessageText('⛔ *Edit ' + fieldName + ' dibatalkan.*', {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
+          ],
+        },
+      });
+    } catch (_) {}
+    return;
   }
 
   if (data === 'delete') {
     currentValue = currentValue.slice(0, -1);
   } else if (data === 'confirm') {
     if (currentValue.length === 0) {
-      return await ctx.answerCbQuery(`⚠️ *${fieldName} tidak boleh kosong!*`, { show_alert: true });
+      return await ctx.answerCbQuery('⚠️ *' + fieldName + ' tidak boleh kosong!*', { show_alert: true });
     }
+    const oldValue = userStateData.oldValue;
+    const serverName = userStateData.serverName || ('Server #' + userStateData.serverId);
     try {
       await updateServerField(userStateData.serverId, currentValue, query);
-      ctx.reply(`✅ *${fieldName} server berhasil diupdate.*\n\n📝 *Detail Server:*\n- ${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}: *${currentValue}*`, { parse_mode: 'Markdown' });
+      ctx.reply(
+        '✅ *' + fieldName + ' berhasil diubah.*\n\n' +
+          '📍 Server: *' + serverName + '*\n' +
+          '• Sebelumnya : ' + fmt(oldValue) + '\n' +
+          '• Sekarang   : *' + fmt(currentValue) + '*',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
+            ],
+          },
+        }
+      );
     } catch (err) {
-      ctx.reply(`❌ *Terjadi kesalahan saat mengupdate ${fieldName} server.*`, { parse_mode: 'Markdown' });
+      ctx.reply('❌ *Terjadi kesalahan saat mengupdate ' + fieldName + '.*', { parse_mode: 'Markdown' });
     }
     delete userState[ctx.chat.id];
     return;
   } else {
     if (!/^\d+$/.test(data)) {
-  return await ctx.answerCbQuery('⚠️ *Hanya angka yang diperbolehkan!*', { show_alert: true });
-}
+      return await ctx.answerCbQuery('⚠️ *Hanya angka yang diperbolehkan!*', { show_alert: true });
+    }
     if (currentValue.length < 253) {
       currentValue += data;
     } else {
-      return await ctx.answerCbQuery(`⚠️ *${fieldName} maksimal adalah 253 karakter!*`, { show_alert: true });
+      return await ctx.answerCbQuery('⚠️ *' + fieldName + ' maksimal adalah 253 karakter!*', { show_alert: true });
     }
   }
 
   userStateData[field] = currentValue;
-  const newMessage = `💰 *Silakan masukkan ${fieldName} server baru:*\n\n${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} saat ini: *${currentValue}*`;
-  if (newMessage !== ctx.callbackQuery.message.text) {
-    await ctx.editMessageText(newMessage, {
-      reply_markup: { inline_keyboard: keyboard_nomor() },
-      parse_mode: 'Markdown'
-    });
+  const oldValue = userStateData.oldValue;
+  const serverName = userStateData.serverName || ('Server #' + userStateData.serverId);
+  const newMessage =
+    '✏️ *Edit ' + fieldName + '*\n\n' +
+    '📍 Server: *' + serverName + '*\n' +
+    '🔢 Nilai sekarang: *' + fmt(oldValue) + '*\n' +
+    '🆕 Input baru: *' + (currentValue ? fmt(currentValue) : fmt(0)) + '*\n\n' +
+    '_Tekan ✅ untuk simpan atau ❌ Batal untuk membatalkan._';
+  const oldText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || '';
+  if (newMessage !== oldText) {
+    try {
+      await ctx.editMessageText(newMessage, {
+        reply_markup: { inline_keyboard: keyboard_nomor() },
+        parse_mode: 'Markdown',
+      });
+    } catch (_) {
+      // "message is not modified" / pesan asli sudah hilang, ignore
+    }
   }
 }
 async function updateUserSaldo(userId, saldo) {
