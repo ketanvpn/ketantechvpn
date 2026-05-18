@@ -2240,6 +2240,126 @@ const myAccountsHandlers = createMyAccountsHandlers({
 const showMyAccounts = myAccountsHandlers.showMyAccounts;
 myAccountsHandlers.register();
 
+// ============================================================================
+// SECTION: PAKET EDUKASI (vpnbiz reseller API)
+// - Wrapper HTTP, business logic, handler user, handler admin.
+// - API key disimpan di .vars.json (VPNBIZ_API_KEY), bisa di-rotate via
+//   /setvpnbizapikey <key> tanpa restart bot.
+// - Harga jual & limit trial tersimpan di .vars.json juga, dengan default
+//   yang di-tweak via tombol +/- di admin menu.
+// ============================================================================
+const { createEdukasiClient } = require('./modules/edukasi-client');
+const { createEdukasiService } = require('./modules/edukasi');
+const { createEdukasiHandlers } = require('./modules/edukasi-handlers');
+const { createEdukasiAdminHandlers } = require('./admin/edukasi');
+
+function getVpnbizApiKey() {
+  const envKey = process.env.VPNBIZ_API_KEY;
+  if (envKey && String(envKey).trim()) return String(envKey).trim();
+  const fresh = readVarsFresh();
+  return String(fresh.VPNBIZ_API_KEY || '').trim();
+}
+
+const edukasiClient = createEdukasiClient({
+  getApiKey: getVpnbizApiKey,
+  baseUrl: vars.VPNBIZ_BASE_URL || undefined,
+  logger,
+});
+
+// State harga & limit trial Paket Edukasi (default: Opsi B)
+let __edukasiPriceMemberMonthly = Number(
+  (vars.EDUKASI_PRICE_MEMBER_MONTHLY != null) ? vars.EDUKASI_PRICE_MEMBER_MONTHLY : 15000
+);
+let __edukasiPriceMemberWeekly = Number(
+  (vars.EDUKASI_PRICE_MEMBER_WEEKLY != null) ? vars.EDUKASI_PRICE_MEMBER_WEEKLY : 5000
+);
+let __edukasiPriceResellerMonthly = Number(
+  (vars.EDUKASI_PRICE_RESELLER_MONTHLY != null) ? vars.EDUKASI_PRICE_RESELLER_MONTHLY : 12000
+);
+let __edukasiPriceResellerWeekly = Number(
+  (vars.EDUKASI_PRICE_RESELLER_WEEKLY != null) ? vars.EDUKASI_PRICE_RESELLER_WEEKLY : 4000
+);
+let __edukasiTrialMaxPerDay = Number(
+  (vars.EDUKASI_TRIAL_MAX_PER_DAY != null) ? vars.EDUKASI_TRIAL_MAX_PER_DAY : 1
+);
+
+function getEdukasiPriceConfig() {
+  return {
+    MEMBER_MONTHLY: __edukasiPriceMemberMonthly,
+    MEMBER_WEEKLY: __edukasiPriceMemberWeekly,
+    RESELLER_MONTHLY: __edukasiPriceResellerMonthly,
+    RESELLER_WEEKLY: __edukasiPriceResellerWeekly,
+  };
+}
+
+const edukasiService = createEdukasiService({
+  db,
+  logger,
+  edukasiClient,
+  accountService,
+  isResellerId, // hoisted function declaration
+  getPriceConfig: getEdukasiPriceConfig,
+  getTrialMaxPerDay: () => __edukasiTrialMaxPerDay,
+  getTimeZone: () => TIME_ZONE,
+});
+
+const edukasiHandlers = createEdukasiHandlers({
+  bot,
+  logger,
+  edukasiService,
+  isResellerId,
+  ensurePrivateChat,
+  sendCleanMenu,
+  userState,
+  getPriceConfig: getEdukasiPriceConfig,
+});
+edukasiHandlers.register();
+
+const edukasiAdmin = createEdukasiAdminHandlers({
+  bot,
+  logger,
+  ADMIN_IDS,
+  edukasiClient,
+  edukasiService,
+  state: {
+    getMemberMonthly: () => __edukasiPriceMemberMonthly,
+    setMemberMonthly: (v) => { __edukasiPriceMemberMonthly = Math.max(0, Number(v) || 0); },
+    getMemberWeekly: () => __edukasiPriceMemberWeekly,
+    setMemberWeekly: (v) => { __edukasiPriceMemberWeekly = Math.max(0, Number(v) || 0); },
+    getResellerMonthly: () => __edukasiPriceResellerMonthly,
+    setResellerMonthly: (v) => { __edukasiPriceResellerMonthly = Math.max(0, Number(v) || 0); },
+    getResellerWeekly: () => __edukasiPriceResellerWeekly,
+    setResellerWeekly: (v) => { __edukasiPriceResellerWeekly = Math.max(0, Number(v) || 0); },
+    getTrialMaxPerDay: () => __edukasiTrialMaxPerDay,
+    setTrialMaxPerDay: (v) => { __edukasiTrialMaxPerDay = Math.max(0, Math.min(50, Number(v) || 0)); },
+  },
+  updateVarsPartial: writeVarsPartial,
+  adminState,
+});
+edukasiAdmin.register();
+
+// Middleware text untuk konsumsi input multi-step Paket Edukasi (user) dan
+// input API key vpnbiz (admin). Diletakkan SEBELUM bot.on('text') global
+// di bawah, supaya step input edukasi tidak diserap handler global.
+bot.on('text', async (ctx, next) => {
+  if (!ctx || !ctx.from) return next();
+  if (ctx.chat && ctx.chat.type !== 'private') return next();
+  try {
+    if (await edukasiAdmin.handleTextStep(ctx)) return;
+    if (await edukasiHandlers.handleTextStep(ctx)) return;
+  } catch (e) {
+    logger.error('Edukasi text middleware error:', e.message || e);
+  }
+  return next();
+});
+
+logger.info(
+  'Paket Edukasi init: member ' + __edukasiPriceMemberMonthly + '/bln, '
+  + __edukasiPriceMemberWeekly + '/mgu | reseller '
+  + __edukasiPriceResellerMonthly + '/bln, ' + __edukasiPriceResellerWeekly + '/mgu | trial '
+  + __edukasiTrialMaxPerDay + 'x/hari'
+);
+
 logger.info('User state initialized');
 // Pesan standar untuk akses ditolak
 const NO_ACCESS_MESSAGE = '🚫 Kamu tidak punya akses untuk perintah ini.';
@@ -3536,6 +3656,11 @@ ${commandPanelText}
       { text: '🆓 Trial Akun', callback_data: 'service_trial' },
       { text: '🖥️ Cek Server', callback_data: 'cek_service' }
     ],
+    // Menu khusus paket edukasi (vpnbiz reseller). Posisi di atas riwayat
+    // supaya gampang dilihat user yang mencari paket murah.
+    [
+      { text: '🎓 Paket Edukasi', callback_data: 'edukasi_menu' }
+    ],
     [
       { text: '📊 Riwayat Saya', callback_data: 'my_stats:0' },
       { text: '❓ Bantuan', callback_data: 'help_user' }
@@ -3548,6 +3673,7 @@ ${commandPanelText}
       { text: '💳 TopUp Saldo (QRIS Otomatis)', callback_data: 'topupqris_btn' }
     ]
   ];
+
 
   // Tambah tombol "Penjualan Saya" khusus reseller
   if (isReseller) {
@@ -4999,6 +5125,9 @@ async function sendAdminMenu(ctx) {
         // —— FINANCE & PROMOSI ——
         [
           { text: '🧾 Reseller & Saldo', callback_data: 'admin_reseller_menu' }
+        ],
+        [
+          { text: '🎓 Paket Edukasi', callback_data: 'admin_edukasi_menu' }
         ],
         [
           { text: '🎁 Template Promosi', callback_data: 'promo_template_menu' },

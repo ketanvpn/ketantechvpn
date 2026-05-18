@@ -176,6 +176,15 @@ function runMigrations(db, logger, helpers) {
     else logger.info('Accounts table created or already exists');
   });
 
+  // Kolom tambahan untuk akun yang dibuat lewat provider eksternal (Paket Edukasi via vpnbiz.id, dll).
+  // Untuk akun lokal lama, ketiga kolom ini akan NULL.
+  ensureSqliteColumn('accounts', 'external_order_id', 'TEXT');
+  ensureSqliteColumn('accounts', 'external_provider', 'TEXT');
+  ensureSqliteColumn('accounts', 'billing_period', 'TEXT');
+  db.run('CREATE INDEX IF NOT EXISTS idx_accounts_external_order ON accounts(external_order_id)', (err) => {
+    if (err) logger.warn('Gagal bikin idx_accounts_external_order: ' + err.message);
+  });
+
   db.run('CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)', (err) => {
     if (err) logger.error('Kesalahan membuat index idx_users_user_id:', err.message);
     else logger.info('Index idx_users_user_id siap dipakai');
@@ -222,6 +231,18 @@ function runMigrations(db, logger, helpers) {
   )`, (err) => {
     if (err) logger.error('Kesalahan membuat tabel trial_usage:', err.message);
     else logger.info('trial_usage table created or already exists');
+  });
+
+  // Counter trial untuk Paket Edukasi (vpnbiz). Terpisah dari trial_usage reguler
+  // supaya user yang sudah pakai trial lokal tetap bisa coba trial edukasi.
+  db.run(`CREATE TABLE IF NOT EXISTS edukasi_trial_usage (
+    user_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, date)
+  )`, (err) => {
+    if (err) logger.error('Kesalahan membuat tabel edukasi_trial_usage:', err.message);
+    else logger.info('edukasi_trial_usage table created or already exists');
   });
 
   // ============================================================================
