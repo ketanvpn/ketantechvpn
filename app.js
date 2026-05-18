@@ -11903,7 +11903,8 @@ function _registerEditServerPicker(callbackName, fieldKey, label) {
         }
         inlineButtons.push([{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }]);
 
-        await ctx.reply(lines.join('\n'),
+        // Edit pesan menu server, fallback reply kalau pesan asli sudah hilang.
+        await editOrReply(ctx, lines.join('\n'),
           {
             parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: inlineButtons },
@@ -11984,9 +11985,13 @@ bot.action('detailserver', async (ctx) => {
       buttons.push(row);
     }
 
-    await ctx.reply('🔍 *Silakan pilih server untuk melihat detail:*', {
+    // Tambah tombol kembali ke Menu Server biar admin gampang balik.
+    buttons.push([{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }]);
+
+    // Edit pesan menu server, fallback reply kalau pesan asli sudah hilang.
+    await editOrReply(ctx, '🔍 *Silakan pilih server untuk melihat detail:*', {
       reply_markup: { inline_keyboard: buttons },
-      parse_mode: 'Markdown'
+      parse_mode: 'Markdown',
     });
   } catch (error) {
     logger.error('⚠️ Kesalahan saat mengambil detail server:', error);
@@ -11995,6 +12000,7 @@ bot.action('detailserver', async (ctx) => {
 });
 
 bot.action('listserver', async (ctx) => {
+
   try {
     if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
       return ctx.answerCbQuery('\ud83d\udeab Khusus admin.', { show_alert: true }).catch(() => {});
@@ -12024,7 +12030,15 @@ bot.action('listserver', async (ctx) => {
 
     serverList += `\nTotal Jumlah Server: ${servers.length}`;
 
-    await ctx.reply(serverList, { parse_mode: 'Markdown' });
+    // Edit pesan menu server, tambah tombol kembali biar admin gampang balik.
+    await editOrReply(ctx, serverList, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
+        ],
+      },
+    });
   } catch (error) {
     logger.error('⚠️ Kesalahan saat mengambil daftar server:', error);
     await ctx.reply('⚠️ *Terjadi kesalahan saat mengambil daftar server.*', { parse_mode: 'Markdown' });
@@ -12103,9 +12117,12 @@ bot.action('deleteserver', async (ctx) => {
       }
 
       const keyboard = servers.map((server) => [{ text: server.nama_server, callback_data: `confirm_delete_server_${server.id}` }]);
-      keyboard.push([{ text: '?? Kembali ke Menu Utama', callback_data: 'kembali_ke_menu' }]);
+      // Tombol Kembali sebelumnya pakai callback 'kembali_ke_menu' yang tidak ada handler-nya.
+      // Sekarang langsung balik ke Menu Server (admin_server_menu).
+      keyboard.push([{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }]);
 
-      ctx.reply('🗑️ *Pilih server yang ingin dihapus:*', {
+      // Edit pesan menu server, fallback reply kalau pesan asli sudah hilang.
+      editOrReply(ctx, '🗑️ *Pilih server yang ingin dihapus:*', {
         reply_markup: { inline_keyboard: keyboard },
         parse_mode: 'Markdown',
       });
