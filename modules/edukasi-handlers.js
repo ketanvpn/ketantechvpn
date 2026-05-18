@@ -461,56 +461,70 @@ function createEdukasiHandlers({
 
   // === REGISTER HANDLER ===
 
+  // Wrapper supaya semua bot.action handler tidak silent kalau throw error.
+  // Setiap error akan di-log + dikirim ke user, jadi nggak ada "klik tapi
+  // tidak terjadi apa-apa" lagi.
+  function safeAction(label, fn) {
+    return async (ctx) => {
+      try {
+        await ctx.answerCbQuery().catch(() => {});
+        if (!ensurePrivateChat(ctx)) return;
+        await fn(ctx);
+      } catch (err) {
+        const detail = err && err.message ? err.message : String(err);
+        logger.error('Edukasi handler [' + label + '] error: ' + detail);
+        try {
+          await ctx.reply(
+            '\u274C Terjadi kesalahan saat memproses menu Paket Edukasi.\n\n' +
+            '_' + detail + '_\n\n' +
+            'Silakan coba lagi, atau hubungi admin.',
+            { parse_mode: 'Markdown' }
+          );
+        } catch (_) {}
+      }
+    };
+  }
+
   function register() {
-    bot.action('edukasi_menu', async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action('edukasi_menu', safeAction('edukasi_menu', async (ctx) => {
       await renderMainMenu(ctx);
-    });
+    }));
 
-    bot.action(/^edukasi_srv:([A-Za-z0-9_-]+)$/, async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action(/^edukasi_srv:([A-Za-z0-9_-]+)$/, safeAction('edukasi_srv', async (ctx) => {
       const code = ctx.match[1];
+      logger.info('Edukasi user ' + ctx.from.id + ' pilih server: ' + code);
       await renderServerMenu(ctx, code);
-    });
+    }));
 
-    bot.action(/^edukasi_svc:([A-Za-z0-9_-]+):([A-Za-z0-9_]+)$/, async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action(/^edukasi_svc:([A-Za-z0-9_-]+):([A-Za-z0-9_]+)$/, safeAction('edukasi_svc', async (ctx) => {
       const code = ctx.match[1];
       const service = ctx.match[2];
+      logger.info('Edukasi user ' + ctx.from.id + ' pilih layanan: ' + code + '/' + service);
       await renderServiceMenu(ctx, code, service);
-    });
+    }));
 
-    bot.action(/^edukasi_period:([A-Za-z0-9_-]+):([A-Za-z0-9_]+):(monthly|weekly|trial)$/, async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action(/^edukasi_period:([A-Za-z0-9_-]+):([A-Za-z0-9_]+):(monthly|weekly|trial)$/, safeAction('edukasi_period', async (ctx) => {
       const code = ctx.match[1];
       const service = ctx.match[2];
       const period = ctx.match[3];
+      logger.info('Edukasi user ' + ctx.from.id + ' pilih period: ' + code + '/' + service + '/' + period);
 
       if (period === 'trial') {
         await startTrialConfirm(ctx, code, service);
         return;
       }
-      // Hapus state lama supaya start fresh
       const chatId = ctx.chat.id;
       delete userState[chatId];
       await startUsernameInput(ctx, code, service, period);
-    });
+    }));
 
-    bot.action(/^edukasi_trial_do:([A-Za-z0-9_-]+):([A-Za-z0-9_]+)$/, async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action(/^edukasi_trial_do:([A-Za-z0-9_-]+):([A-Za-z0-9_]+)$/, safeAction('edukasi_trial_do', async (ctx) => {
       const code = ctx.match[1];
       const service = ctx.match[2];
       await executeTrial(ctx, code, service);
-    });
+    }));
 
-    bot.action('edukasi_confirm', async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action('edukasi_confirm', safeAction('edukasi_confirm', async (ctx) => {
       const chatId = ctx.chat.id;
       const state = userState[chatId];
       if (!state || state.action !== 'edukasi_order' || state.step !== 'edukasi_confirm') {
@@ -519,7 +533,7 @@ function createEdukasiHandlers({
       }
       delete userState[chatId];
       await executeOrder(ctx, state);
-    });
+    }));
 
     bot.action('edukasi_cancel', async (ctx) => {
       await ctx.answerCbQuery('Dibatalkan').catch(() => {});
@@ -528,20 +542,16 @@ function createEdukasiHandlers({
       await ctx.reply('\u274C Pembelian dibatalkan.');
     });
 
-    bot.action(/^edukasi_renew_ask:(\d+)$/, async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action(/^edukasi_renew_ask:(\d+)$/, safeAction('edukasi_renew_ask', async (ctx) => {
       const accountId = parseInt(ctx.match[1], 10);
       await renderRenewMenu(ctx, accountId);
-    });
+    }));
 
-    bot.action(/^edukasi_renew_do:(\d+):(monthly|weekly)$/, async (ctx) => {
-      await ctx.answerCbQuery().catch(() => {});
-      if (!ensurePrivateChat(ctx)) return;
+    bot.action(/^edukasi_renew_do:(\d+):(monthly|weekly)$/, safeAction('edukasi_renew_do', async (ctx) => {
       const accountId = parseInt(ctx.match[1], 10);
       const period = ctx.match[2];
       await executeRenew(ctx, accountId, period);
-    });
+    }));
   }
 
   return {
