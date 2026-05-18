@@ -95,7 +95,7 @@ function createEdukasiHandlers({
       products = await edukasiService.getProducts();
     } catch (err) {
       logger.error('Edukasi: gagal ambil produk:', err.message || err);
-      await sendCleanMenu(ctx, '\u274C Gagal ambil daftar paket edukasi.\n\n' +
+      await sendCleanMenu(ctx, '\u274C Gagal ambil daftar Akun Direct EDU.\n\n' +
         '_' + (err.message || 'API tidak merespon') + '_\n\n' +
         'Silakan coba lagi nanti atau hubungi admin.', { parse_mode: 'Markdown' });
       return;
@@ -103,7 +103,7 @@ function createEdukasiHandlers({
 
     const servers = edukasiService.listServers(products);
     if (!servers.length) {
-      await sendCleanMenu(ctx, '\u26A0\uFE0F Belum ada server yang tersedia untuk Paket Edukasi.', { parse_mode: 'Markdown' });
+      await sendCleanMenu(ctx, '\u26A0\uFE0F Belum ada server yang tersedia untuk Akun Direct EDU.', { parse_mode: 'Markdown' });
       return;
     }
 
@@ -114,7 +114,7 @@ function createEdukasiHandlers({
     const priceWeekly = isReseller ? Number(cfg.RESELLER_WEEKLY || 0) : Number(cfg.MEMBER_WEEKLY || 0);
 
     const lines = [];
-    lines.push('\uD83C\uDF93 *PAKET EDUKASI*');
+    lines.push('\uD83C\uDF93 *AKUN DIRECT EDU*');
     lines.push('');
     lines.push('Layanan VPN murah meriah dari provider kami.');
     lines.push('Cocok untuk belajar, browsing, & streaming ringan.');
@@ -530,7 +530,7 @@ function createEdukasiHandlers({
         logger.error('Edukasi handler [' + label + '] error: ' + detail);
         try {
           await ctx.reply(
-            '\u274C Terjadi kesalahan saat memproses menu Paket Edukasi.\n\n' +
+            '\u274C Terjadi kesalahan saat memproses menu Akun Direct EDU.\n\n' +
             '_' + detail + '_\n\n' +
             'Silakan coba lagi, atau hubungi admin.',
             { parse_mode: 'Markdown' }
@@ -564,7 +564,7 @@ function createEdukasiHandlers({
       const sid = ctx.match[1];
       const code = await ensureShortIdResolved(sid);
       if (!code) {
-        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Akun Direct EDU.');
         return;
       }
       logger.info('Edukasi user ' + ctx.from.id + ' pilih server: ' + sid + ' (' + code + ')');
@@ -577,7 +577,7 @@ function createEdukasiHandlers({
       const code = await ensureShortIdResolved(sid);
       const service = SHORT_TO_SERVICE[svcShort];
       if (!code || !service) {
-        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Akun Direct EDU.');
         return;
       }
       logger.info('Edukasi user ' + ctx.from.id + ' pilih layanan: ' + sid + '/' + service);
@@ -592,7 +592,7 @@ function createEdukasiHandlers({
       const service = SHORT_TO_SERVICE[svcShort];
       const period = periodShort === 'm' ? 'monthly' : (periodShort === 'w' ? 'weekly' : 'trial');
       if (!code || !service) {
-        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Akun Direct EDU.');
         return;
       }
       logger.info('Edukasi user ' + ctx.from.id + ' pilih period: ' + sid + '/' + service + '/' + period);
@@ -612,7 +612,7 @@ function createEdukasiHandlers({
       const code = await ensureShortIdResolved(sid);
       const service = SHORT_TO_SERVICE[svcShort];
       if (!code || !service) {
-        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Paket Edukasi.');
+        await ctx.reply('\u26A0\uFE0F Sesi tombol kadaluarsa. Silakan buka ulang menu Akun Direct EDU.');
         return;
       }
       await executeTrial(ctx, code, service);

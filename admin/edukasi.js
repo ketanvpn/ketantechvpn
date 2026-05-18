@@ -71,7 +71,7 @@ function createEdukasiAdminHandlers({
   async function renderMenu(ctx, options = {}) {
     const isEdit = !!options.edit;
     const lines = [];
-    lines.push('\uD83C\uDF93 *Pengaturan Paket Edukasi (vpnbiz)*');
+    lines.push('\uD83C\uDF93 *Pengaturan Akun Direct EDU (vpnbiz)*');
     lines.push('');
     lines.push('*Harga Member*');
     lines.push('\u2022 Bulanan : ' + formatRupiah(state.getMemberMonthly()));

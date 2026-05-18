@@ -340,7 +340,7 @@ function createEdukasiService({
 
     if (!userId) throw new Error('userId wajib');
     if (!SUPPORTED_SERVICES.includes(service)) {
-      throw new Error('Layanan tidak didukung untuk Paket Edukasi');
+      throw new Error('Layanan tidak didukung untuk Akun Direct EDU');
     }
     if (!/^[A-Za-z0-9]{3,16}$/.test(username)) {
       throw new Error('Username tidak valid (3-16 karakter, hanya huruf & angka)');
@@ -612,11 +612,11 @@ function createEdukasiService({
 
     let header;
     if (isTrial) {
-      header = '\u{1F386} *Akun Trial Edukasi ' + label + ' Berhasil Dibuat!*';
+      header = '\u{1F386} *Akun Trial Direct EDU ' + label + ' Berhasil Dibuat!*';
     } else if (isRenew) {
-      header = '\u267B\uFE0F *Renew Akun Edukasi ' + label + ' Berhasil!*';
+      header = '\u267B\uFE0F *Renew Akun Direct EDU ' + label + ' Berhasil!*';
     } else {
-      header = '\u2705 *Akun Edukasi ' + label + ' Berhasil Dibuat!*';
+      header = '\u2705 *Akun Direct EDU ' + label + ' Berhasil Dibuat!*';
     }
 
     let traffic = '';
@@ -631,7 +631,7 @@ function createEdukasiService({
     const lines = [];
     lines.push(header);
     lines.push('');
-    lines.push('\u{1F393} *Paket Edukasi ' + label + '*');
+    lines.push('\u{1F393} *Akun Direct EDU ' + label + '*');
     lines.push('\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500');
     if (apiData.username) lines.push('\u{1F464} *Username*   : `' + escapeMarkdownV1(apiData.username) + '`');
     if (apiData.password) lines.push('\u{1F511} *Password*   : `' + escapeMarkdownV1(apiData.password) + '`');
@@ -675,7 +675,7 @@ function createEdukasiService({
     }
 
     lines.push('');
-    lines.push('_Selamat menggunakan Paket Edukasi_');
+    lines.push('_Selamat menggunakan Akun Direct EDU_');
 
     return lines.join('\n');
   }

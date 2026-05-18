@@ -3659,7 +3659,7 @@ ${commandPanelText}
     // Menu khusus paket edukasi (vpnbiz reseller). Posisi di atas riwayat
     // supaya gampang dilihat user yang mencari paket murah.
     [
-      { text: '🎓 Paket Edukasi', callback_data: 'edukasi_menu' }
+      { text: '🎓 Akun Direct EDU', callback_data: 'edukasi_menu' }
     ],
     [
       { text: '📊 Riwayat Saya', callback_data: 'my_stats:0' },
@@ -5127,7 +5127,7 @@ async function sendAdminMenu(ctx) {
           { text: '🧾 Reseller & Saldo', callback_data: 'admin_reseller_menu' }
         ],
         [
-          { text: '🎓 Paket Edukasi', callback_data: 'admin_edukasi_menu' }
+          { text: '🎓 Akun Direct EDU', callback_data: 'admin_edukasi_menu' }
         ],
         [
           { text: '🎁 Template Promosi', callback_data: 'promo_template_menu' },
