@@ -17,6 +17,29 @@ function buildPeriodLabel(p) {
   return String(p || '-');
 }
 
+// Telegram callback_data dibatasi 64 bytes (UTF-8). Kalau lewat, Telegram
+// nolak seluruh pesan dengan error "BUTTON_DATA_INVALID". Kita pendekkan
+// kalau perlu (jarang terjadi karena server_code dari vpnbiz pendek).
+function safeCb(data) {
+  const str = String(data || '');
+  if (Buffer.byteLength(str, 'utf8') <= 64) return str;
+  // Kalau terlalu panjang, hash sederhana ke 8 char hex agar muat.
+  const crypto = require('crypto');
+  const prefix = str.split(':').slice(0, 1).join(':');
+  const hash = crypto.createHash('sha1').update(str).digest('hex').slice(0, 12);
+  return prefix + ':' + hash;
+}
+
+// Escape karakter yang sensitif untuk parse_mode Markdown legacy.
+// `_`, `*`, `[`, `` ` `` sering muncul di nama server vpnbiz dan bikin parser
+// telegram menolak teks (walau tidak jadi BUTTON_DATA_INVALID, tapi bisa bikin
+// edit pesan gagal).
+function mdSafe(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[_*`\[\]]/g, (m) => '\\' + m);
+}
+
+
 function createEdukasiHandlers({
   bot,
   logger,
@@ -86,13 +109,37 @@ function createEdukasiHandlers({
     lines.push('Pilih server di bawah:');
 
     const keyboard = [];
+    let skipped = 0;
     for (const s of servers) {
+      // Validasi server.code: hanya boleh karakter aman untuk callback_data.
+      // Telegram nolak callback_data yang mengandung null/whitespace/non-ascii
+      // dengan error BUTTON_DATA_INVALID (400). Kita skip + log kalau aneh.
+      if (!s.code || typeof s.code !== 'string' || !/^[A-Za-z0-9_-]+$/.test(s.code)) {
+        logger.warn('Edukasi: server di-skip karena code tidak valid: ' + JSON.stringify(s));
+        skipped++;
+        continue;
+      }
       const slotInfo = s.slot && typeof s.slot.available === 'number'
         ? ' (' + s.slot.available + ' slot)' : '';
+      const cbData = 'edukasi_srv:' + s.code;
+      // Cek panjang callback_data (Telegram batasi 64 byte)
+      if (Buffer.byteLength(cbData, 'utf8') > 64) {
+        logger.warn('Edukasi: server di-skip karena callback_data > 64 byte: ' + cbData);
+        skipped++;
+        continue;
+      }
       keyboard.push([{
-        text: '\uD83C\uDF10 ' + s.name + slotInfo,
-        callback_data: 'edukasi_srv:' + s.code,
+        text: '\uD83C\uDF10 ' + (s.name || s.code) + slotInfo,
+        callback_data: cbData,
       }]);
+    }
+    if (skipped > 0) {
+      logger.warn('Edukasi: ' + skipped + ' server di-skip dari list (lihat warning di atas)');
+    }
+    if (keyboard.length === 0) {
+      await sendCleanMenu(ctx, '\u26A0\uFE0F Tidak ada server valid yang bisa ditampilkan.\n\nKemungkinan API vpnbiz mengembalikan format yang tidak terduga. Cek `pm2 logs` untuk detail.',
+        { parse_mode: 'Markdown' });
+      return;
     }
     keyboard.push([{ text: '\uD83D\uDD19 Menu Utama', callback_data: 'send_main_menu' }]);
 
