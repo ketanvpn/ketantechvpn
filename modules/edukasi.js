@@ -649,7 +649,7 @@ function createEdukasiService({
     if (apiData.order_id) {
       lines.push('\u{1F194} *Order ID*   : `' + escapeMarkdownV1(apiData.order_id) + '`');
       if (!isTrial) {
-        lines.push('_Simpan Order ID untuk renew nanti._');
+        lines.push('\u{1F4DD} Simpan Order ID untuk renew nanti.');
       }
     }
 
@@ -671,13 +671,13 @@ function createEdukasiService({
       lines.push('\u{1F4CB} *Link Konfigurasi (tap untuk salin):*');
       for (const lnk of parsed.links) {
         lines.push('');
-        lines.push('_' + escapeMarkdownV1(lnk.label) + '_');
+        lines.push('\u2022 *' + escapeMarkdownV1(lnk.label) + '*');
         lines.push('`' + escapeMarkdownV1(lnk.url) + '`');
       }
     }
 
     lines.push('');
-    lines.push('_Selamat menggunakan Akun Direct EDU_');
+    lines.push('\u{1F64C} *Selamat menggunakan Akun Direct EDU*');
 
     return lines.join('\n');
   }

@@ -83,7 +83,8 @@ function createMyAccountsHandlers({
       const offset = safePage * pageSize;
 
       db.all(
-        'SELECT a.id, a.username, a.type, a.server_id, a.expires_at, s.nama_server '
+        'SELECT a.id, a.username, a.type, a.server_id, a.expires_at, '
+        + 'a.external_provider, a.billing_period, s.nama_server '
         + 'FROM accounts a LEFT JOIN Server s ON a.server_id = s.id '
         + 'WHERE ' + whereClause + ' ORDER BY a.created_at DESC LIMIT ? OFFSET ?',
         [...params, pageSize + 1, offset],
@@ -136,7 +137,8 @@ function createMyAccountsHandlers({
           const pageRows = hasNext ? rows.slice(0, pageSize) : rows;
           pageRows.forEach((row, index) => {
             const nomor = offset + index + 1;
-            const serverName = row.nama_server || (row.server_id ? 'Server ' + row.server_id : 'Server ?');
+            const serverName = row.nama_server
+              || (row.external_provider === 'vpnbiz' ? '\uD83C\uDF93 Direct EDU' : (row.server_id ? 'Server ' + row.server_id : 'Server ?'));
             const tcode = typeCode(row.type);
             const st = shortStatus(row.expires_at);
             text += nomor + '. [' + tcode + '] <b>' + row.username + '</b> \u2022 ' + serverName + ' \u2022 ' + st + '\n';
@@ -196,7 +198,8 @@ function createMyAccountsHandlers({
       if (!accountId) return ctx.reply('\u274c ID akun tidak valid.');
 
       db.get(
-        'SELECT a.id, a.user_id, a.username, a.type, a.server_id, a.expires_at, s.nama_server '
+        'SELECT a.id, a.user_id, a.username, a.type, a.server_id, a.expires_at, '
+        + 'a.external_provider, a.billing_period, s.nama_server '
         + 'FROM accounts a LEFT JOIN Server s ON a.server_id = s.id WHERE a.id = ?',
         [accountId],
         (err, row) => {
@@ -208,7 +211,8 @@ function createMyAccountsHandlers({
             return ctx.reply('\u274c Akun ini tidak ditemukan atau bukan milik kamu.');
           }
 
-          const serverName = row.nama_server || (row.server_id ? 'Server ' + row.server_id : 'Server ?');
+          const serverName = row.nama_server
+            || (row.external_provider === 'vpnbiz' ? '\uD83C\uDF93 Direct EDU' : (row.server_id ? 'Server ' + row.server_id : 'Server ?'));
           const status = describeAccountStatus(row.expires_at);
 
           const detail = '\ud83d\udcc4 <b>Detail Akun</b>\n\n'
@@ -245,7 +249,7 @@ function createMyAccountsHandlers({
       if (!accountId) return ctx.reply('\u274c ID akun tidak valid.');
 
       db.get(
-        'SELECT id, user_id, username, type, server_id FROM accounts WHERE id = ?',
+        'SELECT id, user_id, username, type, server_id, external_provider FROM accounts WHERE id = ?',
         [accountId],
         async (err, row) => {
           if (err) {
@@ -254,6 +258,32 @@ function createMyAccountsHandlers({
           }
           if (!row || row.user_id !== userId) {
             return ctx.reply('\u274c Akun ini tidak ditemukan atau bukan milik kamu.');
+          }
+
+          // Akun Direct EDU (vpnbiz) tidak punya server_id lokal. Aksi
+          // lock/unlock tidak applicable; del cukup hapus catatan lokal saja.
+          if (row.external_provider === 'vpnbiz') {
+            if (prefix === 'accdel') {
+              db.run('DELETE FROM accounts WHERE id = ?', [accountId], (err2) => {
+                if (err2) {
+                  logger.error('Kesalahan menghapus record akun edukasi dari tabel accounts:', err2.message);
+                  return ctx.reply('\u274c Terjadi kesalahan saat menghapus catatan akun.');
+                }
+                ctx.reply(
+                  '\u2705 Catatan akun Direct EDU dihapus dari daftar kamu.\n\n'
+                  + '_Catatan: akun di sisi provider tetap aktif sampai expired sesuai paket. '
+                  + 'Aksi ini hanya menghilangkan dari daftar Akun Saya._',
+                  { parse_mode: 'Markdown' }
+                );
+              });
+              return;
+            }
+            // Lock/unlock tidak didukung untuk akun edukasi
+            return ctx.reply(
+              '\u26a0\ufe0f Aksi *' + failVerb + '* tidak tersedia untuk akun Direct EDU.\n'
+              + 'Akun edukasi mengikuti masa aktif paket dan tidak bisa di-lock/unlock manual.',
+              { parse_mode: 'Markdown' }
+            );
           }
 
           const fn = handlers[row.type];
@@ -294,7 +324,8 @@ function createMyAccountsHandlers({
       if (!accountId) return ctx.reply('\u274c ID akun tidak valid.');
 
       db.get(
-        'SELECT a.id, a.user_id, a.username, a.type, a.server_id, a.expires_at, s.nama_server '
+        'SELECT a.id, a.user_id, a.username, a.type, a.server_id, a.expires_at, '
+        + 'a.external_provider, a.billing_period, s.nama_server '
         + 'FROM accounts a LEFT JOIN Server s ON a.server_id = s.id WHERE a.id = ?',
         [accountId],
         async (err, row) => {
@@ -306,7 +337,39 @@ function createMyAccountsHandlers({
             return ctx.reply('\u274c Akun ini tidak ditemukan atau bukan milik kamu.');
           }
 
-          const serverName = row.nama_server || (row.server_id ? 'Server ' + row.server_id : 'Server ?');
+          // Akun Direct EDU (vpnbiz) tidak punya server_id lokal, dan flow renew
+          // lokal akan memanggil renewssh/renewvmess yang butuh server lokal.
+          // Redirect ke flow edukasi_renew_ask supaya pakai vpnbiz API.
+          if (row.external_provider === 'vpnbiz') {
+            // Trial tidak bisa renew, kasih info user.
+            if (row.billing_period === 'trial') {
+              return sendCleanMenu(ctx,
+                '\u26a0\ufe0f Akun trial Direct EDU tidak bisa diperpanjang.\n'
+                + 'Silakan beli paket berbayar (Bulanan/Mingguan) dari menu '
+                + '\uD83C\uDF93 Akun Direct EDU.',
+                { parse_mode: 'HTML' }
+              );
+            }
+            // Forward ke handler edukasi via emit ulang callback.
+            // Cara aman: kirim pesan dengan tombol arah ke flow edukasi.
+            const keyboard = [
+              [{ text: '\uD83D\uDCC5 Renew Bulanan', callback_data: 'edukasi_renew_do:' + row.id + ':monthly' }],
+              [{ text: '\uD83D\uDDD3\uFE0F Renew Mingguan', callback_data: 'edukasi_renew_do:' + row.id + ':weekly' }],
+              [{ text: '\u274C Batal', callback_data: 'my_accounts' }],
+            ];
+            const infoText = '\u267b\uFE0F <b>PERPANJANG AKUN DIRECT EDU</b>\n\n'
+              + 'Tipe    : <b>' + row.type + '</b>\n'
+              + 'Username: <b>' + row.username + '</b>\n'
+              + 'Status  : ' + describeAccountStatus(row.expires_at) + '\n\n'
+              + 'Pilih periode renew:';
+            return sendCleanMenu(ctx, infoText, {
+              parse_mode: 'HTML',
+              reply_markup: { inline_keyboard: keyboard },
+            });
+          }
+
+          const serverName = row.nama_server
+            || (row.server_id ? 'Server ' + row.server_id : 'Server ?');
           const status = describeAccountStatus(row.expires_at);
 
           userState[chatId] = {
