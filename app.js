@@ -2130,9 +2130,79 @@ const checkAndDowngradeResellersForPreviousMonth = (...args) =>
   __resellerTargetScheduler.checkAndDowngradeResellersForPreviousMonth(...args);
 
 
+// ============================================================================
+// SECTION: WEB API LINKAGE (ketantech.my.id)
+// Dideklarasikan di sini (sebelum accountService) supaya bisa di-inject ke
+// account service. Account service jadi sadar-link: user yang sudah link akan
+// pakai saldo web sebagai single source of truth, sementara user belum link
+// tetap pakai SQLite (perilaku legacy).
+// Konfigurasi di .vars.json:
+//   WEB_LINK_ENABLED  - master switch (default: false sampai web siap)
+//   WEB_API_BASE_URL  - mis. "https://ketantech.my.id/api"
+//   WEB_DOMAIN        - URL public web (untuk pesan ke user)
+//   WEB_API_BOT_KEY   - shared secret antara bot & web (hardcoded, jangan publik)
+//   WEB_API_TIMEOUT_MS - default 15000
+// Kalau salah satu kosong, fitur link otomatis di-disable (bot fallback ke
+// SQLite lokal seperti sebelumnya).
+// ============================================================================
+const { createWebApiClient } = require('./modules/web-api-client');
+function getWebApiBaseUrl() {
+  return String(envOr('WEB_API_BASE_URL', '') || '').trim();
+}
+function getWebApiBotKey() {
+  return String(envOr('WEB_API_BOT_KEY', '') || '').trim();
+}
+function getWebApiTimeout() {
+  const v = Number(envOr('WEB_API_TIMEOUT_MS', 15000));
+  return Number.isFinite(v) && v > 0 ? v : 15000;
+}
+function getWebDomain() {
+  return String(envOr('WEB_DOMAIN', '') || '').trim();
+}
+function isWebLinkEnabled() {
+  const flag = envOr('WEB_LINK_ENABLED', false);
+  if (typeof flag === 'boolean') return flag;
+  if (typeof flag === 'string') return flag.toLowerCase() === 'true';
+  return !!flag;
+}
+const webApiClient = createWebApiClient({
+  getBaseUrl: getWebApiBaseUrl,
+  getBotKey: getWebApiBotKey,
+  getTimeout: getWebApiTimeout,
+  logger,
+});
+logger.info(
+  'Web API linkage init: enabled=' + isWebLinkEnabled() +
+  ', baseUrl=' + (getWebApiBaseUrl() || '<empty>') +
+  ', domain=' + (getWebDomain() || '<empty>') +
+  ', botKey=' + (getWebApiBotKey() ? maskToken(getWebApiBotKey()) : '<empty>')
+);
+
+// Helper: ambil status link (web_user_id) untuk user telegram.
+// Dipanggil oleh accountService dan getEffectiveBalance.
+function getUserLinkInfo(userId) {
+  return new Promise((resolve) => {
+    db.get(
+      'SELECT web_user_id, web_linked_at FROM users WHERE user_id = ?',
+      [Number(userId)],
+      (err, row) => {
+        if (err) return resolve(null);
+        if (!row || !row.web_user_id) return resolve(null);
+        resolve(row);
+      }
+    );
+  });
+}
+
 // --- Fase 4 split: account service (accounts/service.js)
 const { createAccountService } = require('./accounts/service');
-const accountService = createAccountService({ db, logger });
+const accountService = createAccountService({
+  db,
+  logger,
+  webApiClient,
+  getLinkInfo: getUserLinkInfo,
+  isWebLinkEnabled,
+});
 const {
   getUserSaldo: _accountGetUserSaldo,
   recordSaldoTransaction,
@@ -2142,6 +2212,8 @@ const {
   upsertAccount,
 } = accountService;
 // Wrapper getUserSaldo tetap menerima (db, userId) untuk kompatibilitas call-site lama.
+// Sekarang return saldo "efektif" — dari web kalau user sudah link, dari SQLite
+// kalau belum.
 async function getUserSaldo(dbArg, userId) {
   return _accountGetUserSaldo(userId);
 }
@@ -2285,51 +2357,8 @@ const { createEdukasiService } = require('./modules/edukasi');
 const { createEdukasiHandlers } = require('./modules/edukasi-handlers');
 const { createEdukasiAdminHandlers } = require('./admin/edukasi');
 
-// ============================================================================
-// SECTION: WEB API LINKAGE (ketantech.my.id)
-// Bot Telegram bisa "link" ke akun di web ketantech.my.id supaya 1 user
-// punya saldo & data yang konsisten antar platform. Bot pakai axios client
-// untuk panggil endpoint web. Konfigurasi di .vars.json:
-//   WEB_LINK_ENABLED  - master switch (default: false sampai web siap)
-//   WEB_API_BASE_URL  - mis. "https://ketantech.my.id/api"
-//   WEB_DOMAIN        - URL public web (untuk pesan ke user)
-//   WEB_API_BOT_KEY   - shared secret antara bot & web (hardcoded, jangan publik)
-//   WEB_API_TIMEOUT_MS - default 15000
-// Kalau salah satu kosong, fitur link otomatis di-disable (bot fallback ke
-// SQLite lokal seperti sebelumnya).
-// ============================================================================
-const { createWebApiClient } = require('./modules/web-api-client');
-function getWebApiBaseUrl() {
-  return String(envOr('WEB_API_BASE_URL', '') || '').trim();
-}
-function getWebApiBotKey() {
-  return String(envOr('WEB_API_BOT_KEY', '') || '').trim();
-}
-function getWebApiTimeout() {
-  const v = Number(envOr('WEB_API_TIMEOUT_MS', 15000));
-  return Number.isFinite(v) && v > 0 ? v : 15000;
-}
-function getWebDomain() {
-  return String(envOr('WEB_DOMAIN', '') || '').trim();
-}
-function isWebLinkEnabled() {
-  const flag = envOr('WEB_LINK_ENABLED', false);
-  if (typeof flag === 'boolean') return flag;
-  if (typeof flag === 'string') return flag.toLowerCase() === 'true';
-  return !!flag;
-}
-const webApiClient = createWebApiClient({
-  getBaseUrl: getWebApiBaseUrl,
-  getBotKey: getWebApiBotKey,
-  getTimeout: getWebApiTimeout,
-  logger,
-});
-logger.info(
-  'Web API linkage init: enabled=' + isWebLinkEnabled() +
-  ', baseUrl=' + (getWebApiBaseUrl() || '<empty>') +
-  ', domain=' + (getWebDomain() || '<empty>') +
-  ', botKey=' + (getWebApiBotKey() ? maskToken(getWebApiBotKey()) : '<empty>')
-);
+// (SECTION WEB API LINKAGE dipindah ke atas, sebelum createAccountService,
+//  supaya webApiClient bisa di-inject ke account service.)
 
 function getVpnbizApiKey() {
   const envKey = process.env.VPNBIZ_API_KEY;
@@ -3983,16 +4012,19 @@ async function sendMainMenu(ctx) {
   const userId = ctx.from.id;
   const userName = ctx.from.first_name || '-';
 
-  // Ambil saldo user
+  // Ambil saldo user (efektif: web kalau linked, SQLite kalau belum link).
+  // accountService.getUserSaldo() sudah cerdas — kalau user.web_user_id ada,
+  // dia panggil API /telegram/balance dan return saldo web; kalau belum link
+  // atau API error, dia fallback ke saldo SQLite lokal.
   let saldo = 0;
+  let saldoSource = 'lokal';
   try {
-    const row = await new Promise((resolve, reject) => {
-      db.get('SELECT saldo FROM users WHERE user_id = ?', [userId], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
-    saldo = row && typeof row.saldo === 'number' ? row.saldo : 0;
+    const v = await getUserSaldo(db, userId);
+    saldo = Number(v || 0);
+    if (isWebLinkEnabled()) {
+      const link = await getUserLinkInfo(userId);
+      if (link && link.web_user_id) saldoSource = 'web';
+    }
   } catch (e) {
     saldo = 0;
     logger.error('Gagal mengambil saldo di sendMainMenu:', e);
@@ -4056,7 +4088,7 @@ ${licenseInfoText}
 <code>━━━━━━━ USER INFO ━━━━━━━━━━</code>
 • Nama   : <b>${userName}</b>
 • ID     : <code>${userId}</code>
-• Saldo  : <code>Rp ${saldo}</code>
+• Saldo  : <code>Rp ${Number(saldo).toLocaleString('id-ID')}</code>${saldoSource === 'web' ? ' 🌐' : ''}
 • Status : <code>${userStatus}</code>
 <code>━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
 
