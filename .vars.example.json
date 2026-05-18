@@ -63,5 +63,11 @@
   "EDUKASI_PRICE_MEMBER_WEEKLY": 5000,
   "EDUKASI_PRICE_RESELLER_MONTHLY": 12000,
   "EDUKASI_PRICE_RESELLER_WEEKLY": 4000,
-  "EDUKASI_TRIAL_MAX_PER_DAY": 1
+  "EDUKASI_TRIAL_MAX_PER_DAY": 1,
+  "ILMUPEDIA_LINKS": [
+    { "label": "Ilmupedia 1 GB", "url": "https://my.telkomsel.com/app/package-details/199debf4cf18a5aaeaa3e976aa0d9997" },
+    { "label": "Ilmupedia 5 GB", "url": "https://my.telkomsel.com/app/package-details/b1c6961990968d80c32a2e17352bc2b3" },
+    { "label": "Ilmupedia 11 GB", "url": "https://my.telkomsel.com/app/package-details/ad6bad56793e0077a163fcae1faa18e3" },
+    { "label": "Ilmupedia 22 GB", "url": "https://my.telkomsel.com/app/package-details/68c4b16ef346a8d08b4650e2155c2d0b" }
+  ]
 }

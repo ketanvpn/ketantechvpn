@@ -67,6 +67,7 @@ function createEdukasiHandlers({
   sendCleanMenu,
   userState,
   getPriceConfig,
+  getIlmupediaLinks,
 }) {
   if (!bot) throw new Error('createEdukasiHandlers: bot required');
   if (!logger) throw new Error('createEdukasiHandlers: logger required');
@@ -86,6 +87,11 @@ function createEdukasiHandlers({
   if (typeof getPriceConfig !== 'function') {
     throw new Error('createEdukasiHandlers: getPriceConfig harus fungsi');
   }
+  // getIlmupediaLinks opsional. Kalau tidak di-set / return array kosong,
+  // tombol "Beli Paket Ilmupedia" otomatis tidak muncul.
+  const _getIlpedLinks = typeof getIlmupediaLinks === 'function'
+    ? getIlmupediaLinks
+    : () => [];
 
   // === RENDER FUNCTIONS ===
 
@@ -127,6 +133,18 @@ function createEdukasiHandlers({
     lines.push('Pilih server di bawah:');
 
     const keyboard = [];
+
+    // Tombol "Beli Paket Ilmupedia" di paling atas (kalau link sudah di-set).
+    // Akun VPN Direct EDU butuh paket Ilmupedia Telkomsel sebagai "tiket"-nya,
+    // jadi kita kasih shortcut ke link pembelian biar user nggak bingung.
+    const ilpedLinks = (_getIlpedLinks() || []).filter((l) => l && l.url);
+    if (ilpedLinks.length > 0) {
+      keyboard.push([{
+        text: '\uD83D\uDCF1 Beli Paket Ilmupedia (Telkomsel)',
+        callback_data: 'edukasi_ilped',
+      }]);
+    }
+
     for (const s of servers) {
       if (!s || !s.code) continue;
       const sid = rememberServer(s.code); // 8-char hex
@@ -367,6 +385,35 @@ function createEdukasiHandlers({
     });
   }
 
+  // Kirim pesan follow-up berisi tombol URL link Ilmupedia. Dipanggil setelah
+  // akun edukasi berhasil dibuat (paid/trial), supaya user tahu di mana beli
+  // paket Ilmupedia Telkomsel yang jadi syarat akun bisa dipakai.
+  async function sendIlmupediaFollowup(ctx) {
+    try {
+      const links = (_getIlpedLinks() || []).filter((l) => l && l.url);
+      if (links.length === 0) return;
+
+      const lines = [];
+      lines.push('\uD83D\uDCF1 *Belum punya Paket Ilmupedia?*');
+      lines.push('');
+      lines.push('Akun di atas baru bisa dipakai kalau nomor Telkomsel kamu aktif paket *Ilmupedia*.');
+      lines.push('Pilih ukuran paket sesuai kebutuhan:');
+
+      const keyboard = links.map((l) => ([{
+        text: '\uD83D\uDED2 ' + l.label,
+        url: l.url,
+      }]));
+
+      await ctx.reply(lines.join('\n'), {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
+    } catch (e) {
+      // Jangan ganggu flow utama kalau follow-up gagal — cukup log warning.
+      logger.warn('sendIlmupediaFollowup gagal: ' + (e && e.message ? e.message : e));
+    }
+  }
+
   async function executeOrder(ctx, state) {
     const userId = ctx.from.id;
     try {
@@ -382,6 +429,7 @@ function createEdukasiHandlers({
       });
       const msg = edukasiService.formatAccountMessage(result);
       await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+      await sendIlmupediaFollowup(ctx);
       logger.info('Edukasi order sukses untuk user ' + userId
         + ' service=' + state.service + ' period=' + state.period
         + ' order_id=' + (result.apiData && result.apiData.order_id));
@@ -406,6 +454,7 @@ function createEdukasiHandlers({
       });
       const msg = edukasiService.formatAccountMessage(result);
       await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+      await sendIlmupediaFollowup(ctx);
       logger.info('Edukasi trial sukses user=' + userId + ' service=' + service);
     } catch (err) {
       await ctx.reply('\u274C *Gagal membuat trial edukasi.*\n\n_' + (err.message || 'Unknown error') + '_',
@@ -464,6 +513,7 @@ function createEdukasiHandlers({
       });
       const msg = edukasiService.formatAccountMessage(result);
       await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+      await sendIlmupediaFollowup(ctx);
       logger.info('Edukasi renew sukses user=' + userId + ' accountId=' + accountId + ' period=' + period);
     } catch (err) {
       const refunded = !!err.refunded;
@@ -546,9 +596,43 @@ function createEdukasiHandlers({
     return resolveServerShort(sid);
   }
 
+  // === RENDER MENU ILMUPEDIA (Opsi A) ===
+  // Tampilkan list paket Ilmupedia dengan tombol URL langsung ke Telkomsel.
+  async function renderIlmupediaMenu(ctx) {
+    const links = (_getIlpedLinks() || []).filter((l) => l && l.url);
+    if (links.length === 0) {
+      await sendCleanMenu(ctx, '\u26A0\uFE0F Link paket Ilmupedia belum di-set oleh admin.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const lines = [];
+    lines.push('\uD83D\uDCF1 *Beli Paket Ilmupedia (Telkomsel)*');
+    lines.push('');
+    lines.push('Akun Direct EDU butuh *Paket Ilmupedia* Telkomsel aktif di nomor kamu.');
+    lines.push('Tap tombol di bawah untuk beli paket sesuai kebutuhan:');
+    lines.push('');
+    lines.push('_Tombol akan membuka aplikasi MyTelkomsel (atau in-app browser) untuk pembelian._');
+
+    const keyboard = links.map((l) => ([{
+      text: '\uD83D\uDED2 ' + l.label,
+      url: l.url,
+    }]));
+    keyboard.push([{ text: '\u2B05\uFE0F Kembali', callback_data: 'edukasi_menu' }]);
+    keyboard.push([{ text: '\uD83D\uDD19 Menu Utama', callback_data: 'send_main_menu' }]);
+
+    await sendCleanMenu(ctx, lines.join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  }
+
   function register() {
     bot.action('edukasi_menu', safeAction('edukasi_menu', async (ctx) => {
       await renderMainMenu(ctx);
+    }));
+
+    bot.action('edukasi_ilped', safeAction('edukasi_ilped', async (ctx) => {
+      await renderIlmupediaMenu(ctx);
     }));
 
     bot.action(/^edukasi_srv:([A-Za-z0-9_-]+)$/, safeAction('edukasi_srv', async (ctx) => {

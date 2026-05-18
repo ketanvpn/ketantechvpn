@@ -11,6 +11,13 @@ function formatRupiah(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID');
 }
 
+const DEFAULT_ILMUPEDIA_LINKS = [
+  { label: 'Ilmupedia 1 GB', url: 'https://my.telkomsel.com/app/package-details/199debf4cf18a5aaeaa3e976aa0d9997' },
+  { label: 'Ilmupedia 5 GB', url: 'https://my.telkomsel.com/app/package-details/b1c6961990968d80c32a2e17352bc2b3' },
+  { label: 'Ilmupedia 11 GB', url: 'https://my.telkomsel.com/app/package-details/ad6bad56793e0077a163fcae1faa18e3' },
+  { label: 'Ilmupedia 22 GB', url: 'https://my.telkomsel.com/app/package-details/68c4b16ef346a8d08b4650e2155c2d0b' },
+];
+
 function createEdukasiAdminHandlers({
   bot,
   logger,
@@ -42,6 +49,14 @@ function createEdukasiAdminHandlers({
       throw new Error('createEdukasiAdminHandlers: state.' + k + ' harus fungsi');
     }
   }
+  // getIlmupediaLinks / setIlmupediaLinks opsional. Kalau di-set, submenu
+  // "Atur Link Ilmupedia" akan muncul.
+  const _getIlpedLinks = typeof state.getIlmupediaLinks === 'function'
+    ? state.getIlmupediaLinks
+    : null;
+  const _setIlpedLinks = typeof state.setIlmupediaLinks === 'function'
+    ? state.setIlmupediaLinks
+    : null;
   if (typeof updateVarsPartial !== 'function') {
     throw new Error('createEdukasiAdminHandlers: updateVarsPartial harus fungsi');
   }
@@ -83,11 +98,16 @@ function createEdukasiAdminHandlers({
     lines.push('');
     lines.push('*Limit Trial*: ' + state.getTrialMaxPerDay() + 'x / hari / user');
 
+    const ilpedRow = (_getIlpedLinks)
+      ? [[{ text: '\uD83D\uDCF1 Atur Link Paket Ilmupedia', callback_data: 'admin_eduk_ilped' }]]
+      : [];
+
     const replyMarkup = {
       inline_keyboard: [
         [{ text: '\uD83D\uDD11 Set API Key vpnbiz', callback_data: 'admin_eduk_setkey' }],
         [{ text: '\u2139\uFE0F Cek Profile & Saldo vpnbiz', callback_data: 'admin_eduk_check' }],
         [{ text: '\uD83D\uDD04 Refresh Cache Produk', callback_data: 'admin_eduk_refresh' }],
+        ...ilpedRow,
         [
           { text: '\u2796 Member /bln', callback_data: 'admin_eduk_mm_dec' },
           { text: formatRupiah(state.getMemberMonthly()), callback_data: 'admin_eduk_nop' },
@@ -326,14 +346,116 @@ function createEdukasiAdminHandlers({
       if (!isAdmin(ctx)) return;
       await handleCheck(ctx);
     });
+
+    // === SUBMENU LINK ILMUPEDIA (Opsi C) ===
+    bot.action('admin_eduk_ilped', async (ctx) => {
+      await ctx.answerCbQuery().catch(() => {});
+      if (!isAdmin(ctx)) return;
+      if (!_getIlpedLinks) {
+        return ctx.reply('Submenu link Ilmupedia tidak tersedia (state tidak di-wire).');
+      }
+      await renderIlmupediaAdminMenu(ctx);
+    });
+
+    bot.action('admin_eduk_ilped_reset', async (ctx) => {
+      await ctx.answerCbQuery('Reset ke default').catch(() => {});
+      if (!isAdmin(ctx)) return;
+      if (!_setIlpedLinks) return;
+      _setIlpedLinks(DEFAULT_ILMUPEDIA_LINKS.slice());
+      updateVarsPartial({ ILMUPEDIA_LINKS: DEFAULT_ILMUPEDIA_LINKS.slice() });
+      await ctx.reply('\u2705 Link Ilmupedia di-reset ke default.');
+      await renderIlmupediaAdminMenu(ctx);
+    });
+
+    bot.action('admin_eduk_ilped_clear', async (ctx) => {
+      await ctx.answerCbQuery('Hapus semua link').catch(() => {});
+      if (!isAdmin(ctx)) return;
+      if (!_setIlpedLinks) return;
+      _setIlpedLinks([]);
+      updateVarsPartial({ ILMUPEDIA_LINKS: [] });
+      await ctx.reply('\u2705 Semua link Ilmupedia dihapus. Tombol "Beli Paket Ilmupedia" tidak akan muncul di menu user sampai di-set ulang.');
+      await renderIlmupediaAdminMenu(ctx);
+    });
+
+    bot.action('admin_eduk_ilped_edit', async (ctx) => {
+      await ctx.answerCbQuery().catch(() => {});
+      if (!isAdmin(ctx)) return;
+      if (!_setIlpedLinks) return;
+      if (adminState && typeof adminState === 'object') {
+        adminState[ctx.from.id] = { action: 'edukasi_set_ilped', __t: Date.now() };
+      }
+      await ctx.reply(
+        '\uD83D\uDCDD *Edit Link Paket Ilmupedia*\n\n' +
+        'Kirim daftar link dalam format berikut (1 baris = 1 paket):\n\n' +
+        '`Label | URL`\n\n' +
+        'Contoh:\n' +
+        '`Ilmupedia 1 GB | https://my.telkomsel.com/app/package-details/abc123`\n' +
+        '`Ilmupedia 5 GB | https://my.telkomsel.com/app/package-details/def456`\n\n' +
+        'Kirim ulang seluruh daftar (yang lama akan diganti).\n' +
+        'Ketik `/batal` untuk batal.',
+        { parse_mode: 'Markdown' }
+      );
+    });
   }
 
-  // Hook untuk app.js bot.on('text') existing — kalau admin lagi menunggu input API key.
+  async function renderIlmupediaAdminMenu(ctx) {
+    const links = (_getIlpedLinks() || []).filter((l) => l && l.url);
+    const lines = [];
+    lines.push('\uD83D\uDCF1 *Pengaturan Link Paket Ilmupedia*');
+    lines.push('');
+    if (links.length === 0) {
+      lines.push('_Belum ada link tersimpan._');
+      lines.push('Tombol "Beli Paket Ilmupedia" tidak akan muncul di menu user.');
+    } else {
+      lines.push('Link saat ini (' + links.length + ' paket):');
+      links.forEach((l, i) => {
+        lines.push((i + 1) + '. *' + l.label + '*');
+        lines.push('   `' + l.url + '`');
+      });
+    }
+    lines.push('');
+    lines.push('_Pilih aksi di bawah:_');
+
+    await ctx.reply(lines.join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '\u270F\uFE0F Edit Daftar Link', callback_data: 'admin_eduk_ilped_edit' }],
+          [{ text: '\uD83D\uDD04 Reset ke Default', callback_data: 'admin_eduk_ilped_reset' }],
+          [{ text: '\uD83D\uDDD1\uFE0F Hapus Semua', callback_data: 'admin_eduk_ilped_clear' }],
+          [{ text: '\u2B05\uFE0F Kembali ke Menu Edukasi', callback_data: 'admin_edukasi_menu' }],
+        ],
+      },
+    });
+  }
+
+  // Parse text input "Label | URL" multi-line jadi array link.
+  function parseIlmupediaInput(rawText) {
+    if (!rawText || typeof rawText !== 'string') return [];
+    const lines = rawText.split(/\r?\n/);
+    const out = [];
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      const idx = line.indexOf('|');
+      if (idx <= 0) continue;
+      const label = line.slice(0, idx).trim();
+      const url = line.slice(idx + 1).trim();
+      if (!label || !url) continue;
+      if (!/^https?:\/\//i.test(url)) continue;
+      if (label.length > 80 || url.length > 500) continue;
+      out.push({ label, url });
+    }
+    return out;
+  }
+
+  // Hook untuk app.js bot.on('text') existing — kalau admin lagi menunggu input
+  // API key vpnbiz atau daftar link Ilmupedia.
   async function handleTextStep(ctx) {
     if (!ctx.from || !ctx.message) return false;
     if (!adminState || typeof adminState !== 'object') return false;
     const slot = adminState[ctx.from.id];
-    if (!slot || slot.action !== 'edukasi_set_apikey') return false;
+    if (!slot) return false;
 
     const text = (ctx.message.text || '').trim();
     if (text === '/batal' || text === '/cancel') {
@@ -345,23 +467,52 @@ function createEdukasiAdminHandlers({
       // Biarkan command lain jalan, jangan konsumsi
       return false;
     }
-    if (text.length < 5) {
-      await ctx.reply('\u274C API key terlalu pendek. Coba kirim ulang atau ketik /batal.');
+
+    if (slot.action === 'edukasi_set_apikey') {
+      if (text.length < 5) {
+        await ctx.reply('\u274C API key terlalu pendek. Coba kirim ulang atau ketik /batal.');
+        return true;
+      }
+      delete adminState[ctx.from.id];
+      updateVarsPartial({ VPNBIZ_API_KEY: text });
+      edukasiService.clearProductsCache();
+      try {
+        const profile = await edukasiClient.getProfile();
+        await ctx.reply('\u2705 API key tersimpan & valid.\n\nLogin sebagai: *' + (profile.name || '-') + '*'
+          + '\nSaldo: *' + formatRupiah(profile.balance || 0) + '*',
+          { parse_mode: 'Markdown' });
+      } catch (err) {
+        await ctx.reply('\u26A0\uFE0F API key tersimpan, tapi gagal verifikasi:\n_' + (err.message || err) + '_',
+          { parse_mode: 'Markdown' });
+      }
       return true;
     }
-    delete adminState[ctx.from.id];
-    updateVarsPartial({ VPNBIZ_API_KEY: text });
-    edukasiService.clearProductsCache();
-    try {
-      const profile = await edukasiClient.getProfile();
-      await ctx.reply('\u2705 API key tersimpan & valid.\n\nLogin sebagai: *' + (profile.name || '-') + '*'
-        + '\nSaldo: *' + formatRupiah(profile.balance || 0) + '*',
-        { parse_mode: 'Markdown' });
-    } catch (err) {
-      await ctx.reply('\u26A0\uFE0F API key tersimpan, tapi gagal verifikasi:\n_' + (err.message || err) + '_',
-        { parse_mode: 'Markdown' });
+
+    if (slot.action === 'edukasi_set_ilped') {
+      if (!_setIlpedLinks) {
+        delete adminState[ctx.from.id];
+        await ctx.reply('Setter link Ilmupedia tidak tersedia.');
+        return true;
+      }
+      const parsed = parseIlmupediaInput(text);
+      if (parsed.length === 0) {
+        await ctx.reply(
+          '\u274C Format tidak valid atau tidak ada link yang berhasil di-parse.\n\n' +
+          'Pastikan format: `Label | URL` (1 baris per paket), URL diawali `http://` atau `https://`.\n' +
+          'Coba lagi atau ketik /batal.',
+          { parse_mode: 'Markdown' }
+        );
+        return true;
+      }
+      delete adminState[ctx.from.id];
+      _setIlpedLinks(parsed);
+      updateVarsPartial({ ILMUPEDIA_LINKS: parsed });
+      await ctx.reply('\u2705 ' + parsed.length + ' link Ilmupedia tersimpan.', { parse_mode: 'Markdown' });
+      await renderIlmupediaAdminMenu(ctx);
+      return true;
     }
-    return true;
+
+    return false;
   }
 
   return { register, handleTextStep, renderMenu };

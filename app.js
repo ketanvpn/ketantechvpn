@@ -2283,6 +2283,17 @@ let __edukasiTrialMaxPerDay = Number(
   (vars.EDUKASI_TRIAL_MAX_PER_DAY != null) ? vars.EDUKASI_TRIAL_MAX_PER_DAY : 1
 );
 
+// Link paket Ilmupedia Telkomsel (untuk shortcut beli paket di menu Direct EDU).
+// Disimpan sebagai array `[{ label, url }]` di .vars.json key ILMUPEDIA_LINKS.
+// Bisa diedit lewat menu admin → Akun Direct EDU → Atur Link Paket Ilmupedia.
+let __ilmupediaLinks = (() => {
+  const raw = vars.ILMUPEDIA_LINKS;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((it) => it && typeof it === 'object' && it.label && it.url)
+    .map((it) => ({ label: String(it.label), url: String(it.url) }));
+})();
+
 function getEdukasiPriceConfig() {
   return {
     MEMBER_MONTHLY: __edukasiPriceMemberMonthly,
@@ -2312,6 +2323,7 @@ const edukasiHandlers = createEdukasiHandlers({
   sendCleanMenu,
   userState,
   getPriceConfig: getEdukasiPriceConfig,
+  getIlmupediaLinks: () => __ilmupediaLinks,
 });
 edukasiHandlers.register();
 
@@ -2332,6 +2344,13 @@ const edukasiAdmin = createEdukasiAdminHandlers({
     setResellerWeekly: (v) => { __edukasiPriceResellerWeekly = Math.max(0, Number(v) || 0); },
     getTrialMaxPerDay: () => __edukasiTrialMaxPerDay,
     setTrialMaxPerDay: (v) => { __edukasiTrialMaxPerDay = Math.max(0, Math.min(50, Number(v) || 0)); },
+    getIlmupediaLinks: () => __ilmupediaLinks,
+    setIlmupediaLinks: (arr) => {
+      if (!Array.isArray(arr)) { __ilmupediaLinks = []; return; }
+      __ilmupediaLinks = arr
+        .filter((it) => it && typeof it === 'object' && it.label && it.url)
+        .map((it) => ({ label: String(it.label), url: String(it.url) }));
+    },
   },
   updateVarsPartial: writeVarsPartial,
   adminState,
