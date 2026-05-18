@@ -107,6 +107,7 @@ function createEdukasiAdminHandlers({
         [{ text: '\uD83D\uDD11 Set API Key vpnbiz', callback_data: 'admin_eduk_setkey' }],
         [{ text: '\u2139\uFE0F Cek Profile & Saldo vpnbiz', callback_data: 'admin_eduk_check' }],
         [{ text: '\uD83D\uDD04 Refresh Cache Produk', callback_data: 'admin_eduk_refresh' }],
+        [{ text: '\uD83D\uDCB0 Set Harga / Limit Manual', callback_data: 'admin_eduk_setprice_menu' }],
         ...ilpedRow,
         [
           { text: '\u2796 Member /bln', callback_data: 'admin_eduk_mm_dec' },
@@ -347,6 +348,56 @@ function createEdukasiAdminHandlers({
       await handleCheck(ctx);
     });
 
+    // === SUBMENU SET HARGA MANUAL ===
+    // User admin bisa set harga ke nominal spesifik (mis. 14900) tanpa harus
+    // klik tombol +/- berkali-kali. Cara kerja:
+    //   1. Klik tombol di submenu (mis. "Set Member Bulanan")
+    //   2. Bot pasang adminState[ctx.from.id] = { action: 'edukasi_set_price', field: 'mm' }
+    //   3. Admin kirim angka (3-7 digit) di chat
+    //   4. handleTextStep menangkap & menyimpan ke state + .vars.json
+    bot.action('admin_eduk_setprice_menu', async (ctx) => {
+      await ctx.answerCbQuery().catch(() => {});
+      if (!isAdmin(ctx)) return;
+      await renderSetPriceMenu(ctx);
+    });
+
+    bot.action(/^admin_eduk_setprice_(mm|mw|rm|rw|t)$/, async (ctx) => {
+      await ctx.answerCbQuery().catch(() => {});
+      if (!isAdmin(ctx)) return;
+      const field = ctx.match[1];
+      const labels = {
+        mm: { name: 'Harga Member Bulanan', current: state.getMemberMonthly(), suffix: 'rupiah', example: '14900' },
+        mw: { name: 'Harga Member Mingguan', current: state.getMemberWeekly(), suffix: 'rupiah', example: '4900' },
+        rm: { name: 'Harga Reseller Bulanan', current: state.getResellerMonthly(), suffix: 'rupiah', example: '11900' },
+        rw: { name: 'Harga Reseller Mingguan', current: state.getResellerWeekly(), suffix: 'rupiah', example: '3900' },
+        t:  { name: 'Limit Trial Per Hari',   current: state.getTrialMaxPerDay(),   suffix: 'kali',   example: '2' },
+      };
+      const meta = labels[field];
+      if (!meta) return;
+
+      if (adminState && typeof adminState === 'object') {
+        adminState[ctx.from.id] = {
+          action: 'edukasi_set_price',
+          field,
+          __t: Date.now(),
+        };
+      }
+
+      const currentText = field === 't' ? meta.current + ' kali/hari' : formatRupiah(meta.current);
+      const fmtHint = field === 't'
+        ? 'Kirim angka 1-50.'
+        : 'Kirim angka tanpa titik/koma. Min 0, maks 1.000.000.';
+
+      await ctx.reply(
+        '\uD83D\uDCB0 *Set ' + meta.name + '*\n\n' +
+        'Nilai sekarang: *' + currentText + '*\n\n' +
+        fmtHint + '\n' +
+        'Contoh: `' + meta.example + '`\n\n' +
+        'Ketik `/batal` untuk batal.',
+        { parse_mode: 'Markdown' }
+      );
+    });
+
     // === SUBMENU LINK ILMUPEDIA (Opsi C) ===
     bot.action('admin_eduk_ilped', async (ctx) => {
       await ctx.answerCbQuery().catch(() => {});
@@ -395,6 +446,34 @@ function createEdukasiAdminHandlers({
         'Ketik `/batal` untuk batal.',
         { parse_mode: 'Markdown' }
       );
+    });
+  }
+
+  async function renderSetPriceMenu(ctx) {
+    const lines = [];
+    lines.push('\uD83D\uDCB0 *Set Harga / Limit Manual*');
+    lines.push('');
+    lines.push('Pilih nilai yang mau diatur. Setelah klik, kirim angka di chat.');
+    lines.push('');
+    lines.push('*Nilai sekarang:*');
+    lines.push('\u2022 Member Bulanan : ' + formatRupiah(state.getMemberMonthly()));
+    lines.push('\u2022 Member Mingguan: ' + formatRupiah(state.getMemberWeekly()));
+    lines.push('\u2022 Reseller Bulanan : ' + formatRupiah(state.getResellerMonthly()));
+    lines.push('\u2022 Reseller Mingguan: ' + formatRupiah(state.getResellerWeekly()));
+    lines.push('\u2022 Limit Trial: ' + state.getTrialMaxPerDay() + 'x / hari');
+
+    await ctx.reply(lines.join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '\uD83D\uDCC5 Set Member Bulanan', callback_data: 'admin_eduk_setprice_mm' }],
+          [{ text: '\uD83D\uDDD3\uFE0F Set Member Mingguan', callback_data: 'admin_eduk_setprice_mw' }],
+          [{ text: '\uD83D\uDCC5 Set Reseller Bulanan', callback_data: 'admin_eduk_setprice_rm' }],
+          [{ text: '\uD83D\uDDD3\uFE0F Set Reseller Mingguan', callback_data: 'admin_eduk_setprice_rw' }],
+          [{ text: '\uD83C\uDD93 Set Limit Trial / Hari', callback_data: 'admin_eduk_setprice_t' }],
+          [{ text: '\u2B05\uFE0F Kembali ke Menu Edukasi', callback_data: 'admin_edukasi_menu' }],
+        ],
+      },
     });
   }
 
@@ -485,6 +564,65 @@ function createEdukasiAdminHandlers({
         await ctx.reply('\u26A0\uFE0F API key tersimpan, tapi gagal verifikasi:\n_' + (err.message || err) + '_',
           { parse_mode: 'Markdown' });
       }
+      return true;
+    }
+
+    if (slot.action === 'edukasi_set_price') {
+      const field = slot.field;
+      const raw = text.replace(/[.,\s]/g, '');
+      if (!/^\d+$/.test(raw)) {
+        await ctx.reply('\u274C Hanya angka yang boleh dikirim. Coba lagi atau ketik /batal.');
+        return true;
+      }
+      const num = Number(raw);
+      if (!Number.isFinite(num)) {
+        await ctx.reply('\u274C Angka tidak valid. Coba lagi atau ketik /batal.');
+        return true;
+      }
+
+      const fieldLabels = {
+        mm: 'Harga Member Bulanan',
+        mw: 'Harga Member Mingguan',
+        rm: 'Harga Reseller Bulanan',
+        rw: 'Harga Reseller Mingguan',
+        t:  'Limit Trial Per Hari',
+      };
+
+      let value = num;
+      let varKey;
+      if (field === 't') {
+        if (value < 1 || value > 50) {
+          await ctx.reply('\u274C Limit trial harus 1-50. Coba lagi atau ketik /batal.');
+          return true;
+        }
+        state.setTrialMaxPerDay(value);
+        varKey = 'EDUKASI_TRIAL_MAX_PER_DAY';
+      } else {
+        if (value < 0 || value > 1000000) {
+          await ctx.reply('\u274C Harga harus 0-1.000.000. Coba lagi atau ketik /batal.');
+          return true;
+        }
+        if (field === 'mm') { state.setMemberMonthly(value); varKey = 'EDUKASI_PRICE_MEMBER_MONTHLY'; }
+        else if (field === 'mw') { state.setMemberWeekly(value); varKey = 'EDUKASI_PRICE_MEMBER_WEEKLY'; }
+        else if (field === 'rm') { state.setResellerMonthly(value); varKey = 'EDUKASI_PRICE_RESELLER_MONTHLY'; }
+        else if (field === 'rw') { state.setResellerWeekly(value); varKey = 'EDUKASI_PRICE_RESELLER_WEEKLY'; }
+        else {
+          await ctx.reply('\u274C Field tidak dikenal. Batal.');
+          delete adminState[ctx.from.id];
+          return true;
+        }
+      }
+
+      // Persist ke .vars.json
+      const partial = {};
+      partial[varKey] = value;
+      updateVarsPartial(partial);
+
+      delete adminState[ctx.from.id];
+      const valueText = field === 't' ? value + 'x / hari' : formatRupiah(value);
+      await ctx.reply('\u2705 *' + fieldLabels[field] + '* tersimpan: *' + valueText + '*', { parse_mode: 'Markdown' });
+      // Tampilkan menu utama lagi supaya admin lihat semua nilai terbaru
+      await renderMenu(ctx, { edit: false });
       return true;
     }
 
