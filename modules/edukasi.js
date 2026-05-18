@@ -345,8 +345,10 @@ function createEdukasiService({
     if (!/^[A-Za-z0-9]{3,16}$/.test(username)) {
       throw new Error('Username tidak valid (3-16 karakter, hanya huruf & angka)');
     }
-    if (!/^[A-Za-z0-9._!@#\-]{3,32}$/.test(password)) {
-      throw new Error('Password tidak valid (3-32 karakter)');
+    // Password optional untuk VMess/VLess/Trojan/Shadowsocks (auth pakai UUID/key
+    // yang di-generate server). Kalau diisi, validasi format aja.
+    if (password && !/^[A-Za-z0-9._!@#\-]{3,32}$/.test(password)) {
+      throw new Error('Password tidak valid (3-32 karakter, atau biarkan kosong)');
     }
 
     // Validasi server & produk dari API (juga refresh cache)

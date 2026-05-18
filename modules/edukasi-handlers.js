@@ -281,7 +281,7 @@ function createEdukasiHandlers({
       __t: Date.now(),
     };
     const lines = [];
-    lines.push('\u270D\uFE0F *Input Akun Edukasi*');
+    lines.push('\u270D\uFE0F *Input Akun Direct EDU*');
     lines.push('');
     lines.push('Periode: *' + buildPeriodLabel(period) + '*');
     lines.push('Layanan: *' + ((edukasiService.SERVICE_LABELS && edukasiService.SERVICE_LABELS[service]) || service) + '*');
@@ -290,6 +290,8 @@ function createEdukasiHandlers({
     lines.push('Aturan: 3-16 karakter, hanya huruf & angka.');
     lines.push('');
     lines.push('Contoh: `userku01`');
+    lines.push('');
+    lines.push('_Untuk VMess/VLess/Trojan/Shadowsocks, autentikasi pakai UUID/key (di-generate otomatis oleh server). Tidak perlu password._');
 
     await sendCleanMenu(ctx, lines.join('\n'), { parse_mode: 'Markdown' });
   }
@@ -345,13 +347,12 @@ function createEdukasiHandlers({
     const serverName = server ? server.name : state.serverCode;
 
     const lines = [];
-    lines.push('\uD83D\uDED2 *Konfirmasi Pembelian Edukasi*');
+    lines.push('\uD83D\uDED2 *Konfirmasi Pembelian Direct EDU*');
     lines.push('');
     lines.push('Layanan : ' + ((edukasiService.SERVICE_LABELS && edukasiService.SERVICE_LABELS[state.service]) || state.service));
     lines.push('Server  : ' + serverName);
     lines.push('Periode : ' + buildPeriodLabel(state.period));
     lines.push('Username: `' + state.username + '`');
-    lines.push('Password: `' + state.password + '`');
     lines.push('Harga   : *' + formatRupiah(priceInfo.price) + '*');
     lines.push('');
     lines.push('Lanjut bayar dari saldo kamu?');
@@ -492,19 +493,9 @@ function createEdukasiHandlers({
         return true;
       }
       state.username = text;
-      state.step = 'edukasi_ask_password';
-      state.__t = Date.now();
-      await ctx.reply('\uD83D\uDD11 Sekarang kirim *password* (3-32 karakter: huruf, angka, dan . _ ! @ # -).',
-        { parse_mode: 'Markdown' });
-      return true;
-    }
-
-    if (state.step === 'edukasi_ask_password') {
-      if (!/^[A-Za-z0-9._!@#\-]{3,32}$/.test(text)) {
-        await ctx.reply('\u274C Password tidak valid. Gunakan 3-32 karakter (huruf, angka, dan . _ ! @ # -). Coba lagi.');
-        return true;
-      }
-      state.password = text;
+      // Untuk VMess/VLess/Trojan/Shadowsocks, password TIDAK diperlukan
+      // (server pakai UUID/key auto-generate). Langsung skip ke konfirmasi.
+      state.password = '';
       state.step = 'edukasi_confirm';
       state.__t = Date.now();
       await renderConfirmOrder(ctx, state);
