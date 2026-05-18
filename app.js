@@ -11619,19 +11619,31 @@ if (baseHarga30 > 0) {
 }
 
 
-        db.get('SELECT saldo FROM users WHERE user_id = ?', [ctx.from.id], async (err, user) => {
-          if (err) {
-            logger.error('⚠️ Kesalahan saat mengambil saldo pengguna:', err.message);
-            return ctx.reply('❌ *Terjadi kesalahan saat mengambil saldo pengguna.*', { parse_mode: 'Markdown' });
-          }
-
-          if (!user) {
-            return ctx.reply('❌ *Pengguna tidak ditemukan.*', { parse_mode: 'Markdown' });
-          }
-
-          const saldo = user.saldo;
+        // Pre-check saldo. PENTING: pakai getUserSaldo() yang aware-link.
+        // Kalau user sudah link ke web (web_user_id != NULL), getUserSaldo
+        // ambil saldo dari API web (single source of truth). Kalau belum link,
+        // fallback ke saldo SQLite seperti perilaku lama. Sebelumnya di sini
+        // kita query SQLite langsung, yang bikin user linked SELALU dianggap
+        // saldo 0 karena saldo SQLite-nya sudah di-zero saat migrasi.
+        let saldo = 0;
+        try {
+          const v = await getUserSaldo(db, ctx.from.id);
+          saldo = Number(v || 0);
+        } catch (eSaldo) {
+          logger.error('⚠️ Kesalahan saat mengambil saldo pengguna (efektif):', eSaldo.message || eSaldo);
+          return ctx.reply('❌ *Terjadi kesalahan saat mengambil saldo pengguna.*', { parse_mode: 'Markdown' });
+        }
+        // Bungkus sisa flow sebagai async IIFE supaya minimal merubah indent
+        // dan struktur callback existing yang panjang di bawah.
+        await (async () => {
           if (saldo < totalHarga) {
-            return ctx.reply('⚠️ *Saldo Anda tidak mencukupi untuk melakukan transaksi ini.*', { parse_mode: 'Markdown' });
+            return ctx.reply(
+              '⚠️ *Saldo kamu tidak mencukupi.*\n' +
+              `Saldo sekarang: <b>Rp ${Number(saldo).toLocaleString('id-ID')}</b>\n` +
+              `Harga paket   : <b>Rp ${Number(totalHarga).toLocaleString('id-ID')}</b>\n\n` +
+              'Silakan topup saldo dulu lewat menu *💳 TopUp Saldo* atau di web kalau akun kamu sudah ter-link.',
+              { parse_mode: 'HTML' }
+            );
           }
 		            // ?→ Limit create per hari untuk WATCHLIST (non-reseller)
           // isR sudah dihitung di atas (pakai isUserReseller)
