@@ -1334,11 +1334,113 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
   const providerPayloadJson = (() => {
     try { return JSON.stringify(tx); } catch (_) { return null; }
   })();
+  const refIdAudit = transactionRef || `qris_${invoiceId}`;
 
   if (!paymentId || !userId || !invoiceId || !Number.isFinite(baseAmount) || baseAmount <= 0) {
     throw new Error('Data finalize QRIS tidak valid');
   }
 
+  // === Cek apakah user ini sudah link ke web ===
+  // Kalau YA → saldo masuk ke web (bukan SQLite). Pattern aware-link sama
+  // dengan /addsaldo & processAccountPayment supaya konsisten.
+  let linkedToWeb = false;
+  try {
+    if (isWebLinkEnabled()) {
+      const linkInfo = await getUserLinkInfo(userId);
+      if (linkInfo && linkInfo.web_user_id) linkedToWeb = true;
+    }
+  } catch (e) {
+    logger.warn('finalizeQrisPayment: gagal cek link status, fallback ke SQLite: ' + (e.message || e));
+    linkedToWeb = false;
+  }
+
+  if (linkedToWeb) {
+    // === PATH WEB: credit ke web SEBELUM update SQLite ===
+    // Strategi: kalau web sukses → update qris_payments=paid + insert transactions
+    // (sebagai audit). Saldo SQLite TIDAK di-update karena single source of
+    // truth ada di web. Kalau web gagal → biarkan invoice tetap pending,
+    // poller akan retry di loop berikutnya (idempotent via refId).
+    let creditRes;
+    try {
+      creditRes = await webApiClient.creditBalance({
+        telegramId: userId,
+        amount: baseAmount,
+        description: 'Topup QRIS otomatis (' + transactionType + ')',
+        refId: refIdAudit,
+      });
+    } catch (eCredit) {
+      logger.error(
+        'finalizeQrisPayment: gagal credit ke web invoice ' + invoiceId + ': ' + (eCredit.message || eCredit) +
+        '. Invoice tetap pending, poller akan retry.'
+      );
+      // Throw supaya poller tahu finalize gagal & retry next loop.
+      throw new Error('Web credit gagal: ' + (eCredit.message || eCredit));
+    }
+    if (!creditRes || !creditRes.ok) {
+      throw new Error('Web tidak ack credit (response.ok = false)');
+    }
+
+    // Web sukses (atau idempotent: applied=false karena refId duplicate, dianggap juga sukses).
+    // Update qris_payments=paid + audit log di SQLite. Kalau gagal di sini,
+    // log CRITICAL: web sudah credit, audit SQLite belum match. Kasih warning
+    // ke admin tapi user tidak rugi.
+    try {
+      await new Promise((resolve, reject) => {
+        db.serialize(() => {
+          db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
+            if (err) return reject(err);
+            db.run(
+              `UPDATE qris_payments
+                 SET status = 'paid',
+                     paid_at = ?,
+                     matched_at = ?,
+                     provider_tx_id = ?,
+                     provider_tx_time = ?,
+                     provider_payment_type = ?,
+                     provider_issuer = ?,
+                     provider_status = ?,
+                     provider_payload_json = ?
+               WHERE id = ? AND status != 'paid'`,
+              [
+                paidAt,
+                matchedAt,
+                tx.transaction_id || tx.id || null,
+                tx.transaction_time || tx.time || null,
+                tx.payment_type || 'qris',
+                tx.issuer || 'gopay',
+                tx.transaction_status || tx.status || null,
+                providerPayloadJson,
+                paymentId,
+              ],
+              (err1) => {
+                if (err1) return db.run('ROLLBACK', () => reject(err1));
+                db.run(
+                  `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
+                   VALUES (?, ?, ?, ?, ?)`,
+                  [userId, baseAmount, transactionType + '_web', refIdAudit, matchedAt],
+                  (err2) => {
+                    if (err2) return db.run('ROLLBACK', () => reject(err2));
+                    db.run('COMMIT', (err3) => err3 ? reject(err3) : resolve());
+                  }
+                );
+              }
+            );
+          });
+        });
+      });
+    } catch (eAudit) {
+      logger.error(
+        'CRITICAL: finalizeQrisPayment - web credit SUKSES tapi update SQLite GAGAL untuk invoice ' +
+        invoiceId + ' user ' + userId + ' amount ' + baseAmount + ' refId ' + refIdAudit + ': ' +
+        (eAudit.message || eAudit) + '. Saldo web sudah masuk, tapi qris_payments mungkin masih pending. Cek manual!'
+      );
+      // Tetap return applied=true karena dari sisi user, saldo sudah masuk.
+    }
+
+    return { applied: true, alreadyPaid: false, paidAt, matchedAt, source: 'web' };
+  }
+
+  // === PATH SQLite (legacy, untuk user yang belum link) ===
   return await new Promise((resolve, reject) => {
     db.serialize(() => {
       db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
@@ -1403,7 +1505,7 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
                     db.run(
                       `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
                        VALUES (?, ?, ?, ?, ?)`,
-                      [userId, baseAmount, transactionType, transactionRef || `qris_${invoiceId}`, matchedAt],
+                      [userId, baseAmount, transactionType, refIdAudit, matchedAt],
                       (err3) => {
                         if (err3) {
                           return db.run('ROLLBACK', () => reject(err3));
@@ -1411,7 +1513,7 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
 
                         db.run('COMMIT', (err4) => {
                           if (err4) return reject(err4);
-                          resolve({ applied: true, alreadyPaid: false, paidAt, matchedAt });
+                          resolve({ applied: true, alreadyPaid: false, paidAt, matchedAt, source: 'sqlite' });
                         });
                       }
                     );
@@ -1438,6 +1540,64 @@ async function applyQrisTopupBonus(userId, invoiceId, bonusAmount) {
     return { applied: false, skipped: true };
   }
 
+  // === Cek apakah user ini sudah link ke web ===
+  // Pattern aware-link sama dengan finalizeQrisPayment & /addsaldo. User
+  // linked → bonus push ke web; user belum link → SQLite (legacy).
+  let linkedToWeb = false;
+  try {
+    if (isWebLinkEnabled()) {
+      const linkInfo = await getUserLinkInfo(uid);
+      if (linkInfo && linkInfo.web_user_id) linkedToWeb = true;
+    }
+  } catch (e) {
+    logger.warn('applyQrisTopupBonus: gagal cek link status, fallback ke SQLite: ' + (e.message || e));
+    linkedToWeb = false;
+  }
+
+  if (linkedToWeb) {
+    // === PATH WEB: bonus credit ke web (idempotent via refId) ===
+    try {
+      const credRes = await webApiClient.creditBalance({
+        telegramId: uid,
+        amount: bonus,
+        description: 'Bonus topup QRIS auto',
+        refId, // 'qris_bonus_<invoice>' → web reject duplicate
+      });
+      if (!credRes || !credRes.ok) {
+        throw new Error('Web tidak ack credit bonus');
+      }
+
+      // Catat audit di transactions SQLite. Kalau gagal, log warning saja —
+      // bonus sudah masuk ke web, audit trail telat tidak fatal.
+      try {
+        await new Promise((resolve) => {
+          db.run(
+            `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
+             VALUES (?, ?, ?, ?, ?)`,
+            [uid, bonus, 'qris_topup_bonus_web', refId, now],
+            (err) => {
+              if (err) {
+                logger.warn('applyQrisTopupBonus: gagal catat audit SQLite (non-fatal): ' + (err.message || err));
+              }
+              resolve();
+            }
+          );
+        });
+      } catch (_) { /* swallow */ }
+
+      return { applied: true, alreadyApplied: !credRes.applied, refId, source: 'web' };
+    } catch (eCredit) {
+      logger.error(
+        'applyQrisTopupBonus: gagal credit bonus ke web invoice ' + inv + ': ' +
+        (eCredit.message || eCredit) + '. Bonus tidak masuk, tapi topup utama sudah masuk.'
+      );
+      // Tidak throw — biar topup utama tetap dianggap sukses. Bonus bisa
+      // dicredit manual oleh admin via curl atau /addsaldo.
+      return { applied: false, error: eCredit.message || String(eCredit) };
+    }
+  }
+
+  // === PATH SQLite (legacy untuk user yang belum link) ===
   return await new Promise((resolve, reject) => {
     db.serialize(() => {
       db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
@@ -1476,7 +1636,7 @@ async function applyQrisTopupBonus(userId, invoiceId, bonusAmount) {
 
                     db.run('COMMIT', (err3) => {
                       if (err3) return reject(err3);
-                      resolve({ applied: true, alreadyApplied: false, refId });
+                      resolve({ applied: true, alreadyApplied: false, refId, source: 'sqlite' });
                     });
                   }
                 );
