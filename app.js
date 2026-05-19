@@ -3403,210 +3403,225 @@ bot.command('addsaldo', async (ctx) => {
     );
   }
 
-  // Ambil saldo lama user
-  db.get(
-    'SELECT saldo FROM users WHERE user_id = ?',
-    [targetId],
-    (err, row) => {
-      if (err) {
-        logger.error('Error ambil data user:', err.message);
-        return ctx.reply('❌ Gagal membaca data user. Coba lagi nanti.');
-      }
+  // Hitung bonus tier dulu (sama untuk linked maupun non-linked).
+  let bonusEnabled = true;
+  if (typeof TOPUP_BONUS_ENABLED !== 'undefined') bonusEnabled = !!TOPUP_BONUS_ENABLED;
 
-      if (!row) {
-        return ctx.reply(`❌ User dengan ID ${targetId} tidak ditemukan di database.`);
-      }
+  let tier1Min = 50000, tier1Pct = 5;
+  let tier2Min = 100000, tier2Pct = 7;
+  let tier3Min = 200000, tier3Pct = 10;
+  if (typeof TOPUP_BONUS_MIN_AMOUNT !== 'undefined') { const v = Number(TOPUP_BONUS_MIN_AMOUNT); if (!Number.isNaN(v)) tier1Min = v; }
+  if (typeof TOPUP_BONUS_PERCENT !== 'undefined') { const v = Number(TOPUP_BONUS_PERCENT); if (!Number.isNaN(v)) tier1Pct = v; }
+  if (typeof TOPUP_BONUS_TIER2_MIN !== 'undefined') { const v = Number(TOPUP_BONUS_TIER2_MIN); if (!Number.isNaN(v)) tier2Min = v; }
+  if (typeof TOPUP_BONUS_TIER2_PERCENT !== 'undefined') { const v = Number(TOPUP_BONUS_TIER2_PERCENT); if (!Number.isNaN(v)) tier2Pct = v; }
+  if (typeof TOPUP_BONUS_TIER3_MIN !== 'undefined') { const v = Number(TOPUP_BONUS_TIER3_MIN); if (!Number.isNaN(v)) tier3Min = v; }
+  if (typeof TOPUP_BONUS_TIER3_PERCENT !== 'undefined') { const v = Number(TOPUP_BONUS_TIER3_PERCENT); if (!Number.isNaN(v)) tier3Pct = v; }
+  let bonusPercent = 0;
+  if (bonusEnabled) {
+    if (amount >= tier3Min && tier3Min > 0 && tier3Pct > 0) bonusPercent = tier3Pct;
+    else if (amount >= tier2Min && tier2Min > 0 && tier2Pct > 0) bonusPercent = tier2Pct;
+    else if (amount >= tier1Min && tier1Min > 0 && tier1Pct > 0) bonusPercent = tier1Pct;
+  }
+  const bonus = bonusPercent > 0 ? Math.floor((amount * bonusPercent) / 100) : 0;
+  const totalCredit = amount + bonus;
 
-      const oldSaldo = Number(row.saldo || 0);
+  // Cek apakah user ini sudah link ke web. Kalau iya, push saldo ke web
+  // (single source of truth). Kalau tidak, update SQLite seperti sebelumnya.
+  // Path linked async, jadi kita pakai async IIFE supaya bisa await dengan
+  // bersih tanpa nested callback hell.
+  (async () => {
+    try {
+      const linkInfo = isWebLinkEnabled()
+        ? await getUserLinkInfo(targetId).catch(() => null)
+        : null;
 
-      // ?→ BONUS: pakai tier dari .vars.json jika ada
-      let bonusEnabled = true;
-      if (typeof TOPUP_BONUS_ENABLED !== 'undefined') {
-        bonusEnabled = !!TOPUP_BONUS_ENABLED;
-      }
-
-      let tier1Min = 50000;
-      let tier1Pct = 5;
-      let tier2Min = 100000;
-      let tier2Pct = 7;
-      let tier3Min = 200000;
-      let tier3Pct = 10;
-
-      if (typeof TOPUP_BONUS_MIN_AMOUNT !== 'undefined') {
-        const v = Number(TOPUP_BONUS_MIN_AMOUNT);
-        if (!Number.isNaN(v)) tier1Min = v;
-      }
-      if (typeof TOPUP_BONUS_PERCENT !== 'undefined') {
-        const v = Number(TOPUP_BONUS_PERCENT);
-        if (!Number.isNaN(v)) tier1Pct = v;
-      }
-      if (typeof TOPUP_BONUS_TIER2_MIN !== 'undefined') {
-        const v = Number(TOPUP_BONUS_TIER2_MIN);
-        if (!Number.isNaN(v)) tier2Min = v;
-      }
-      if (typeof TOPUP_BONUS_TIER2_PERCENT !== 'undefined') {
-        const v = Number(TOPUP_BONUS_TIER2_PERCENT);
-        if (!Number.isNaN(v)) tier2Pct = v;
-      }
-      if (typeof TOPUP_BONUS_TIER3_MIN !== 'undefined') {
-        const v = Number(TOPUP_BONUS_TIER3_MIN);
-        if (!Number.isNaN(v)) tier3Min = v;
-      }
-      if (typeof TOPUP_BONUS_TIER3_PERCENT !== 'undefined') {
-        const v = Number(TOPUP_BONUS_TIER3_PERCENT);
-        if (!Number.isNaN(v)) tier3Pct = v;
-      }
-
-      // Pilih tier tertinggi yang lolos
-      let bonusPercent = 0;
-      if (bonusEnabled) {
-        if (amount >= tier3Min && tier3Min > 0 && tier3Pct > 0) {
-          bonusPercent = tier3Pct;
-        } else if (amount >= tier2Min && tier2Min > 0 && tier2Pct > 0) {
-          bonusPercent = tier2Pct;
-        } else if (amount >= tier1Min && tier1Min > 0 && tier1Pct > 0) {
-          bonusPercent = tier1Pct;
-        }
-      }
-
-      let bonus = 0;
-      if (bonusPercent > 0) {
-        // dibulatkan ke bawah
-        bonus = Math.floor((amount * bonusPercent) / 100);
-      }
-
-      const totalCredit = amount + bonus;
-      const newSaldo = oldSaldo + totalCredit;
-
-      // Update saldo user
-      db.run(
-        'UPDATE users SET saldo = ? WHERE user_id = ?',
-        [newSaldo, targetId],
-        async (err2) => {
-          if (err2) {
-            logger.error('Error update saldo:', err2.message);
-            return ctx.reply('❌ Gagal menambahkan saldo. Coba lagi nanti.');
+      // ===== PATH 1: USER LINKED → PUSH SALDO KE WEB =====
+      if (linkInfo && linkInfo.web_user_id) {
+        try {
+          const refId = `addsaldo_admin_${ctx.from.id}_${targetId}_${Date.now()}`;
+          const credRes = await webApiClient.creditBalance({
+            telegramId: targetId,
+            amount: totalCredit,
+            description: `Topup manual oleh admin ${ctx.from.id}` + (bonus > 0 ? ` (bonus ${bonusPercent}%)` : ''),
+            refId,
+          });
+          if (!credRes || !credRes.ok) {
+            return ctx.reply('❌ Gagal credit saldo ke web. Server tidak ack.', { parse_mode: 'HTML' });
           }
+          const newSaldoWeb = Number(credRes.newBalance || 0);
 
-          // ?→ CATAT TRANSAKSI SALDO
+          // Audit ke transactions SQLite supaya admin tetap bisa lihat history.
           try {
             recordSaldoTransaction(
               targetId,
               totalCredit,
-              'manual_addsaldo',
+              'manual_addsaldo_web',
               `addsaldo_by_${ctx.from.id}`
             );
           } catch (e) {
-            logger.error('Gagal mencatat transaksi tambah saldo manual:', e.message);
+            logger.warn('Gagal catat tx /addsaldo (web): ' + (e.message || e));
           }
 
           // Notif ke admin
-          let msgAdmin =
-            `✅ Saldo user ID <code>${targetId}</code> berhasil ditambah.\n\n` +
+          let msgAdmin = `✅ Saldo user web <code>${targetId}</code> berhasil ditambah (akun ter-link ke web).\n\n` +
             `💰 Nominal bayar : <b>Rp${amount.toLocaleString('id-ID')}</b>\n`;
-
           if (bonus > 0) {
-            msgAdmin +=
-              `🎁 Bonus : <b>Rp${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
-              `💰 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
-          } else {
-            msgAdmin +=
-              `💰 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
+            msgAdmin += `🎁 Bonus : <b>Rp${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n`;
           }
-
-          msgAdmin +=
-            `\n💰 Saldo sekarang: <b>Rp${newSaldo.toLocaleString('id-ID')}</b>`;
-
+          msgAdmin += `💰 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n` +
+            `\n💰 Saldo web sekarang: <b>Rp${newSaldoWeb.toLocaleString('id-ID')}</b> 🌐`;
           await ctx.reply(msgAdmin, { parse_mode: 'HTML' });
 
           // Notif ke user
           try {
-            let msgUser =
-              '✅ Saldo kamu telah <b>ditambahkan</b>.\n\n' +
+            let msgUser = '✅ Saldo kamu telah <b>ditambahkan</b>.\n\n' +
               `💰 Topup : <b>Rp ${amount.toLocaleString('id-ID')}</b>\n`;
-
             if (bonus > 0) {
-              msgUser +=
-                `🎁 Bonus : <b>Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
-                `💰 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
-            } else {
-              msgUser +=
-                `💰 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
+              msgUser += `🎁 Bonus : <b>Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n`;
             }
-
-            msgUser +=
-              `\n💰 Saldo sekarang: <b>Rp ${newSaldo.toLocaleString('id-ID')}</b>`;
-
-            await bot.telegram.sendMessage(targetId, msgUser, {
-              parse_mode: 'HTML'
-            });
+            msgUser += `💰 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n` +
+              `\n💰 Saldo sekarang: <b>Rp ${newSaldoWeb.toLocaleString('id-ID')}</b> 🌐`;
+            await bot.telegram.sendMessage(targetId, msgUser, { parse_mode: 'HTML' });
           } catch (e) {
-            logger.error('Gagal kirim notif ke user:', e.message);
+            logger.error('Gagal kirim notif ke user (linked):', e.message);
           }
 
-          // Notif ke grup (jika diaktifkan)
+          // Notif ke grup
           if (typeof NOTIF_TOPUP_GROUP !== 'undefined' && NOTIF_TOPUP_GROUP && GROUP_ID) {
             try {
-              let targetInfo;
-              try {
-                targetInfo = await bot.telegram.getChat(targetId);
-              } catch (e) {
-                targetInfo = {};
-              }
-
-              let userLabel;
-              if (targetInfo.username) {
-                userLabel = targetInfo.username;
-              } else if (targetInfo.first_name) {
-                userLabel = targetInfo.first_name;
-              } else {
-                userLabel = String(targetId);
-              }
-
+              let targetInfo = {};
+              try { targetInfo = await bot.telegram.getChat(targetId); } catch (_) {}
+              const userLabel = targetInfo.username || targetInfo.first_name || String(targetId);
               const waktu = new Date().toLocaleString('id-ID', {
                 timeZone: TIME_ZONE,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit',
               });
-
-              let notifTopup =
-                '<blockquote>\n' +
-                '💵 TOPUP MANUAL 💵\n' +
-				'<code>\n' + // <-- MULAI BLOK MONOSPACE
+              let notifTopup = '<blockquote>\n💵 TOPUP MANUAL (WEB) 💵\n<code>\n' +
                 `👤 User : ${userLabel}\n` +
                 `🆔 ID : ${targetId}\n` +
                 `💳 Bayar : Rp ${amount.toLocaleString('id-ID')}\n`;
-
               if (bonus > 0) {
-                notifTopup +=
-                  `🎁 Bonus : Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)\n` +
-                  `💰 Masuk : Rp ${totalCredit.toLocaleString('id-ID')}\n`;
-              } else {
-                notifTopup +=
-                  `💰 Masuk : Rp ${totalCredit.toLocaleString('id-ID')}\n`;
+                notifTopup += `🎁 Bonus : Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)\n`;
               }
-
-              notifTopup +=
-                `💰 Saldo : Rp ${newSaldo.toLocaleString('id-ID')}\n` +
+              notifTopup += `💰 Masuk : Rp ${totalCredit.toLocaleString('id-ID')}\n` +
+                `💰 Saldo : Rp ${newSaldoWeb.toLocaleString('id-ID')} 🌐\n` +
                 `📅 Tanggal : ${waktu}\n` +
-				'</code>\n' + // <-- AKHIR BLOK MONOSPACE
-                '━━━━━━━━━━━━━━━━━━━━\n' +
-                '</blockquote>';
-
-              await bot.telegram.sendMessage(GROUP_ID, notifTopup, {
-                parse_mode: 'HTML'
-              });
+                '</code>\n━━━━━━━━━━━━━━━━━━━━\n</blockquote>';
+              await bot.telegram.sendMessage(GROUP_ID, notifTopup, { parse_mode: 'HTML' });
             } catch (e) {
-              logger.error('Gagal kirim notif topup manual ke grup:', e.message);
+              logger.error('Gagal kirim notif topup manual (linked) ke grup:', e.message);
             }
           }
+          return;
+        } catch (eWeb) {
+          logger.error('Gagal credit saldo ke web di /addsaldo: ' + (eWeb.message || eWeb));
+          return ctx.reply(
+            '❌ Gagal menambah saldo ke web: <code>' + htmlEscape(eWeb.message || String(eWeb)) + '</code>\n' +
+            'User ini sudah ter-link ke web. Tidak melakukan fallback ke SQLite supaya saldo tidak ganda.',
+            { parse_mode: 'HTML' }
+          );
         }
-      );
+      }
+
+      // ===== PATH 2: USER BELUM LINK → SQLite (PERILAKU LAMA) =====
+      // Ambil saldo lama
+      const row = await new Promise((resolve, reject) => {
+        db.get('SELECT saldo FROM users WHERE user_id = ?', [targetId], (e, r) => e ? reject(e) : resolve(r));
+      });
+
+      if (!row) {
+        return ctx.reply(`❌ User dengan ID ${targetId} tidak ditemukan di database.`);
+      }
+      const oldSaldo = Number(row.saldo || 0);
+      const newSaldo = oldSaldo + totalCredit;
+
+      // Update saldo user
+      await new Promise((resolve, reject) => {
+        db.run('UPDATE users SET saldo = ? WHERE user_id = ?', [newSaldo, targetId], (err2) => err2 ? reject(err2) : resolve());
+      });
+
+      // === CATAT TRANSAKSI SALDO ===
+      try {
+        recordSaldoTransaction(
+          targetId,
+          totalCredit,
+          'manual_addsaldo',
+          `addsaldo_by_${ctx.from.id}`
+        );
+      } catch (e) {
+        logger.error('Gagal mencatat transaksi tambah saldo manual:', e.message);
+      }
+
+      // Notif ke admin
+      let msgAdmin =
+        `✅ Saldo user ID <code>${targetId}</code> berhasil ditambah.\n\n` +
+        `💰 Nominal bayar : <b>Rp${amount.toLocaleString('id-ID')}</b>\n`;
+      if (bonus > 0) {
+        msgAdmin +=
+          `🎁 Bonus : <b>Rp${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
+          `💰 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
+      } else {
+        msgAdmin += `💰 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
+      }
+      msgAdmin += `\n💰 Saldo sekarang: <b>Rp${newSaldo.toLocaleString('id-ID')}</b>`;
+      await ctx.reply(msgAdmin, { parse_mode: 'HTML' });
+
+      // Notif ke user
+      try {
+        let msgUser =
+          '✅ Saldo kamu telah <b>ditambahkan</b>.\n\n' +
+          `💰 Topup : <b>Rp ${amount.toLocaleString('id-ID')}</b>\n`;
+        if (bonus > 0) {
+          msgUser +=
+            `🎁 Bonus : <b>Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
+            `💰 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
+        } else {
+          msgUser += `💰 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
+        }
+        msgUser += `\n💰 Saldo sekarang: <b>Rp ${newSaldo.toLocaleString('id-ID')}</b>`;
+        await bot.telegram.sendMessage(targetId, msgUser, { parse_mode: 'HTML' });
+      } catch (e) {
+        logger.error('Gagal kirim notif ke user:', e.message);
+      }
+
+      // Notif ke grup (jika diaktifkan)
+      if (typeof NOTIF_TOPUP_GROUP !== 'undefined' && NOTIF_TOPUP_GROUP && GROUP_ID) {
+        try {
+          let targetInfo;
+          try { targetInfo = await bot.telegram.getChat(targetId); } catch (e) { targetInfo = {}; }
+          const userLabel = targetInfo.username || targetInfo.first_name || String(targetId);
+          const waktu = new Date().toLocaleString('id-ID', {
+            timeZone: TIME_ZONE,
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit',
+          });
+          let notifTopup =
+            '<blockquote>\n💵 TOPUP MANUAL 💵\n<code>\n' +
+            `👤 User : ${userLabel}\n` +
+            `🆔 ID : ${targetId}\n` +
+            `💳 Bayar : Rp ${amount.toLocaleString('id-ID')}\n`;
+          if (bonus > 0) {
+            notifTopup +=
+              `🎁 Bonus : Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)\n` +
+              `💰 Masuk : Rp ${totalCredit.toLocaleString('id-ID')}\n`;
+          } else {
+            notifTopup += `💰 Masuk : Rp ${totalCredit.toLocaleString('id-ID')}\n`;
+          }
+          notifTopup +=
+            `💰 Saldo : Rp ${newSaldo.toLocaleString('id-ID')}\n` +
+            `📅 Tanggal : ${waktu}\n` +
+            '</code>\n━━━━━━━━━━━━━━━━━━━━\n</blockquote>';
+          await bot.telegram.sendMessage(GROUP_ID, notifTopup, { parse_mode: 'HTML' });
+        } catch (e) {
+          logger.error('Gagal kirim notif topup manual ke grup:', e.message);
+        }
+      }
+    } catch (errOuter) {
+      logger.error('Error /addsaldo (path SQLite/aware-link):', errOuter.message || errOuter);
+      try { await ctx.reply('❌ Terjadi kesalahan saat menambah saldo. Coba lagi nanti.', { parse_mode: 'HTML' }); } catch (_) {}
     }
-  );
+  })();
 });
 
 
