@@ -8008,16 +8008,25 @@ function buildAutoBackupKeyboard() {
   };
 }
 
+// Audit fix HIGH: handler auto-backup sebelumnya pakai `adminId !== MASTER_ID`
+// padahal tombol Auto Backup tampil di Menu Admin untuk SEMUA admin. Akibatnya
+// admin non-master klik tombol -> kena alert "Tidak ada izin", inkonsisten
+// dengan tombol lain di Menu Admin yang pakai ADMIN_IDS.includes(). Sekarang
+// pakai ADMIN_IDS supaya semua admin bisa toggle auto-backup.
+//
+// Audit fix MEDIUM: ganti `editMessageText + try/catch reply` -> `editOrReply`
+// supaya konsisten dengan handler menu admin lain (mis. trial, broadcast).
+// editOrReply sudah handle "message is not modified" + fallback ke reply
+// kalau pesan asli sudah hilang/expired.
+
 // Buka menu pengaturan auto-backup
 bot.action('backup_auto_menu', async (ctx) => {
-  const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
-  return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
-}
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
+    return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
+  }
 
   await ctx.answerCbQuery().catch(() => {});
   try {
-    // editOrReply: timpa pesan Menu Admin, fallback reply kalau gagal
     await editOrReply(ctx, getAutoBackupStatusText(), {
       parse_mode: 'HTML',
       reply_markup: buildAutoBackupKeyboard(),
@@ -8029,10 +8038,9 @@ bot.action('backup_auto_menu', async (ctx) => {
 
 // Toggle ON/OFF
 bot.action('backup_auto_toggle', async (ctx) => {
-  const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
-  return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
-}
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
+    return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
+  }
 
   AUTO_BACKUP_ENABLED = !AUTO_BACKUP_ENABLED;
   saveAutoBackupConfig();
@@ -8043,27 +8051,22 @@ bot.action('backup_auto_toggle', async (ctx) => {
     { show_alert: false }
   );
 
-  try {
-    await ctx.editMessageText(getAutoBackupStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildAutoBackupKeyboard(),
-    });
-  } catch {
-    await ctx.reply(getAutoBackupStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildAutoBackupKeyboard(),
-    });
-  }
+  await editOrReply(ctx, getAutoBackupStatusText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildAutoBackupKeyboard(),
+  });
 });
 
-// Ubah interval ??1 jam
+// Ubah interval ±1 jam
 async function adjustIntervalAndRefresh(ctx, delta) {
-  const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
-  return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
-}
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
+    return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
+  }
 
-  AUTO_BACKUP_INTERVAL_HOURS = Math.max(1, AUTO_BACKUP_INTERVAL_HOURS + delta); // minimal 1 jam
+  // Audit fix MEDIUM: tambah cap atas 168 jam (1 minggu) supaya tidak bisa
+  // di-spam ke nilai absurd (mis. 999 jam = 41 hari tanpa backup).
+  const next = AUTO_BACKUP_INTERVAL_HOURS + delta;
+  AUTO_BACKUP_INTERVAL_HOURS = Math.max(1, Math.min(168, next));
   saveAutoBackupConfig();
   restartAutoBackupScheduler();
 
@@ -8071,17 +8074,10 @@ async function adjustIntervalAndRefresh(ctx, delta) {
     show_alert: false,
   });
 
-  try {
-    await ctx.editMessageText(getAutoBackupStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildAutoBackupKeyboard(),
-    });
-  } catch {
-    await ctx.reply(getAutoBackupStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildAutoBackupKeyboard(),
-    });
-  }
+  await editOrReply(ctx, getAutoBackupStatusText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildAutoBackupKeyboard(),
+  });
 }
 
 bot.action('backup_auto_interval_minus', (ctx) => adjustIntervalAndRefresh(ctx, -1));
@@ -8089,10 +8085,9 @@ bot.action('backup_auto_interval_plus', (ctx) => adjustIntervalAndRefresh(ctx, +
 
 // Preset interval 6 / 12 / 24 jam
 async function setIntervalPreset(ctx, value) {
-  const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
-  return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
-}
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
+    return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
+  }
 
   AUTO_BACKUP_INTERVAL_HOURS = value;
   saveAutoBackupConfig();
@@ -8100,17 +8095,10 @@ async function setIntervalPreset(ctx, value) {
 
   await ctx.answerCbQuery(`Interval diatur: ${value} jam.`, { show_alert: false });
 
-  try {
-    await ctx.editMessageText(getAutoBackupStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildAutoBackupKeyboard(),
-    });
-  } catch {
-    await ctx.reply(getAutoBackupStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildAutoBackupKeyboard(),
-    });
-  }
+  await editOrReply(ctx, getAutoBackupStatusText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildAutoBackupKeyboard(),
+  });
 }
 
 bot.action('backup_auto_set_6',  (ctx) => setIntervalPreset(ctx, 6));
