@@ -5846,7 +5846,13 @@ bot.action('admin_trial_menu', async (ctx) => {
       durationHours: Number.isInteger(cfg.durationHours) ? cfg.durationHours : DEFAULT_TRIAL_CONFIG.durationHours,
       minBalanceForTrial: Number.isInteger(cfg.minBalanceForTrial) && cfg.minBalanceForTrial >= 0
         ? cfg.minBalanceForTrial
-        : DEFAULT_TRIAL_CONFIG.minBalanceForTrial
+        : DEFAULT_TRIAL_CONFIG.minBalanceForTrial,
+      // Audit fix: watchlistMaxPerDay dipakai aktif di flow trial untuk
+      // batasi user WATCHLIST, tapi sebelumnya tidak ada tombolnya di UI
+      // admin. Sekarang ikut di-load supaya bisa di-toggle dari menu.
+      watchlistMaxPerDay: Number.isInteger(cfg.watchlistMaxPerDay) && cfg.watchlistMaxPerDay >= 0
+        ? cfg.watchlistMaxPerDay
+        : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay
     };
 
     adminTrialTemp[ctx.from.id] = tempCfg;
@@ -5980,7 +5986,54 @@ bot.action('admin_trial_min_nop', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
 });
 
+// Audit fix: tombol +/- untuk watchlistMaxPerDay (batas trial khusus user
+// status WATCHLIST). Sebelumnya field ini cuma bisa diatur lewat edit JSON.
+bot.action('admin_trial_wlmax_inc', async (ctx) => {
+  try {
+    await ctx.answerCbQuery().catch(() => {});
+    if (!ADMIN_IDS.includes(ctx.from.id)) {
+      return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    }
+    const temp = getAdminTrialTemp(ctx);
+    let current = Number.isInteger(temp.watchlistMaxPerDay)
+      ? temp.watchlistMaxPerDay
+      : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay;
+    current += 1;
+    if (current > 5) current = 5; // Batas atas: WATCHLIST mestinya lebih ketat dari user normal
+    temp.watchlistMaxPerDay = current;
+    await renderAdminTrialMenu(ctx, temp, { edit: true });
+  } catch (err) {
+    logger.error('❌ Gagal menaikkan watchlistMaxPerDay (temp):', err.message);
+    ctx.reply('❌ Terjadi kesalahan saat mengubah batas trial WATCHLIST.');
+  }
+});
+
+bot.action('admin_trial_wlmax_dec', async (ctx) => {
+  try {
+    await ctx.answerCbQuery().catch(() => {});
+    if (!ADMIN_IDS.includes(ctx.from.id)) {
+      return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+    }
+    const temp = getAdminTrialTemp(ctx);
+    let current = Number.isInteger(temp.watchlistMaxPerDay)
+      ? temp.watchlistMaxPerDay
+      : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay;
+    current -= 1;
+    if (current < 0) current = 0; // 0 = WATCHLIST tidak boleh trial sama sekali
+    temp.watchlistMaxPerDay = current;
+    await renderAdminTrialMenu(ctx, temp, { edit: true });
+  } catch (err) {
+    logger.error('❌ Gagal menurunkan watchlistMaxPerDay (temp):', err.message);
+    ctx.reply('❌ Terjadi kesalahan saat mengubah batas trial WATCHLIST.');
+  }
+});
+
+bot.action('admin_trial_wlmax_nop', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
+});
+
 bot.action('admin_trial_dur_inc', async (ctx) => {
+
   try {
     await ctx.answerCbQuery().catch(() => {});
 
@@ -6060,7 +6113,13 @@ bot.action('admin_trial_save', async (ctx) => {
       minBalanceForTrial:
         Number.isInteger(temp.minBalanceForTrial) && temp.minBalanceForTrial >= 0
           ? temp.minBalanceForTrial
-          : DEFAULT_TRIAL_CONFIG.minBalanceForTrial
+          : DEFAULT_TRIAL_CONFIG.minBalanceForTrial,
+      // Audit fix: persist juga watchlistMaxPerDay supaya nilai yang
+      // diatur lewat tombol +/- benar-benar tersimpan ke trial_config.json.
+      watchlistMaxPerDay:
+        Number.isInteger(temp.watchlistMaxPerDay) && temp.watchlistMaxPerDay >= 0
+          ? temp.watchlistMaxPerDay
+          : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay
     };
 
     await updateTrialConfig(normalized);
@@ -6069,14 +6128,28 @@ bot.action('admin_trial_save', async (ctx) => {
     delete adminTrialTemp[adminId];
 
     const statusText = normalized.enabled ? 'Aktif ✅' : 'Nonaktif ⛔';
+    const wlLabel = normalized.watchlistMaxPerDay === 0
+      ? 'tidak boleh trial'
+      : `${normalized.watchlistMaxPerDay}x per hari`;
 
-    await ctx.reply(
+    // Audit fix MEDIUM: pakai editOrReply biar pesan menu di-update jadi
+    // notif "berhasil disimpan", bukan kirim pesan baru di bawah menu lama.
+    await editOrReply(
+      ctx,
       '✅ *Pengaturan trial berhasil disimpan.*\n\n' +
       `Status trial          : *${statusText}*\n` +
       `Max trial / hari      : *${normalized.maxPerDay}x per user*\n` +
       `Lama trial per akun   : *${normalized.durationHours} jam*\n` +
-      `Min saldo untuk trial : *Rp${normalized.minBalanceForTrial}*`,
-      { parse_mode: 'Markdown' }
+      `Min saldo untuk trial : *Rp${normalized.minBalanceForTrial}*\n` +
+      `Batas WATCHLIST       : *${wlLabel}*`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' }],
+          ],
+        },
+      }
     );
   } catch (err) {
     logger.error('❌ Gagal menyimpan pengaturan trial:', err.message);
@@ -6092,7 +6165,11 @@ function getAdminTrialTemp(ctx) {
     temp = {
       enabled: DEFAULT_TRIAL_CONFIG.enabled,
       maxPerDay: DEFAULT_TRIAL_CONFIG.maxPerDay,
-      durationHours: DEFAULT_TRIAL_CONFIG.durationHours
+      durationHours: DEFAULT_TRIAL_CONFIG.durationHours,
+      minBalanceForTrial: DEFAULT_TRIAL_CONFIG.minBalanceForTrial,
+      // Audit fix: include watchlistMaxPerDay default supaya tombol +/-
+      // tidak start dari undefined kalau temp baru dibuat lewat fallback ini.
+      watchlistMaxPerDay: DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay
     };
     adminTrialTemp[adminId] = temp;
   }
@@ -6111,13 +6188,23 @@ async function renderAdminTrialMenu(ctx, cfg, options = {}) {
   const maxPerDay = cfg.maxPerDay;
   const durationHours = cfg.durationHours;
   const minBalance = cfg.minBalanceForTrial || 0;
+  // Audit fix: tampilkan juga setting watchlistMaxPerDay supaya admin tahu
+  // batas trial untuk user WATCHLIST tanpa harus buka file JSON.
+  const watchlistMax = Number.isInteger(cfg.watchlistMaxPerDay)
+    ? cfg.watchlistMaxPerDay
+    : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay;
+
+  const watchlistLabel = watchlistMax === 0
+    ? 'tidak boleh trial'
+    : `${watchlistMax}x per hari`;
 
   const message =
     '🧪 *Pengaturan Trial Akun*\n\n' +
     `Status trial saat ini           : *${statusText}*\n` +
     `Maksimal trial / user / hari    : *${maxPerDay}x*\n` +
     `Lama trial (masa aktif akun)    : *${durationHours} jam*\n` +
-    `Minimal saldo untuk trial       : *Rp${minBalance}*\n\n` +
+    `Minimal saldo untuk trial       : *Rp${minBalance}*\n` +
+    `Batas trial user WATCHLIST      : *${watchlistLabel}*\n\n` +
     'Silakan atur nilai di bawah ini.\n' +
     'Perubahan *belum disimpan* sebelum kamu menekan tombol *💾 Simpan Pengaturan*.\n';
 
@@ -6140,6 +6227,11 @@ async function renderAdminTrialMenu(ctx, cfg, options = {}) {
         { text: '➖➖', callback_data: 'admin_trial_min_dec' },
         { text: `Min Saldo: Rp${minBalance}`, callback_data: 'admin_trial_min_nop' },
         { text: '➕➕', callback_data: 'admin_trial_min_inc' }
+      ],
+      [
+        { text: '➖', callback_data: 'admin_trial_wlmax_dec' },
+        { text: `WATCHLIST: ${watchlistMax}x`, callback_data: 'admin_trial_wlmax_nop' },
+        { text: '➕', callback_data: 'admin_trial_wlmax_inc' }
       ],
       [
         { text: '💾 Simpan Pengaturan', callback_data: 'admin_trial_save' }
