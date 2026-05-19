@@ -84,7 +84,7 @@ Lihat `git log --oneline` untuk daftar lengkap. Highlight commit penting:
 
 | Commit | Tanggal | Deskripsi |
 |--------|---------|-----------|
-| `(latest)` | 2026-05-19 | Audit fix Akun Direct EDU (MEDIUM+LOW): submenu set price & link Ilmupedia pakai pattern editMessageText, cap atas 1jt untuk semua field harga, label `_dimatikan total_` saat trial=0 |
+| `959b03c` | 2026-05-19 | Audit fix Akun Direct EDU (MEDIUM+LOW): submenu set price & link Ilmupedia pakai pattern editMessageText, cap atas 1jt untuk semua field harga, label `_dimatikan total_` saat trial=0 |
 | `72cf9e4`  | 2026-05-19 | Audit fix Pengingat Expired (MEDIUM): konsolidasi handler ke `editOrReply` |
 | `9d4055a`  | 2026-05-19 | Audit fix Auto Backup menu (HIGH+MEDIUM): semua handler pakai `ADMIN_IDS.includes()` (bukan `MASTER_ID` saja), refactor ke `editOrReply`, cap interval atas 168 jam |
 | `81b2feb`  | 2026-05-19 | Audit fix Pengaturan Trial (HIGH+MEDIUM): expose `watchlistMaxPerDay` ke UI menu (tombol +/-), pesan sukses save pakai `editOrReply`, tambah tombol Kembali ke Menu Admin di pesan sukses |
@@ -130,15 +130,27 @@ Sesi tidak dihapus setelah test, jadi setelah preview oke, tinggal klik 📢 Kir
 
 ## 5. Backlog Sesi Berikutnya
 
-### High value (rekomendasi prioritas)
+### Status audit menu admin (per 2026-05-19)
 
-- [ ] Audit menu admin lain dengan pattern yang sama:
-  - Reseller & Saldo (target, bonus reseller, list user, tambah saldo)
-  - Manajemen Server (addserver, edit harga/quota/limit, dst)
-  - Pengaturan Trial (config trial — pernah ada race condition)
-  - Pengingat Expired & Auto Backup
-  - Tiap menu kemungkinan punya 1-3 finding HIGH/MEDIUM mirip dengan yang ditemukan di audit broadcast.
+**Sudah selesai diaudit & di-fix:**
+- ✅ Broadcast (commit `d986fbb`, `264327b`, `ec80ce2`, dll)
+- ✅ Reseller & Saldo — HIGH only (commit `2d795b7`). MEDIUM/LOW masih ada beberapa yang sengaja di-defer (lihat di bawah).
+- ✅ Pengaturan Trial (commit `81b2feb`)
+- ✅ Auto Backup (commit `9d4055a`)
+- ✅ Pengingat Expired (commit `72cf9e4`)
+- ✅ Akun Direct EDU (commit `959b03c`)
+
+**Belum diaudit:**
+- [ ] **Manajemen Server** — paling kompleks, 20+ handler edit (harga/nama/domain/auth/quota/limit IP/batas/total), plus picker `_openEditNumericFieldPrompt` yang baru ditambahkan. Estimasi 1.5-2 jam. **Sebaiknya sesi terpisah** karena flow text input panjangnya banyak edge case.
+
+### Cleanup non-audit (medium priority)
+
+- [ ] **MEDIUM/LOW Reseller & Saldo** yang sengaja di-defer waktu commit `2d795b7`:
+  - Dead code `if (false && ...)` legacy di `app.js` step `addsaldo_amount` (handler menu lama yang sudah di-replace tapi belum dihapus). Komentar `[AUDIT FIX]` sudah ada, tinggal hapus blok dead code-nya.
+  - Error handling reseller bonus (kalau web API down → fallback bagaimana di `accountService.creditBalance`).
+  - Race kecil di `recordSaldoTransaction` saat web credit gagal (audit trail tetap ditulis walau credit reverted).
 - [ ] Refactor `admin/broadcast.js` + `state/broadcast.js` (lihat `SPLIT-ROADMAP.md`). Step machine `bot.on('text')` perlu di-extract dulu jadi state machine module supaya handler bisa pindah ke `admin/broadcast.js`. Total ~320 baris akan keluar dari `app.js`.
+- [ ] Helper DRY untuk preset H-1/2/3 di `setReminderDaysPreset` — masih pakai pattern `editMessageText try/catch reply` lama, belum di-konsolidasi ke `editOrReply` (sengaja di-skip di `72cf9e4` karena beda struktur, non-blocking).
 
 ### UX polish broadcast (medium)
 
