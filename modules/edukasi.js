@@ -201,13 +201,20 @@ function createEdukasiService({
   }
 
   // === DB HELPERS ===
-  function getUserSaldoOrZero(userId) {
-    return new Promise((resolve) => {
-      db.get('SELECT saldo FROM users WHERE user_id = ?', [Number(userId)], (err, row) => {
-        if (err) return resolve(0);
-        resolve(row && typeof row.saldo === 'number' ? row.saldo : 0);
-      });
-    });
+  // Delegasi ke accountService.getUserSaldo() supaya saldo "efektif"
+  // (web kalau user linked, SQLite kalau tidak) — single source of truth.
+  // Sebelumnya helper ini query SQLite langsung sehingga user yang sudah
+  // link ke web selalu dianggap saldo 0 (saldo SQLite-nya memang di-zero
+  // saat migrasi OPSI 1) → pre-check pembelian Edukasi selalu tolak walau
+  // saldo web cukup. Sekarang konsisten dengan flow beli akun reguler.
+  async function getUserSaldoOrZero(userId) {
+    try {
+      const v = await accountService.getUserSaldo(Number(userId));
+      return Number(v || 0);
+    } catch (e) {
+      logger.warn('getUserSaldoOrZero (edukasi) gagal: ' + (e.message || e));
+      return 0;
+    }
   }
 
   function getEdukasiTrialDateKey() {
