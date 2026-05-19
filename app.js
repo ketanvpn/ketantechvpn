@@ -6349,6 +6349,52 @@ function getBroadcastTargetsFromMenu(target) {
 // Kirim pengumuman ke target yang sudah dihitung
 async function sendBroadcastFromMenu(ctx, target, message) {
   try {
+    const adminId = ctx.from?.id || 0;
+
+    // Audit fix #3: cek concurrent job. Kalau admin masih punya job 'running'
+    // di DB, refuse buat job baru. Cegah dobel-tap "Kirim Sekarang" yang lolos
+    // dari rate-limit callback dan/atau resume job yang masih jalan.
+    if (adminId) {
+      try {
+        const runningJobId = await hasRunningBroadcastJobForAdmin(adminId);
+        if (runningJobId) {
+          await ctx.reply(
+            '⚠️ Masih ada broadcast yang berjalan untuk akun admin kamu.\n' +
+              `Job ID: <b>#${runningJobId}</b>\n\n` +
+              'Tunggu sampai broadcast tersebut selesai (kamu akan dapat ringkasan otomatis), ' +
+              'lalu coba kirim pengumuman lagi.',
+            { parse_mode: 'HTML' }
+          );
+          return;
+        }
+      } catch (eRunning) {
+        logger.warn('Gagal cek running broadcast job: ' + (eRunning.message || eRunning));
+        // Tidak abort: lebih baik kirim daripada blok admin permanen kalau DB error.
+      }
+    }
+
+    // Audit fix #1: pra-validasi HTML pesan dengan dry-run ke admin sendiri.
+    // Telegram reject 400 kalau tag HTML rusak / tidak balanced. Lebih baik
+    // ketahuan sekarang (1 pesan) daripada gagal N pesan ke user.
+    if (adminId) {
+      const v = await validateBroadcastMessageHtml(adminId, message);
+      if (!v.ok) {
+        const errExcerpt = String(v.error || 'unknown error').slice(0, 200);
+        await ctx.reply(
+          '❌ <b>Pengumuman tidak dikirim — pesan ditolak Telegram.</b>\n\n' +
+            'Telegram mengembalikan error saat parse HTML:\n' +
+            `<code>${htmlEscape(errExcerpt)}</code>\n\n` +
+            'Penyebab umum:\n' +
+            '• Karakter <code>&lt;</code> <code>&gt;</code> <code>&amp;</code> di teks polos (harus di-escape).\n' +
+            '• Tag HTML tidak balanced (mis. <code>&lt;b&gt;</code> tanpa <code>&lt;/b&gt;</code>).\n' +
+            '• Tag yang tidak didukung Telegram.\n\n' +
+            'Edit pesan kamu lalu kirim ulang dari menu 📢 Kirim Pengumuman.',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+    }
+
     const targets = await getBroadcastTargetsFromMenu(target);
 
     if (!targets || targets.size === 0) {
@@ -6360,7 +6406,7 @@ async function sendBroadcastFromMenu(ctx, target, message) {
     // di tengah pengiriman.
     const targetList = Array.from(targets).map((x) => Number(x));
     const jobId = await createBroadcastJob({
-      adminId: ctx.from?.id || 0,
+      adminId,
       targetType: target,
       message,
       targetList,
@@ -6373,6 +6419,7 @@ async function sendBroadcastFromMenu(ctx, target, message) {
     await ctx.reply('❌ Terjadi kesalahan saat mengirim pengumuman.');
   }
 }
+
 
 // ============================================================================
 // Broadcast job persistence (table broadcast_jobs)
@@ -6440,6 +6487,47 @@ function markBroadcastJobDone(jobId, status) {
   });
 }
 
+// Audit fix #3: cek apakah admin masih punya broadcast job 'running'.
+// Dipakai sebelum membuat job baru supaya 1 admin = 1 job aktif (anti dobel-tap
+// "Kirim Sekarang" yang lolos dari rate-limit callback).
+function hasRunningBroadcastJobForAdmin(adminId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      "SELECT job_id FROM broadcast_jobs WHERE admin_id = ? AND status = 'running' LIMIT 1",
+      [Number(adminId)],
+      (err, row) => {
+        if (err) return reject(err);
+        resolve(row ? Number(row.job_id) : 0);
+      }
+    );
+  });
+}
+
+// Audit fix #1: validasi HTML pesan broadcast SEBELUM kirim massal.
+// Cara: kirim pesan itu sendiri ke admin (silent), lalu langsung dihapus.
+// Telegram akan reject dengan 400 kalau tag HTML rusak / tidak balanced.
+// Return { ok: true } kalau valid, { ok: false, error } kalau parse error.
+async function validateBroadcastMessageHtml(adminId, message) {
+  if (!adminId) return { ok: true }; // skip kalau tidak tahu admin (resume case)
+  try {
+    const sent = await bot.telegram.sendMessage(adminId, message, {
+      parse_mode: 'HTML',
+      disable_notification: true,
+    });
+    // Hapus pesan test secepatnya supaya tidak nyampah di chat admin.
+    try {
+      await bot.telegram.deleteMessage(adminId, sent.message_id);
+    } catch (_e) {
+      // Ignore: kalau gagal delete (mis. terlalu lama), biarkan saja.
+    }
+    return { ok: true };
+  } catch (e) {
+    const status = e?.response?.error_code || e?.code;
+    const errMsg = e?.response?.description || e?.message || String(e);
+    return { ok: false, status, error: errMsg };
+  }
+}
+
 async function runBroadcastJob(jobId, startIndex = 0) {
   const job = await loadBroadcastJob(jobId);
   if (!job) throw new Error('Broadcast job tidak ditemukan: ' + jobId);
@@ -6481,13 +6569,14 @@ async function runBroadcastJob(jobId, startIndex = 0) {
       }
     }
 
-    if ((i + 1) % 10 === 0) {
-      await updateBroadcastJobProgress(jobId, i + 1, sukses, gagal);
-    }
+    // Audit fix #2: persist cursor tiap iterasi (sebelumnya tiap 10 pesan).
+    // Cost 1 DB write per pesan kecil, tapi kalau bot crash kita kehilangan
+    // maksimal 1 pesan (bukan 9) saat resume → tidak ada user yang dapat
+    // pengumuman dobel.
+    await updateBroadcastJobProgress(jobId, i + 1, sukses, gagal);
     await sleep(80);
   }
 
-  await updateBroadcastJobProgress(jobId, targetList.length, sukses, gagal);
   await markBroadcastJobDone(jobId, 'done');
   return { sukses, gagal };
 }
@@ -6733,8 +6822,15 @@ bot.action('broadcast_mode_manual', async (ctx) => {
 
   await ctx.reply(
     '⚠️ Silakan kirim teks pengumuman yang ingin dikirim.\n' +
-      'ℹ️ Kalau ingin batal, kirim perintah lain (misalnya /start).',
-    { parse_mode: 'HTML' }
+      'ℹ️ Atau tekan ❌ Batal di bawah untuk membatalkan.',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+        ],
+      },
+    }
   );
 });
 
@@ -6766,7 +6862,14 @@ bot.action('broadcast_mode_maintenance', async (ctx) => {
       '• Semua server VPN\n' +
       '• Server SG-1 & SG-2\n' +
       '• Layanan SSH & VMESS',
-    { parse_mode: 'HTML' }
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+        ],
+      },
+    }
   );
 });
 
@@ -6800,7 +6903,14 @@ bot.action('broadcast_mode_maintenance_done', async (ctx) => {
       '• Semua server VPN\n' +
       '• Server SG-1 & SG-2\n' +
       '• Layanan SSH & VMESS',
-    { parse_mode: 'HTML' }
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+        ],
+      },
+    }
   );
 });
 
@@ -6832,7 +6942,14 @@ bot.action('broadcast_mode_promo', async (ctx) => {
       '• Paket 30 Hari All Server\n' +
       '• Promo Akhir Bulan 7 Hari\n' +
       '• Diskon 30% semua paket bulanan',
-    { parse_mode: 'HTML' }
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+        ],
+      },
+    }
   );
 });
 
@@ -10280,7 +10397,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
           'Contoh:\n' +
           '• Sabtu, 22-11-2025, jam 21.00 WIT\n' +
           '• Malam ini jam 23.00 WIT',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'tm_ask_waktu') {
@@ -10303,7 +10427,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
           '• 30 menit\n' +
           '• 1 jam\n' +
           '• 2 jam',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'tm_ask_durasi') {
@@ -10323,7 +10454,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       await ctx.reply(
         '4️⃣ Masukkan catatan tambahan (opsional).\n' +
           'Jika tidak ada, kirim tanda <code>-</code> saja.',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'tm_ask_catatan') {
@@ -10411,7 +10549,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
           '• 1 jam\n' +
           '• Lebih cepat dari estimasi\n' +
           '• 2 jam (sesuai estimasi)',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'mtdone_ask_durasi') {
@@ -10432,7 +10577,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
         '3️⃣ Masukkan catatan tambahan (opsional).\n' +
           'Contoh: apa yang sudah di-fix, peningkatan performa, dll.\n' +
           'Jika tidak ada catatan, kirim tanda <code>-</code> saja.',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'mtdone_ask_catatan') {
@@ -10519,7 +10671,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
           '• Diskon 30%, dari 30K jadi 20K\n' +
           '• Beli 1 bulan gratis 7 hari\n' +
           '• Harga spesial hanya hari ini',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'promo_ask_detail') {
@@ -10542,7 +10701,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
           '• Sampai 30-11-2025\n' +
           '• Hanya sampai akhir bulan ini\n' +
           '• Berlaku 3 hari ke depan',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'promo_ask_berlaku') {
@@ -10562,7 +10728,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       await ctx.reply(
         '4️⃣ Masukkan catatan tambahan (opsional).\n' +
           'Jika tidak ada, kirim tanda <code>-</code> saja.',
-        { parse_mode: 'HTML' }
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
       );
       return;
     } else if (bState.step === 'promo_ask_catatan') {
