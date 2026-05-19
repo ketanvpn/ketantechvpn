@@ -26,15 +26,46 @@ if [ "$CURRENT_BRANCH" = "HEAD" ]; then
   exit 1
 fi
 
-# Guard: pastikan working tree bersih supaya 'git pull --rebase' tidak pecah
+# Guard: pastikan working tree bersih supaya 'git pull --rebase' tidak pecah.
+# Auto-handle line-ending phantom changes: kalau diff cuma whitespace/EOL
+# (no substantive changes), checkout otomatis. Cegah error berulang
+# di file shell yang pernah di-edit di Windows (CRLF vs .gitattributes eol=lf).
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo -e "${RED}Ada perubahan lokal yang belum di-commit di $BOT_DIR.${NC}"
-  echo -e "${YELLOW}Pilihan:${NC}"
-  echo -e "  1) git stash  (simpan perubahan dulu, lalu jalankan update ulang)"
-  echo -e "  2) git checkout -- <file>  (buang perubahan lokal kalau tidak perlu)"
-  echo -e "  3) commit dulu kalau memang perubahan penting"
-  git status --short
-  exit 1
+  # Cek apakah ada perubahan SUBSTANTIF (di luar whitespace/EOL).
+  # `git diff --ignore-all-space --ignore-blank-lines` akan kosong kalau
+  # diff cuma whitespace.
+  if git diff --quiet --ignore-all-space --ignore-blank-lines && \
+     git diff --cached --quiet --ignore-all-space --ignore-blank-lines; then
+    echo -e "${YELLOW}==> Phantom change (whitespace/EOL) terdeteksi, auto-renormalize...${NC}"
+    DIRTY_FILES=$(git diff --name-only; git diff --cached --name-only)
+    DIRTY_FILES=$(echo "$DIRTY_FILES" | sort -u | tr '\n' ' ')
+    if [ -n "$DIRTY_FILES" ]; then
+      # shellcheck disable=SC2086
+      git rm --cached -- $DIRTY_FILES >/dev/null 2>&1 || true
+      # shellcheck disable=SC2086
+      git checkout HEAD -- $DIRTY_FILES >/dev/null 2>&1 || true
+      echo -e "${GREEN}    Sudah di-renormalize: $DIRTY_FILES${NC}"
+    fi
+    # Cek ulang setelah auto-fix
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+      echo -e "${RED}Auto-renormalize tidak menyelesaikan diff. Lanjut ke pesan error normal.${NC}"
+      echo -e "${RED}Ada perubahan lokal yang belum di-commit di $BOT_DIR.${NC}"
+      echo -e "${YELLOW}Pilihan:${NC}"
+      echo -e "  1) git stash  (simpan perubahan dulu, lalu jalankan update ulang)"
+      echo -e "  2) git checkout -- <file>  (buang perubahan lokal kalau tidak perlu)"
+      echo -e "  3) commit dulu kalau memang perubahan penting"
+      git status --short
+      exit 1
+    fi
+  else
+    echo -e "${RED}Ada perubahan lokal yang belum di-commit di $BOT_DIR.${NC}"
+    echo -e "${YELLOW}Pilihan:${NC}"
+    echo -e "  1) git stash  (simpan perubahan dulu, lalu jalankan update ulang)"
+    echo -e "  2) git checkout -- <file>  (buang perubahan lokal kalau tidak perlu)"
+    echo -e "  3) commit dulu kalau memang perubahan penting"
+    git status --short
+    exit 1
+  fi
 fi
 
 echo -e "${YELLOW}==> Backup database ke $BACKUP_DIR${NC}"
