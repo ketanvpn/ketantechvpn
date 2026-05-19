@@ -27,33 +27,67 @@ if [ "$CURRENT_BRANCH" = "HEAD" ]; then
 fi
 
 # Guard: pastikan working tree bersih supaya 'git pull --rebase' tidak pecah.
-# Auto-handle line-ending phantom changes: kalau diff cuma whitespace/EOL
-# (no substantive changes), checkout otomatis. Cegah error berulang
-# di file shell yang pernah di-edit di Windows (CRLF vs .gitattributes eol=lf).
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  # Cek apakah ada perubahan SUBSTANTIF (di luar whitespace/EOL).
-  # `git diff --ignore-all-space --ignore-blank-lines` akan kosong kalau
-  # diff cuma whitespace.
-  if git diff --quiet --ignore-all-space --ignore-blank-lines && \
-     git diff --cached --quiet --ignore-all-space --ignore-blank-lines; then
-    echo -e "${YELLOW}==> Phantom change (whitespace/EOL) terdeteksi, auto-renormalize...${NC}"
-    DIRTY_FILES=$(git diff --name-only; git diff --cached --name-only)
-    DIRTY_FILES=$(echo "$DIRTY_FILES" | sort -u | tr '\n' ' ')
-    if [ -n "$DIRTY_FILES" ]; then
-      # shellcheck disable=SC2086
-      git rm --cached -- $DIRTY_FILES >/dev/null 2>&1 || true
-      # shellcheck disable=SC2086
-      git checkout HEAD -- $DIRTY_FILES >/dev/null 2>&1 || true
-      echo -e "${GREEN}    Sudah di-renormalize: $DIRTY_FILES${NC}"
+#
+# Strategi auto-renormalize (whitelist-based, agnostic terhadap penyebab):
+# - 4 file shell di bawah ini di-deploy lewat repo & TIDAK BOLEH di-edit
+#   manual di server. Mereka sering muncul dirty di server karena:
+#   * CRLF vs LF (.gitattributes eol=lf vs file pernah disentuh editor Windows)
+#   * mode 0644 vs 0755 (chmod +x di akhir update.sh ini bikin mode change)
+#   * BOM / line ending campuran setelah edit lewat tool yang tidak konsisten
+#   * core.fileMode mismatch antar mesin
+# - Kalau SEMUA dirty files termasuk di whitelist ini → checkout paksa,
+#   tanpa peduli isi diff-nya. Aman karena file ini "owned by deploy".
+# - Kalau ada dirty file DI LUAR whitelist → fail seperti biasa supaya
+#   perubahan user yang berarti tidak ke-discard tanpa konfirmasi.
+SAFE_DIRTY_WHITELIST=(
+  "cek-port.sh"
+  "scripts/backup_botvpn.sh"
+  "scripts/install.sh"
+  "update.sh"
+)
+
+# Helper: cek satu path apakah ada di whitelist (exact match).
+is_in_whitelist() {
+  local target="$1"
+  local f
+  for f in "${SAFE_DIRTY_WHITELIST[@]}"; do
+    if [ "$f" = "$target" ]; then
+      return 0
     fi
-    # Cek ulang setelah auto-fix
+  done
+  return 1
+}
+
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  # Kumpulkan semua file dirty (working tree + staged), unique.
+  DIRTY_LIST=$( { git diff --name-only; git diff --cached --name-only; } | sort -u )
+
+  ALL_WHITELISTED=1
+  if [ -z "$DIRTY_LIST" ]; then
+    ALL_WHITELISTED=0
+  else
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      if ! is_in_whitelist "$f"; then
+        ALL_WHITELISTED=0
+        break
+      fi
+    done <<< "$DIRTY_LIST"
+  fi
+
+  if [ "$ALL_WHITELISTED" = "1" ]; then
+    echo -e "${YELLOW}==> Phantom dirty di whitelist deploy script, auto-renormalize...${NC}"
+    DIRTY_ONELINE=$(echo "$DIRTY_LIST" | tr '\n' ' ')
+    # shellcheck disable=SC2086
+    git rm --cached -- $DIRTY_ONELINE >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
+    git checkout HEAD -- $DIRTY_ONELINE >/dev/null 2>&1 || true
+    echo -e "${GREEN}    Sudah di-renormalize: $DIRTY_ONELINE${NC}"
+
+    # Verifikasi bersih setelah auto-fix.
     if ! git diff --quiet || ! git diff --cached --quiet; then
-      echo -e "${RED}Auto-renormalize tidak menyelesaikan diff. Lanjut ke pesan error normal.${NC}"
-      echo -e "${RED}Ada perubahan lokal yang belum di-commit di $BOT_DIR.${NC}"
-      echo -e "${YELLOW}Pilihan:${NC}"
-      echo -e "  1) git stash  (simpan perubahan dulu, lalu jalankan update ulang)"
-      echo -e "  2) git checkout -- <file>  (buang perubahan lokal kalau tidak perlu)"
-      echo -e "  3) commit dulu kalau memang perubahan penting"
+      echo -e "${RED}Auto-renormalize tidak menyelesaikan diff (kemungkinan core.fileMode).${NC}"
+      echo -e "${YELLOW}Coba: git config core.fileMode false  (lalu jalankan ulang).${NC}"
       git status --short
       exit 1
     fi
