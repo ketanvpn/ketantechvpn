@@ -84,7 +84,8 @@ Lihat `git log --oneline` untuk daftar lengkap. Highlight commit penting:
 
 | Commit | Tanggal | Deskripsi |
 |--------|---------|-----------|
-| `(latest)` | 2026-05-19 | Tambah 2 template broadcast: 🔥 Slot/Stok Terbatas + 📋 Info/Pengumuman Umum |
+| `(latest)` | 2026-05-19 | Audit fix Reseller & Saldo (HIGH): aware-link saldo di /addsaldo (cmd+menu), validasi user_id input addsaldo, riwayat saldo aware-link |
+| `(prev)`   | 2026-05-19 | Tambah 2 template broadcast: 🔥 Slot/Stok Terbatas + 📋 Info/Pengumuman Umum |
 | `0931bf3` | 2026-05-19 | Tambah memori.md sebagai catatan operasional |
 | `264327b` | 2026-05-19 | Test Mode broadcast — tombol 🧪 Test ke Saya di preview |
 | `d986fbb` | 2026-05-19 | Audit fix broadcast — HTML pre-validation, cursor per pesan, concurrent lock, tombol batal di step template |
