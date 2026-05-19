@@ -7691,29 +7691,21 @@ bot.action('backup_db', async (ctx) => {
 
 });
 
+// Audit fix MEDIUM: refactor pattern `editMessageText + try/catch reply`
+// jadi `editOrReply` (sama seperti yang sudah dilakukan di Auto Backup &
+// Trial menu). Konsisten dan handle "message is not modified" silently.
+
 // Buka menu pengingat expired
 bot.action('expiry_reminder_menu', async (ctx) => {
-  const adminId = ctx.from.id;
-
-  // Hanya admin/master
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
   await ctx.answerCbQuery().catch(() => {});
-
-  try {
-    await ctx.editMessageText(getExpiryReminderStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildExpiryReminderKeyboard(),
-    });
-  } catch (e) {
-    logger.error('❌ Gagal kirim menu pengingat expired:', e.message);
-    await ctx.reply(getExpiryReminderStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildExpiryReminderKeyboard(),
-    });
-  }
+  await editOrReply(ctx, getExpiryReminderStatusText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildExpiryReminderKeyboard(),
+  });
 });
 
 // ====== ADMIN: TIMEZONE BOT ======
@@ -7816,8 +7808,7 @@ bot.action('timezone_set_wit', (ctx) =>
 
 // ON/OFF
 bot.action('expiry_reminder_toggle', async (ctx) => {
-  const adminId = ctx.from.id;
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
@@ -7831,29 +7822,20 @@ bot.action('expiry_reminder_toggle', async (ctx) => {
     { show_alert: false }
   );
 
-  try {
-    await ctx.editMessageText(getExpiryReminderStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildExpiryReminderKeyboard(),
-    });
-  } catch {
-    await ctx.reply(getExpiryReminderStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildExpiryReminderKeyboard(),
-    });
-  }
+  await editOrReply(ctx, getExpiryReminderStatusText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildExpiryReminderKeyboard(),
+  });
 });
 
 // Ubah jam/menit dan refresh tampilan
 async function adjustReminderTimeAndRefresh(ctx, deltaHour, deltaMinute) {
-  const adminId = ctx.from.id;
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
   if (deltaHour) {
-    EXPIRY_REMINDER_HOUR =
-      (EXPIRY_REMINDER_HOUR + deltaHour + 24) % 24;
+    EXPIRY_REMINDER_HOUR = (EXPIRY_REMINDER_HOUR + deltaHour + 24) % 24;
   }
 
   if (deltaMinute) {
@@ -7865,21 +7847,12 @@ async function adjustReminderTimeAndRefresh(ctx, deltaHour, deltaMinute) {
 
   saveExpiryReminderConfig();
 
-  await ctx.answerCbQuery('Waktu pengingat diubah.', {
-    show_alert: false,
-  });
+  await ctx.answerCbQuery('Waktu pengingat diubah.', { show_alert: false });
 
-  try {
-    await ctx.editMessageText(getExpiryReminderStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildExpiryReminderKeyboard(),
-    });
-  } catch {
-    await ctx.reply(getExpiryReminderStatusText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildExpiryReminderKeyboard(),
-    });
-  }
+  await editOrReply(ctx, getExpiryReminderStatusText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildExpiryReminderKeyboard(),
+  });
 }
 
 bot.action('expiry_hour_minus', (ctx) =>
