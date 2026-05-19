@@ -6855,7 +6855,9 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
       '• ✏️ Tulis manual (ketik bebas)\n' +
       '• 🛠️ Template Maintenance VPN\n' +
       '• ✅ Template Maintenance Selesai\n' +
-      '• 🎁 Template Promo/Diskon VPN',
+      '• 🎁 Template Promo/Diskon VPN\n' +
+      '• 🔥 Template Slot/Stok Terbatas\n' +
+      '• 📋 Template Info / Pengumuman Umum',
     {
       parse_mode: 'HTML',
       reply_markup: {
@@ -6871,6 +6873,12 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
           ],
           [
             { text: '🎁 Promo / Diskon', callback_data: 'broadcast_mode_promo' },
+          ],
+          [
+            { text: '🔥 Slot/Stok Terbatas', callback_data: 'broadcast_mode_slot' },
+          ],
+          [
+            { text: '📋 Info / Pengumuman Umum', callback_data: 'broadcast_mode_info' },
           ],
           [
             { text: '❌ Batal', callback_data: 'broadcast_cancel' },
@@ -7022,6 +7030,88 @@ bot.action('broadcast_mode_promo', async (ctx) => {
       '• Paket 30 Hari All Server\n' +
       '• Promo Akhir Bulan 7 Hari\n' +
       '• Diskon 30% semua paket bulanan',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+        ],
+      },
+    }
+  );
+});
+
+// Mode: Template Slot / Stok Terbatas (urgency announcement)
+// Pattern: minta nama produk/layanan, sisa slot (opsional), deadline (opsional),
+// catatan (opsional). Cocok untuk "Akun Direct EDU slot terbatas",
+// "Server SG-1 slot habis", dll.
+bot.action('broadcast_mode_slot', async (ctx) => {
+  try {
+    await ctx.answerCbQuery().catch(() => {});
+  } catch (e) {}
+
+  if (!ctx.from) return;
+  const adminId = ctx.from.id;
+
+  if (!adminIds.includes(adminId)) {
+    return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
+  }
+
+  const state = broadcastSessions[adminId];
+  if (!state || !state.target) {
+    return ctx.reply('⚠️ Tidak ada sesi pengumuman yang aktif. Mulai dari menu 📢 lagi.');
+  }
+
+  state.step = 'slot_ask_layanan';
+
+  await ctx.reply(
+    '🔥 Template Slot / Stok Terbatas\n\n' +
+      '1️⃣ Masukkan nama layanan / produk yang slotnya terbatas.\n' +
+      'Contoh:\n' +
+      '• Akun Direct EDU\n' +
+      '• Slot promo bulanan\n' +
+      '• Server SG-1 reseller',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+        ],
+      },
+    }
+  );
+});
+
+// Mode: Template Info / Pengumuman Umum (catch-all)
+// Pattern simpel: minta judul + isi + catatan opsional. Untuk pengumuman yang
+// tidak fit ke maintenance / promo / slot terbatas — mis. server baru, libur,
+// peraturan baru, dll.
+bot.action('broadcast_mode_info', async (ctx) => {
+  try {
+    await ctx.answerCbQuery().catch(() => {});
+  } catch (e) {}
+
+  if (!ctx.from) return;
+  const adminId = ctx.from.id;
+
+  if (!adminIds.includes(adminId)) {
+    return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
+  }
+
+  const state = broadcastSessions[adminId];
+  if (!state || !state.target) {
+    return ctx.reply('⚠️ Tidak ada sesi pengumuman yang aktif. Mulai dari menu 📢 lagi.');
+  }
+
+  state.step = 'info_ask_judul';
+
+  await ctx.reply(
+    '📋 Template Info / Pengumuman Umum\n\n' +
+      '1️⃣ Masukkan judul pengumuman.\n' +
+      'Contoh:\n' +
+      '• Server Baru Tersedia\n' +
+      '• Update Aturan Pemakaian\n' +
+      '• Libur Lebaran',
     {
       parse_mode: 'HTML',
       reply_markup: {
@@ -10924,10 +11014,269 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
       );
 
       return;
+    } else if (bState.step === 'slot_ask_layanan') {
+      // ----- TEMPLATE SLOT TERBATAS: langkah 1 (nama layanan/produk) -----
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks nama layanan/produk saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang nama layanan/produk.'
+        );
+        return;
+      }
+      bState.layanan = r.value;
+      bState.step = 'slot_ask_sisa';
+
+      await ctx.reply(
+        '2️⃣ Masukkan info sisa slot/stok (opsional).\n' +
+          'Contoh:\n' +
+          '• Stok terakhir\n' +
+          '• Tinggal 5 slot\n' +
+          '• Tinggal 10 akun\n\n' +
+          'Jika tidak ingin sebut angka spesifik, kirim tanda <code>-</code> saja.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
+      );
+      return;
+    } else if (bState.step === 'slot_ask_sisa') {
+      // ----- TEMPLATE SLOT: langkah 2 (sisa slot, opsional) -----
+      const sisaRaw = (ctx.message.text || '').trim();
+      if (sisaRaw.startsWith('/')) {
+        await ctx.reply(
+          '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks atau "-" untuk skip.'
+        );
+        return;
+      }
+      bState.sisa = sisaRaw === '-' ? '' : htmlEscape(sisaRaw);
+      bState.step = 'slot_ask_deadline';
+
+      await ctx.reply(
+        '3️⃣ Masukkan deadline / sampai kapan (opsional).\n' +
+          'Contoh:\n' +
+          '• Selama persediaan masih ada\n' +
+          '• Sampai akhir minggu ini\n' +
+          '• Sampai 25-12-2025\n\n' +
+          'Jika tidak ada deadline spesifik, kirim tanda <code>-</code> saja.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
+      );
+      return;
+    } else if (bState.step === 'slot_ask_deadline') {
+      // ----- TEMPLATE SLOT: langkah 3 (deadline, opsional) -----
+      const dlRaw = (ctx.message.text || '').trim();
+      if (dlRaw.startsWith('/')) {
+        await ctx.reply(
+          '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks atau "-" untuk skip.'
+        );
+        return;
+      }
+      bState.deadline = dlRaw === '-' ? '' : htmlEscape(dlRaw);
+      bState.step = 'slot_ask_catatan';
+
+      await ctx.reply(
+        '4️⃣ Masukkan catatan / call-to-action tambahan (opsional).\n' +
+          'Contoh:\n' +
+          '• Buruan order sebelum kehabisan!\n' +
+          '• Hubungi admin untuk slot tersisa.\n\n' +
+          'Jika tidak ada, kirim tanda <code>-</code> saja.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
+      );
+      return;
+    } else if (bState.step === 'slot_ask_catatan') {
+      // ----- TEMPLATE SLOT: langkah 4 (catatan + susun pesan) -----
+      const catatanRaw = (ctx.message.text || '').trim();
+      if (catatanRaw.startsWith('/')) {
+        await ctx.reply(
+          '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks catatan atau "-" untuk kosong.'
+        );
+        return;
+      }
+      bState.catatan = catatanRaw === '-' ? '' : htmlEscape(catatanRaw);
+
+      let targetLabel = 'semua user';
+      if (bState.target === 'reseller') targetLabel = 'semua reseller';
+      else if (bState.target === 'member') targetLabel = 'member (bukan reseller & bukan admin)';
+
+      const lines = [];
+      lines.push('🔥 <b>SLOT TERBATAS — JANGAN SAMPAI KEHABISAN</b>');
+      lines.push('');
+      lines.push('Kepada pengguna VPN,');
+      lines.push(`Saat ini layanan <b>${bState.layanan}</b>`);
+      lines.push('ketersediaannya sangat terbatas.');
+      lines.push('');
+      if (bState.sisa) {
+        lines.push(`📦 Sisa slot   : <b>${bState.sisa}</b>`);
+      }
+      if (bState.deadline) {
+        lines.push(`⏰ Berlaku     : <b>${bState.deadline}</b>`);
+      }
+      if (bState.catatan) {
+        lines.push(`📌 Catatan     : ${bState.catatan}`);
+      }
+      if (bState.sisa || bState.deadline || bState.catatan) {
+        lines.push('');
+      }
+      lines.push('Buruan order sebelum kehabisan slot.');
+      lines.push('Order langsung lewat menu di bot ini.');
+
+      const finalMessage = lines.join('\n');
+      bState.message = finalMessage;
+      bState.step = 'confirm';
+
+      await ctx.reply(
+        `📋 <b>Preview Pengumuman Slot/Stok Terbatas</b>\n` +
+          `Target: <b>${targetLabel}</b>\n\n` +
+          finalMessage +
+          '\n\nKirim pengumuman ini? Atau test dulu ke kamu sendiri?',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📢 Kirim Sekarang', callback_data: 'broadcast_confirm' },
+                { text: '❌ Batal', callback_data: 'broadcast_cancel' },
+              ],
+              [
+                { text: '🧪 Test ke Saya (preview)', callback_data: 'broadcast_test_self' },
+              ],
+            ],
+          },
+        }
+      );
+      return;
+    } else if (bState.step === 'info_ask_judul') {
+      // ----- TEMPLATE INFO UMUM: langkah 1 (judul) -----
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks judul saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang judul pengumuman.'
+        );
+        return;
+      }
+      bState.judul = r.value;
+      bState.step = 'info_ask_isi';
+
+      await ctx.reply(
+        '2️⃣ Masukkan isi pengumuman.\n' +
+          'Contoh:\n' +
+          '• Server SG-3 sudah online dan siap dipakai.\n' +
+          '• Mulai 1 Januari 2026, pemakaian VPN dibatasi 1 device per akun.\n' +
+          '• Bot akan offline tanggal 25 Des untuk libur Natal.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
+      );
+      return;
+    } else if (bState.step === 'info_ask_isi') {
+      // ----- TEMPLATE INFO UMUM: langkah 2 (isi) -----
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks isi pengumuman saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang isi pengumuman.'
+        );
+        return;
+      }
+      bState.isi = r.value;
+      bState.step = 'info_ask_catatan';
+
+      await ctx.reply(
+        '3️⃣ Masukkan catatan tambahan (opsional).\n' +
+          'Jika tidak ada, kirim tanda <code>-</code> saja.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
+            ],
+          },
+        }
+      );
+      return;
+    } else if (bState.step === 'info_ask_catatan') {
+      // ----- TEMPLATE INFO UMUM: langkah 3 (catatan + susun pesan) -----
+      const catatanRaw = (ctx.message.text || '').trim();
+      if (catatanRaw.startsWith('/')) {
+        await ctx.reply(
+          '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks catatan atau "-" untuk kosong.'
+        );
+        return;
+      }
+      bState.catatan = catatanRaw === '-' ? '' : htmlEscape(catatanRaw);
+
+      let targetLabel = 'semua user';
+      if (bState.target === 'reseller') targetLabel = 'semua reseller';
+      else if (bState.target === 'member') targetLabel = 'member (bukan reseller & bukan admin)';
+
+      const lines = [];
+      lines.push(`📋 <b>${bState.judul}</b>`);
+      lines.push('');
+      lines.push(bState.isi);
+      if (bState.catatan) {
+        lines.push('');
+        lines.push(`📌 Catatan: ${bState.catatan}`);
+      }
+      lines.push('');
+      lines.push('Terima kasih atas perhatiannya.');
+
+      const finalMessage = lines.join('\n');
+      bState.message = finalMessage;
+      bState.step = 'confirm';
+
+      await ctx.reply(
+        `📋 <b>Preview Pengumuman Info / Umum</b>\n` +
+          `Target: <b>${targetLabel}</b>\n\n` +
+          finalMessage +
+          '\n\nKirim pengumuman ini? Atau test dulu ke kamu sendiri?',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📢 Kirim Sekarang', callback_data: 'broadcast_confirm' },
+                { text: '❌ Batal', callback_data: 'broadcast_cancel' },
+              ],
+              [
+                { text: '🧪 Test ke Saya (preview)', callback_data: 'broadcast_test_self' },
+              ],
+            ],
+          },
+        }
+      );
+      return;
     }
   }
 
   const state = userState[ctx.chat.id];
+
 
 // ?? Tambahan penting:
   // Kalau userState belum ada, jangan lanjut supaya

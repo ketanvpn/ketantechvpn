@@ -84,8 +84,10 @@ Lihat `git log --oneline` untuk daftar lengkap. Highlight commit penting:
 
 | Commit | Tanggal | Deskripsi |
 |--------|---------|-----------|
-| `264327b` | 2025-05-19 | Test Mode broadcast — tombol 🧪 Test ke Saya di preview |
-| `d986fbb` | 2025-05-19 | Audit fix broadcast — HTML pre-validation, cursor per pesan, concurrent lock, tombol batal di step template |
+| `(latest)` | 2026-05-19 | Tambah 2 template broadcast: 🔥 Slot/Stok Terbatas + 📋 Info/Pengumuman Umum |
+| `0931bf3` | 2026-05-19 | Tambah memori.md sebagai catatan operasional |
+| `264327b` | 2026-05-19 | Test Mode broadcast — tombol 🧪 Test ke Saya di preview |
+| `d986fbb` | 2026-05-19 | Audit fix broadcast — HTML pre-validation, cursor per pesan, concurrent lock, tombol batal di step template |
 | `19cf653` | 2025-05-19 | Template Maintenance Selesai untuk broadcast |
 | `b8da967` | 2025-05-12 | Persist `broadcast_jobs` + resume cursor saat restart |
 | `5e0b2e2` | 2025-05-12 | HTML-escape & command-guard di template `tm_*`/`promo_*` |
@@ -97,10 +99,18 @@ Lihat `git log --oneline` untuk daftar lengkap. Highlight commit penting:
 
 Sejak commit `264327b`, ada **Test Mode** di preview konfirmasi pengumuman:
 
-1. 📢 Kirim Pengumuman → pilih target → pilih mode (Manual / Maintenance / Maintenance Selesai / Promo)
+1. 📢 Kirim Pengumuman → pilih target → pilih mode (Manual / Maintenance / Maintenance Selesai / Promo / **Slot Terbatas** / **Info Umum**)
 2. Selesaikan flow sampai ke layar **Preview Pengumuman**
 3. Klik tombol **🧪 Test ke Saya (preview)** di baris kedua
 4. Pesan dikirim hanya ke admin yang klik (bukan ke user asli), dengan label header `🧪 [TEST MODE — pesan ini hanya kamu yang lihat]`
+
+**Template yang tersedia:**
+- ✏️ **Tulis Manual** — bebas ketik, tidak ada struktur
+- 🛠️ **Maintenance VPN** — pengumuman maintenance terjadwal (4 step: layanan, waktu, durasi, catatan)
+- ✅ **Maintenance Selesai** — notif setelah maintenance kelar (3 step: layanan, durasi aktual, catatan)
+- 🎁 **Promo / Diskon** — penawaran harga turun (4 step: paket, detail, berlaku, catatan)
+- 🔥 **Slot/Stok Terbatas** — urgency saat stok terbatas (4 step: layanan, sisa slot opsional, deadline opsional, catatan opsional). Cocok untuk "Akun Direct EDU slot terbatas".
+- 📋 **Info / Pengumuman Umum** — catch-all untuk pengumuman yang tidak fit ke template lain (3 step: judul, isi, catatan opsional). Cocok untuk: server baru, libur, perubahan aturan, dll.
 
 Pakai ini untuk:
 
