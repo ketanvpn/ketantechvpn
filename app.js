@@ -6685,6 +6685,7 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
       'Pilih cara membuat pengumuman:\n' +
       '• ✏️ Tulis manual (ketik bebas)\n' +
       '• 🛠️ Template Maintenance VPN\n' +
+      '• ✅ Template Maintenance Selesai\n' +
       '• 🎁 Template Promo/Diskon VPN',
     {
       parse_mode: 'HTML',
@@ -6695,6 +6696,9 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
           ],
           [
             { text: '🛠️ Maintenance VPN', callback_data: 'broadcast_mode_maintenance' },
+          ],
+          [
+            { text: '✅ Maintenance Selesai', callback_data: 'broadcast_mode_maintenance_done' },
           ],
           [
             { text: '🎁 Promo / Diskon', callback_data: 'broadcast_mode_promo' },
@@ -6758,6 +6762,40 @@ bot.action('broadcast_mode_maintenance', async (ctx) => {
   await ctx.reply(
     '🛠️ Template Maintenance VPN\n\n' +
       '1️⃣ Masukkan nama server atau layanan yang terkena maintenance.\n' +
+      'Contoh:\n' +
+      '• Semua server VPN\n' +
+      '• Server SG-1 & SG-2\n' +
+      '• Layanan SSH & VMESS',
+    { parse_mode: 'HTML' }
+  );
+});
+
+// Mode: Template Maintenance Selesai (after-maintenance announcement)
+// Pattern sama persis dengan broadcast_mode_maintenance — minta layanan,
+// durasi aktual, catatan tambahan; lalu susun pesan otomatis.
+bot.action('broadcast_mode_maintenance_done', async (ctx) => {
+  try {
+    await ctx.answerCbQuery().catch(() => {});
+  } catch (e) {}
+
+  if (!ctx.from) return;
+  const adminId = ctx.from.id;
+
+  if (!adminIds.includes(adminId)) {
+    return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
+  }
+
+  const state = broadcastSessions[adminId];
+  if (!state || !state.target) {
+    return ctx.reply('⚠️ Tidak ada sesi pengumuman yang aktif. Mulai dari menu 📢 lagi.');
+  }
+
+  // Step pertama: minta nama server/layanan yang sudah selesai maintenance
+  state.step = 'mtdone_ask_layanan';
+
+  await ctx.reply(
+    '✅ Template Maintenance Selesai\n\n' +
+      '1️⃣ Masukkan nama server atau layanan yang maintenance-nya sudah selesai.\n' +
       'Contoh:\n' +
       '• Semua server VPN\n' +
       '• Server SG-1 & SG-2\n' +
@@ -10335,6 +10373,115 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
 
       await ctx.reply(
         `📋 <b>Preview Pengumuman Maintenance</b>\n` +
+          `Target: <b>${targetLabel}</b>\n\n` +
+          finalMessage +
+          '\n\nKirim pengumuman ini?',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📢 Kirim Sekarang', callback_data: 'broadcast_confirm' },
+                { text: '❌ Batal', callback_data: 'broadcast_cancel' },
+              ],
+            ],
+          },
+        }
+      );
+
+      return;
+    } else if (bState.step === 'mtdone_ask_layanan') {
+      // ----- TEMPLATE MAINTENANCE SELESAI: langkah 1 (nama layanan) -----
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks nama layanan saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang nama layanan.'
+        );
+        return;
+      }
+      bState.layanan = r.value;
+      bState.step = 'mtdone_ask_durasi';
+
+      await ctx.reply(
+        '2️⃣ Masukkan durasi maintenance yang sudah berlangsung (waktu aktual).\n' +
+          'Contoh:\n' +
+          '• 30 menit\n' +
+          '• 1 jam\n' +
+          '• Lebih cepat dari estimasi\n' +
+          '• 2 jam (sesuai estimasi)',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    } else if (bState.step === 'mtdone_ask_durasi') {
+      // ----- TEMPLATE MAINTENANCE SELESAI: langkah 2 (durasi aktual) -----
+      const r = sanitizeBroadcastTemplateInput(ctx.message.text);
+      if (!r.ok) {
+        await ctx.reply(
+          r.reason === 'command'
+            ? '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks durasi saja.'
+            : '⚠️ Teks tidak boleh kosong. Kirim ulang durasi maintenance.'
+        );
+        return;
+      }
+      bState.durasi = r.value;
+      bState.step = 'mtdone_ask_catatan';
+
+      await ctx.reply(
+        '3️⃣ Masukkan catatan tambahan (opsional).\n' +
+          'Contoh: apa yang sudah di-fix, peningkatan performa, dll.\n' +
+          'Jika tidak ada catatan, kirim tanda <code>-</code> saja.',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    } else if (bState.step === 'mtdone_ask_catatan') {
+      // ----- TEMPLATE MAINTENANCE SELESAI: langkah 3 (catatan + susun pesan) -----
+      const catatanRaw = (ctx.message.text || '').trim();
+      if (catatanRaw.startsWith('/')) {
+        await ctx.reply(
+          '⚠️ Tolong jangan kirim command (/...) di sini. Kirim teks catatan atau "-" untuk kosong.'
+        );
+        return;
+      }
+      bState.catatan = catatanRaw === '-' ? '' : htmlEscape(catatanRaw);
+
+      let targetLabel = 'semua user';
+      if (bState.target === 'reseller') {
+        targetLabel = 'semua reseller';
+      } else if (bState.target === 'member') {
+        targetLabel = 'member (bukan reseller & bukan admin)';
+      }
+
+      // Susun pesan maintenance selesai otomatis
+      const msgLines = [];
+      msgLines.push('✅ <b>MAINTENANCE SELESAI</b>');
+      msgLines.push('');
+      msgLines.push('Kepada pengguna VPN,');
+      msgLines.push(
+        `Maintenance pada layanan <b>${bState.layanan}</b> sudah selesai dilaksanakan.`
+      );
+      msgLines.push('');
+      msgLines.push(`⏱️ Durasi : <b>${bState.durasi}</b>`);
+      if (bState.catatan) {
+        msgLines.push(`📌 Catatan: ${bState.catatan}`);
+      }
+      msgLines.push('');
+      msgLines.push('Layanan VPN sudah kembali normal dan stabil.');
+      msgLines.push('Selamat menggunakan layanan VPN kembali. 🚀');
+      msgLines.push('');
+      msgLines.push(
+        'Kalau masih ada kendala koneksi, silakan reconnect terlebih dahulu atau hubungi admin untuk bantuan.'
+      );
+      msgLines.push('Terima kasih atas pengertian dan kesabarannya.');
+
+      const finalMessage = msgLines.join('\n');
+
+      bState.message = finalMessage;
+      bState.step = 'confirm';
+
+      await ctx.reply(
+        `📋 <b>Preview Pengumuman Maintenance Selesai</b>\n` +
           `Target: <b>${targetLabel}</b>\n\n` +
           finalMessage +
           '\n\nKirim pengumuman ini?',
