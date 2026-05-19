@@ -6420,6 +6420,86 @@ async function sendBroadcastFromMenu(ctx, target, message) {
   }
 }
 
+// Test mode: kirim pengumuman HANYA ke admin yang klik (bukan ke user asli).
+// Tetap melewati HTML pre-validation + concurrent lock + persist ke broadcast_jobs
+// dengan target_type='self_test'. Pesan diberi prefix label 🧪 supaya admin
+// langsung bisa beda kan dari pengumuman beneran. Sesi broadcast tidak dihapus
+// (admin masih bisa klik Kirim Sekarang setelah test).
+async function sendBroadcastSelfTest(ctx, originalTargetType, message) {
+  try {
+    const adminId = ctx.from?.id || 0;
+    if (!adminId) return;
+
+    // Concurrent lock: kalau admin masih punya broadcast running (test atau real),
+    // tolak dulu supaya tidak overlap.
+    try {
+      const runningJobId = await hasRunningBroadcastJobForAdmin(adminId);
+      if (runningJobId) {
+        await ctx.reply(
+          '⚠️ Masih ada broadcast/test yang berjalan untuk akun admin kamu.\n' +
+            `Job ID: <b>#${runningJobId}</b>\n\n` +
+            'Tunggu sampai selesai dulu, lalu coba test lagi.',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+    } catch (eRunning) {
+      logger.warn('Gagal cek running broadcast job (self_test): ' + (eRunning.message || eRunning));
+    }
+
+    // HTML pre-validation: sama seperti sendBroadcastFromMenu, supaya behavior
+    // test mode persis seperti broadcast asli (termasuk error path).
+    const v = await validateBroadcastMessageHtml(adminId, message);
+    if (!v.ok) {
+      const errExcerpt = String(v.error || 'unknown error').slice(0, 200);
+      await ctx.reply(
+        '❌ <b>Test gagal — pesan ditolak Telegram.</b>\n\n' +
+          'Telegram mengembalikan error saat parse HTML:\n' +
+          `<code>${htmlEscape(errExcerpt)}</code>\n\n` +
+          'Edit pesan kamu lalu coba test ulang.',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    // Tambah label test mode di header pesan supaya admin tahu ini cuma preview.
+    // Diletakkan SEBELUM pesan asli, dipisah \n\n.
+    const testHeader =
+      '🧪 <i>[TEST MODE — pesan ini hanya kamu yang lihat. ' +
+      `Target asli kalau di-kirim beneran: <b>${htmlEscape(originalTargetType)}</b>]</i>\n\n`;
+    const finalMessage = testHeader + message;
+
+    const targetList = [adminId];
+    const jobId = await createBroadcastJob({
+      adminId,
+      targetType: 'self_test',
+      message: finalMessage,
+      targetList,
+    });
+
+    const { sukses, gagal } = await runBroadcastJob(jobId, 0);
+
+    // Ringkasan pendek (bukan emitBroadcastSummary supaya gak cetak ke MASTER_ID).
+    if (sukses > 0) {
+      await ctx.reply(
+        '✅ <b>Test selesai.</b>\n' +
+          'Pesan di atas sudah dikirim ke kamu sebagai preview, tidak ke user asli.\n\n' +
+          'Kalau preview-nya sudah benar, klik <b>📢 Kirim Sekarang</b> di pesan konfirmasi sebelumnya untuk kirim ke target asli.',
+        { parse_mode: 'HTML' }
+      );
+    } else {
+      await ctx.reply(
+        '⚠️ <b>Test gagal kirim ke kamu</b> (gagal: ' + gagal + ').\n' +
+          'Mungkin admin belum pernah /start ke bot ini, atau sedang ada gangguan Telegram.',
+        { parse_mode: 'HTML' }
+      );
+    }
+  } catch (err) {
+    logger.error('❌ Error di sendBroadcastSelfTest:', err);
+    try { await ctx.reply('❌ Terjadi kesalahan saat menjalankan test broadcast.'); } catch (_) {}
+  }
+}
+
 
 // ============================================================================
 // Broadcast job persistence (table broadcast_jobs)
@@ -6990,6 +7070,44 @@ bot.action('broadcast_confirm', async (ctx) => {
   await ctx.reply('⏳ Mengirim pengumuman, mohon tunggu...');
   await sendBroadcastFromMenu(ctx, target, message);
 });
+
+// Test Mode: kirim pengumuman HANYA ke admin yang klik (preview real, bukan
+// dummy). Tetap melewati HTML pre-validation + concurrent lock + persist ke
+// broadcast_jobs (target_type='self_test') supaya admin bisa verifikasi semua
+// behavior fix HIGH (HTML safety, concurrent lock) tanpa risiko kirim ke user
+// asli.
+bot.action('broadcast_test_self', async (ctx) => {
+  try {
+    await ctx.answerCbQuery().catch(() => {});
+  } catch (e) {}
+
+  if (!ctx.from) return;
+  const adminId = ctx.from.id;
+
+  if (!adminIds.includes(adminId)) {
+    return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
+  }
+
+  const state = broadcastSessions[adminId];
+  if (!state || state.step !== 'confirm' || !state.message || !state.target) {
+    return ctx.reply('⚠️ Tidak ada pengumuman yang menunggu konfirmasi.');
+  }
+
+  const targetLabelOrig = state.target;
+  const message = state.message;
+
+  // Sesi sengaja TIDAK dihapus di sini supaya admin masih bisa klik
+  // 📢 Kirim Sekarang setelah test selesai. Sesi akan di-clear lewat sweeper
+  // TTL 30 menit kalau admin tidak melanjutkan.
+
+  await ctx.reply(
+    '🧪 <b>Mode Test</b> — pesan akan dikirim hanya ke kamu (bukan ke user).\n' +
+      'Mengirim test, mohon tunggu...',
+    { parse_mode: 'HTML' }
+  );
+  await sendBroadcastSelfTest(ctx, targetLabelOrig, message);
+});
+
 
 bot.action('broadcast_cancel', async (ctx) => {
   try {
@@ -10363,7 +10481,7 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
         `📋 <b>Preview Pengumuman</b>\n` +
           `Target: <b>${targetLabel}</b>\n\n` +
           bState.message +
-          '\n\nKirim pengumuman ini?',
+          '\n\nKirim pengumuman ini? Atau test dulu ke kamu sendiri?',
         {
           parse_mode: 'HTML',
           reply_markup: {
@@ -10371,6 +10489,9 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
               [
                 { text: '📢 Kirim Sekarang', callback_data: 'broadcast_confirm' },
                 { text: '❌ Batal', callback_data: 'broadcast_cancel' },
+              ],
+              [
+                { text: '🧪 Test ke Saya (preview)', callback_data: 'broadcast_test_self' },
               ],
             ],
           },
@@ -10513,7 +10634,7 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
         `📋 <b>Preview Pengumuman Maintenance</b>\n` +
           `Target: <b>${targetLabel}</b>\n\n` +
           finalMessage +
-          '\n\nKirim pengumuman ini?',
+          '\n\nKirim pengumuman ini? Atau test dulu ke kamu sendiri?',
         {
           parse_mode: 'HTML',
           reply_markup: {
@@ -10521,6 +10642,9 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
               [
                 { text: '📢 Kirim Sekarang', callback_data: 'broadcast_confirm' },
                 { text: '❌ Batal', callback_data: 'broadcast_cancel' },
+              ],
+              [
+                { text: '🧪 Test ke Saya (preview)', callback_data: 'broadcast_test_self' },
               ],
             ],
           },
@@ -10636,7 +10760,7 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
         `📋 <b>Preview Pengumuman Maintenance Selesai</b>\n` +
           `Target: <b>${targetLabel}</b>\n\n` +
           finalMessage +
-          '\n\nKirim pengumuman ini?',
+          '\n\nKirim pengumuman ini? Atau test dulu ke kamu sendiri?',
         {
           parse_mode: 'HTML',
           reply_markup: {
@@ -10644,6 +10768,9 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
               [
                 { text: '📢 Kirim Sekarang', callback_data: 'broadcast_confirm' },
                 { text: '❌ Batal', callback_data: 'broadcast_cancel' },
+              ],
+              [
+                { text: '🧪 Test ke Saya (preview)', callback_data: 'broadcast_test_self' },
               ],
             ],
           },
@@ -10779,7 +10906,7 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
         `📋 <b>Preview Pengumuman Promo/Diskon</b>\n` +
           `Target: <b>${targetLabel}</b>\n\n` +
           finalMessage +
-          '\n\nKirim pengumuman ini?',
+          '\n\nKirim pengumuman ini? Atau test dulu ke kamu sendiri?',
         {
           parse_mode: 'HTML',
           reply_markup: {
@@ -10787,6 +10914,9 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
               [
                 { text: '📢 Kirim Sekarang', callback_data: 'broadcast_confirm' },
                 { text: '❌ Batal', callback_data: 'broadcast_cancel' },
+              ],
+              [
+                { text: '🧪 Test ke Saya (preview)', callback_data: 'broadcast_test_self' },
               ],
             ],
           },
