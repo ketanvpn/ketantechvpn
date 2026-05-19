@@ -84,7 +84,9 @@ Lihat `git log --oneline` untuk daftar lengkap. Highlight commit penting:
 
 | Commit | Tanggal | Deskripsi |
 |--------|---------|-----------|
-| `(latest)` | 2026-05-19 | Audit fix Auto Backup menu (HIGH+MEDIUM): semua handler pakai `ADMIN_IDS.includes()` (bukan `MASTER_ID` saja), refactor ke `editOrReply`, cap interval atas 168 jam |
+| `(latest)` | 2026-05-19 | Audit fix Akun Direct EDU (MEDIUM+LOW): submenu set price & link Ilmupedia pakai pattern editMessageText, cap atas 1jt untuk semua field harga, label `_dimatikan total_` saat trial=0 |
+| `72cf9e4`  | 2026-05-19 | Audit fix Pengingat Expired (MEDIUM): konsolidasi handler ke `editOrReply` |
+| `9d4055a`  | 2026-05-19 | Audit fix Auto Backup menu (HIGH+MEDIUM): semua handler pakai `ADMIN_IDS.includes()` (bukan `MASTER_ID` saja), refactor ke `editOrReply`, cap interval atas 168 jam |
 | `81b2feb`  | 2026-05-19 | Audit fix Pengaturan Trial (HIGH+MEDIUM): expose `watchlistMaxPerDay` ke UI menu (tombol +/-), pesan sukses save pakai `editOrReply`, tambah tombol Kembali ke Menu Admin di pesan sukses |
 | `2d795b7`  | 2026-05-19 | Audit fix Reseller & Saldo (HIGH): aware-link saldo di /addsaldo (cmd+menu), validasi user_id input addsaldo, riwayat saldo aware-link |
 | `ec80ce2`  | 2026-05-19 | Tambah 2 template broadcast: 🔥 Slot/Stok Terbatas + 📋 Info/Pengumuman Umum |

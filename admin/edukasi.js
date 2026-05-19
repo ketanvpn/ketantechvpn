@@ -96,7 +96,13 @@ function createEdukasiAdminHandlers({
     lines.push('\u2022 Bulanan : ' + formatRupiah(state.getResellerMonthly()));
     lines.push('\u2022 Mingguan: ' + formatRupiah(state.getResellerWeekly()));
     lines.push('');
-    lines.push('*Limit Trial*: ' + state.getTrialMaxPerDay() + 'x / hari / user');
+    // Audit fix LOW: kalau trial 0, tampilkan label spesial supaya admin
+    // tahu trial dimatikan total — sebelumnya cuma "0x / hari / user".
+    const trialMax = state.getTrialMaxPerDay();
+    const trialLabel = trialMax === 0
+      ? '_dimatikan total_'
+      : trialMax + 'x / hari / user';
+    lines.push('*Limit Trial*: ' + trialLabel);
 
     const ilpedRow = (_getIlpedLinks)
       ? [[{ text: '\uD83D\uDCF1 Atur Link Paket Ilmupedia', callback_data: 'admin_eduk_ilped' }]]
@@ -155,18 +161,22 @@ function createEdukasiAdminHandlers({
     await renderMenu(ctx, { edit: true });
   }
 
+  // Audit fix LOW: tambah cap atas 1jt untuk semua field harga supaya
+  // tombol +/- yang di-spam tidak menghasilkan nilai absurd. Cocok juga
+  // dengan validasi 0-1.000.000 di handleTextStep (set price manual).
+  const PRICE_MAX = 1000000;
   function adjustMember(period, delta) {
     if (period === 'monthly') {
-      state.setMemberMonthly(clamp(state.getMemberMonthly() + delta, 0));
+      state.setMemberMonthly(clamp(state.getMemberMonthly() + delta, 0, PRICE_MAX));
     } else {
-      state.setMemberWeekly(clamp(state.getMemberWeekly() + delta, 0));
+      state.setMemberWeekly(clamp(state.getMemberWeekly() + delta, 0, PRICE_MAX));
     }
   }
   function adjustReseller(period, delta) {
     if (period === 'monthly') {
-      state.setResellerMonthly(clamp(state.getResellerMonthly() + delta, 0));
+      state.setResellerMonthly(clamp(state.getResellerMonthly() + delta, 0, PRICE_MAX));
     } else {
-      state.setResellerWeekly(clamp(state.getResellerWeekly() + delta, 0));
+      state.setResellerWeekly(clamp(state.getResellerWeekly() + delta, 0, PRICE_MAX));
     }
   }
   function adjustTrial(delta) {
@@ -449,6 +459,9 @@ function createEdukasiAdminHandlers({
     });
   }
 
+  // Audit fix MEDIUM: pakai pattern editMessageText (sama dengan renderMenu)
+  // supaya submenu in-place replace, tidak menumpuk pesan baru di atas menu
+  // utama Akun Direct EDU. Fallback ke ctx.reply kalau pesan asli sudah hilang.
   async function renderSetPriceMenu(ctx) {
     const lines = [];
     lines.push('\uD83D\uDCB0 *Set Harga / Limit Manual*');
@@ -462,21 +475,26 @@ function createEdukasiAdminHandlers({
     lines.push('\u2022 Reseller Mingguan: ' + formatRupiah(state.getResellerWeekly()));
     lines.push('\u2022 Limit Trial: ' + state.getTrialMaxPerDay() + 'x / hari');
 
-    await ctx.reply(lines.join('\n'), {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '\uD83D\uDCC5 Set Member Bulanan', callback_data: 'admin_eduk_setprice_mm' }],
-          [{ text: '\uD83D\uDDD3\uFE0F Set Member Mingguan', callback_data: 'admin_eduk_setprice_mw' }],
-          [{ text: '\uD83D\uDCC5 Set Reseller Bulanan', callback_data: 'admin_eduk_setprice_rm' }],
-          [{ text: '\uD83D\uDDD3\uFE0F Set Reseller Mingguan', callback_data: 'admin_eduk_setprice_rw' }],
-          [{ text: '\uD83C\uDD93 Set Limit Trial / Hari', callback_data: 'admin_eduk_setprice_t' }],
-          [{ text: '\u2B05\uFE0F Kembali ke Menu Edukasi', callback_data: 'admin_edukasi_menu' }],
-        ],
-      },
-    });
+    const replyMarkup = {
+      inline_keyboard: [
+        [{ text: '\uD83D\uDCC5 Set Member Bulanan', callback_data: 'admin_eduk_setprice_mm' }],
+        [{ text: '\uD83D\uDDD3\uFE0F Set Member Mingguan', callback_data: 'admin_eduk_setprice_mw' }],
+        [{ text: '\uD83D\uDCC5 Set Reseller Bulanan', callback_data: 'admin_eduk_setprice_rm' }],
+        [{ text: '\uD83D\uDDD3\uFE0F Set Reseller Mingguan', callback_data: 'admin_eduk_setprice_rw' }],
+        [{ text: '\uD83C\uDD93 Set Limit Trial / Hari', callback_data: 'admin_eduk_setprice_t' }],
+        [{ text: '\u2B05\uFE0F Kembali ke Menu Edukasi', callback_data: 'admin_edukasi_menu' }],
+      ],
+    };
+    const message = lines.join('\n');
+    try {
+      await ctx.editMessageText(message, { parse_mode: 'Markdown', reply_markup: replyMarkup });
+      return;
+    } catch (err) { /* fallback kalau pesan asli sudah hilang */ }
+    await ctx.reply(message, { parse_mode: 'Markdown', reply_markup: replyMarkup });
   }
 
+  // Audit fix MEDIUM: sama seperti renderSetPriceMenu — pakai editMessageText
+  // dulu supaya submenu in-place replace.
   async function renderIlmupediaAdminMenu(ctx) {
     const links = (_getIlpedLinks() || []).filter((l) => l && l.url);
     const lines = [];
@@ -495,17 +513,20 @@ function createEdukasiAdminHandlers({
     lines.push('');
     lines.push('_Pilih aksi di bawah:_');
 
-    await ctx.reply(lines.join('\n'), {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '\u270F\uFE0F Edit Daftar Link', callback_data: 'admin_eduk_ilped_edit' }],
-          [{ text: '\uD83D\uDD04 Reset ke Default', callback_data: 'admin_eduk_ilped_reset' }],
-          [{ text: '\uD83D\uDDD1\uFE0F Hapus Semua', callback_data: 'admin_eduk_ilped_clear' }],
-          [{ text: '\u2B05\uFE0F Kembali ke Menu Edukasi', callback_data: 'admin_edukasi_menu' }],
-        ],
-      },
-    });
+    const replyMarkup = {
+      inline_keyboard: [
+        [{ text: '\u270F\uFE0F Edit Daftar Link', callback_data: 'admin_eduk_ilped_edit' }],
+        [{ text: '\uD83D\uDD04 Reset ke Default', callback_data: 'admin_eduk_ilped_reset' }],
+        [{ text: '\uD83D\uDDD1\uFE0F Hapus Semua', callback_data: 'admin_eduk_ilped_clear' }],
+        [{ text: '\u2B05\uFE0F Kembali ke Menu Edukasi', callback_data: 'admin_edukasi_menu' }],
+      ],
+    };
+    const message = lines.join('\n');
+    try {
+      await ctx.editMessageText(message, { parse_mode: 'Markdown', reply_markup: replyMarkup });
+      return;
+    } catch (err) { /* fallback kalau pesan asli sudah hilang */ }
+    await ctx.reply(message, { parse_mode: 'Markdown', reply_markup: replyMarkup });
   }
 
   // Parse text input "Label | URL" multi-line jadi array link.
