@@ -11921,7 +11921,7 @@ if (waitCtrl) await waitCtrl.stop('✅ Akun berhasil dibuat.', true);
 await ctx.reply(msg, { parse_mode: 'Markdown' });
 delete userState[ctx.chat.id];
 //SALDO DATABES
-          });
+          })();
         });
       });
     }
