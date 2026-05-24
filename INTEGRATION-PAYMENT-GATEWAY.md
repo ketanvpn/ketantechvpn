@@ -537,3 +537,17 @@ GOPAY_API_BASE_URL=https://pay.ketantech.my.id
 **Selesai!** Bot VPN sekarang pakai payment gateway kita sendiri dengan auto-fallback multi-provider. 🎉
 
 Kalau ada error atau pertanyaan, tanya saja! 😊
+
+---
+
+## 🔄 Refresh Notes (2026-05-24)
+
+Dokumen ini sudah dicek ulang setelah KetantechPay production update:
+
+- Payment gateway live di `https://pay.ketantech.my.id`
+- Dashboard dan API sudah running di production
+- AutoGoPay provider tersedia lewat gateway
+- Flow integrasi tetap: Bot VPN → KetantechPay → provider payment
+- File contoh client baru tersedia di `payment/gopay.new.js`
+
+Catatan: jangan commit API key asli ke repository. Gunakan `.env` di VPS untuk nilai production.
