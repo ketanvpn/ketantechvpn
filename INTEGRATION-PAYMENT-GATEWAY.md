@@ -31,12 +31,12 @@ GOPAY_API_BASE_URL=https://v1-gateway.autogopay.site
 GOPAY_API_BASE_URL=https://pay.ketantech.my.id
 
 # Tambahkan API key payment gateway:
-PAYMENT_GATEWAY_API_KEY=1db4790735cce48296a9b742ae33a0d23c1574c3d26a279285c1c68c01679ce4
+PAYMENT_GATEWAY_API_KEY=isi_client_api_key_di_vps
 ```
 
 **Penjelasan**:
 - `GOPAY_API_BASE_URL`: URL backend payment gateway kita
-- `PAYMENT_GATEWAY_API_KEY`: API key untuk autentikasi ke gateway
+- `PAYMENT_GATEWAY_API_KEY`: Client API key untuk autentikasi ke gateway (isi langsung di VPS, jangan commit key asli)
 
 ---
 
@@ -76,7 +76,7 @@ function createGopayClient({ getApiKey, baseUrl, timeoutMs = 15000 }) {
   function buildHeaders() {
     return {
       'Content-Type': 'application/json',
-      'x-api-key': gatewayApiKey, // Header auth payment gateway
+      'X-Client-Key': gatewayApiKey, // Header auth KetantechPay
     };
   }
 
@@ -501,7 +501,7 @@ Cari log:
 
 **Fix**: Tambahkan di `.env`:
 ```
-PAYMENT_GATEWAY_API_KEY=1db4790735cce48296a9b742ae33a0d23c1574c3d26a279285c1c68c01679ce4
+PAYMENT_GATEWAY_API_KEY=isi_client_api_key_di_vps
 ```
 
 ### Error: "Route POST /api/v1/payments/charge not found"
@@ -549,5 +549,6 @@ Dokumen ini sudah dicek ulang setelah KetantechPay production update:
 - AutoGoPay provider tersedia lewat gateway
 - Flow integrasi tetap: Bot VPN → KetantechPay → provider payment
 - File contoh client baru tersedia di `payment/gopay.new.js`
+- Header auth KetantechPay memakai `X-Client-Key`
 
 Catatan: jangan commit API key asli ke repository. Gunakan `.env` di VPS untuk nilai production.

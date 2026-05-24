@@ -1,151 +1,144 @@
-// payment/gopay.js - UPDATE untuk payment gateway KetantechPay
-// Version: 2.0 - Integrasi dengan https://pay.ketantech.my.id
-
+// payment/gopay.js - client QRIS via KetantechPay gateway (drop-in untuk bot VPN)
+// Compatible dengan payment/qris-invoice.js yang expect shape AutoGoPay-like.
 const axios = require('axios');
+
+const DEFAULT_GATEWAY_BASE_URL = 'https://pay.ketantech.my.id';
+const SUCCESS_STATUSES = new Set(['success', 'settlement', 'capture', 'paid']);
+const EXPIRED_STATUSES = new Set(['expired', 'expire']);
+const CANCELED_STATUSES = new Set(['canceled', 'cancel', 'failed', 'deny']);
+
+function normalizeBaseUrl(baseUrl) {
+  const url = String(baseUrl || DEFAULT_GATEWAY_BASE_URL).trim() || DEFAULT_GATEWAY_BASE_URL;
+  return url.replace(/\/+$/, '');
+}
+
+function getGatewayApiKey(getApiKey) {
+  // PAYMENT_GATEWAY_API_KEY adalah nama baru yang jelas.
+  // Fallback ke getApiKey()/GOPAY_API_KEY supaya deployment lama tetap boot.
+  return String(process.env.PAYMENT_GATEWAY_API_KEY || (typeof getApiKey === 'function' ? getApiKey() : '') || '').trim();
+}
+
+function mapGatewayStatusToProviderStatus(status) {
+  const s = String(status || '').toLowerCase();
+  if (SUCCESS_STATUSES.has(s)) return 'settlement';
+  if (EXPIRED_STATUSES.has(s)) return 'expire';
+  if (CANCELED_STATUSES.has(s)) return 'cancel';
+  return 'pending';
+}
 
 function createGopayClient({ getApiKey, baseUrl, timeoutMs = 15000 }) {
   if (typeof getApiKey !== 'function') {
     throw new Error('createGopayClient: getApiKey harus fungsi');
   }
-  
-  // Default ke payment gateway kita
-  if (!baseUrl || typeof baseUrl !== 'string') {
-    baseUrl = 'https://pay.ketantech.my.id';
-  }
 
-  // API key payment gateway (bukan AutoGopay API key)
-  const gatewayApiKey = process.env.PAYMENT_GATEWAY_API_KEY || '';
+  const gatewayBaseUrl = normalizeBaseUrl(baseUrl || process.env.PAYMENT_GATEWAY_BASE_URL || process.env.GOPAY_API_BASE_URL);
 
-  function buildHeaders() {
+  function buildHeaders(extra = {}) {
+    const apiKey = getGatewayApiKey(getApiKey);
+    if (!apiKey) throw new Error('PAYMENT_GATEWAY_API_KEY belum diisi di .env');
+
     return {
       'Content-Type': 'application/json',
-      'x-api-key': gatewayApiKey,
+      // KetantechPay memakai X-Client-Key untuk endpoint /api/v1/payments/*.
+      // x-api-key tetap dikirim sebagai compatibility kalau gateway lama pernah pakai itu.
+      'X-Client-Key': apiKey,
+      'x-api-key': apiKey,
+      ...extra,
     };
   }
 
-  /**
-   * Generate QRIS via payment gateway
-   * Gateway akan otomatis pilih provider terbaik (AutoGopay/Midtrans/dll)
-   */
   async function generateQris(amount) {
-    if (!gatewayApiKey) {
-      throw new Error('PAYMENT_GATEWAY_API_KEY belum diisi di .env');
-    }
-
     const nominal = Number(amount || 0);
     if (!Number.isFinite(nominal) || nominal <= 0) {
       throw new Error('Nominal QRIS tidak valid');
     }
 
-    // Generate unique order ID
-    const orderId = `vpn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Idempotency key untuk prevent double charge
+    const orderId = `VPN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const idempotencyKey = `bot-vpn-${orderId}`;
 
     const payload = {
-      orderId: orderId,
-      amount: nominal,
+      orderId,
+      amount: Math.round(nominal),
       currency: 'IDR',
       method: 'qris',
       customer: {
         name: 'VPN Customer',
-        email: 'customer@ketantech.my.id'
+        email: 'customer@ketantech.my.id',
       },
-      description: `Top up saldo VPN - Rp ${nominal.toLocaleString('id-ID')}`
+      description: `Top up saldo VPN - Rp ${Math.round(nominal).toLocaleString('id-ID')}`,
     };
 
-    const res = await axios.post(
-      `${baseUrl}/api/v1/payments/charge`,
-      payload,
-      { 
-        headers: {
-          ...buildHeaders(),
-          'Idempotency-Key': idempotencyKey
-        },
-        timeout: timeoutMs 
-      }
-    );
+    const res = await axios.post(`${gatewayBaseUrl}/api/v1/payments/charge`, payload, {
+      headers: buildHeaders({ 'Idempotency-Key': idempotencyKey }),
+      timeout: timeoutMs,
+    });
 
-    // Response dari payment gateway
     const data = res.data?.data;
-    if (!data) {
-      throw new Error('Response payment gateway tidak valid');
+    if (!data?.id || !data?.orderId) {
+      throw new Error(res.data?.message || 'Response payment gateway tidak valid');
     }
 
-    // Normalize response supaya compatible dengan code bot yang ada
+    const raw = data.rawResponse || {};
+    const full = raw.full || raw;
+
+    // Return object langsung, bukan {success,data}, supaya kompatibel dengan qris-invoice.js.
     return {
-      success: true,
-      data: {
-        transaction_id: data.id, // ID transaksi di gateway
-        order_id: data.orderId,
-        qris_string: data.rawResponse?.qris_string || '', // QRIS string kalau ada
-        qris_url: data.paymentUrl || '', // URL payment page
-        amount: data.amount,
-        status: data.status, // pending/success/failed
-        provider: data.providerName, // provider yang dipakai (autogopay/midtrans/dll)
-        created_at: data.createdAt
-      }
+      transaction_id: data.id,
+      provider_transaction_id: data.providerTransactionId,
+      order_id: data.orderId,
+      amount: Number(data.amount || nominal),
+      transaction_status: mapGatewayStatusToProviderStatus(data.status),
+      gateway_status: data.status,
+      provider: data.providerName,
+      qr_string: raw.qr_string || full.qr_string || '',
+      qr_url: data.paymentUrl || raw.qr_url || full.qr_url || '',
+      transaction_time: data.createdAt || raw.transaction_time || full.transaction_time || null,
+      expiry_time: raw.expiry_time || full.expiry_time || null,
+      raw_gateway_response: data,
     };
   }
 
-  /**
-   * Cek status transaksi QRIS
-   * @param {string} transactionId - ID transaksi dari payment gateway
-   */
   async function fetchQrisStatus(transactionId) {
-    if (!gatewayApiKey) {
-      throw new Error('PAYMENT_GATEWAY_API_KEY belum diisi di .env');
-    }
+    const id = String(transactionId || '').trim();
+    if (!id) throw new Error('transaction_id kosong');
 
-    if (!transactionId) {
-      throw new Error('Transaction ID tidak boleh kosong');
-    }
-
-    const res = await axios.get(
-      `${baseUrl}/api/v1/payments/${transactionId}`,
-      { 
-        headers: buildHeaders(),
-        timeout: timeoutMs 
-      }
-    );
+    const res = await axios.get(`${gatewayBaseUrl}/api/v1/payments/${encodeURIComponent(id)}`, {
+      headers: buildHeaders(),
+      timeout: timeoutMs,
+    });
 
     const data = res.data?.data;
-    if (!data) {
-      throw new Error('Response payment gateway tidak valid');
+    if (!data?.id) {
+      throw new Error(res.data?.message || 'Response payment gateway tidak valid');
     }
 
-    // Normalize response
+    const providerStatus = mapGatewayStatusToProviderStatus(data.status);
+    const paid = providerStatus === 'settlement';
+
     return {
-      success: true,
+      // qris-invoice.js lama menganggap success=true sebagai PAID, jadi hanya true kalau benar-benar paid.
+      success: paid,
       data: {
         transaction_id: data.id,
+        provider_transaction_id: data.providerTransactionId,
         order_id: data.orderId,
-        transaction_status: data.status, // pending/success/failed/expired
         transaction_time: data.updatedAt,
+        transaction_status: providerStatus,
+        gateway_status: data.status,
         payment_type: 'qris',
-        issuer: data.providerName,
-        amount: data.amount
-      }
+        issuer: data.providerName || 'ketantechpay',
+        amount: data.amount,
+        raw_gateway_response: data,
+      },
     };
   }
 
-  /**
-   * Fetch semua transaksi (untuk polling mutasi)
-   * NOTE: Payment gateway kita tidak punya endpoint list transactions untuk client API
-   * Jadi kita skip fungsi ini, pakai webhook untuk update status
-   */
   async function fetchTransactions() {
-    // Tidak dipakai lagi karena payment gateway pakai webhook
-    // Kalau perlu, bisa hit endpoint admin (tapi butuh ADMIN_API_KEY)
+    // Mutasi list tidak dipakai untuk flow invoice gateway. Polling status dilakukan per transaction id.
     return [];
   }
 
-  return {
-    generateQris,
-    fetchQrisStatus,
-    fetchTransactions,
-  };
+  return { fetchTransactions, generateQris, fetchQrisStatus };
 }
 
 module.exports = { createGopayClient };
