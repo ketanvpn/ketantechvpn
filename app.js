@@ -414,10 +414,10 @@ function writeVarsPartial(partial) {
 }
 
 function getGopayApiKey() {
-  const envKey = process.env.GOPAY_API_KEY;
+  const envKey = process.env.PAYMENT_GATEWAY_API_KEY || process.env.GOPAY_API_KEY;
   if (envKey && String(envKey).trim()) return String(envKey).trim();
   const fresh = readVarsFresh();
-  return String(fresh.GOPAY_API_KEY || '').trim();
+  return String(fresh.PAYMENT_GATEWAY_API_KEY || fresh.GOPAY_API_KEY || '').trim();
 }
 
 
@@ -434,8 +434,8 @@ const GOPAY_CREATEPAYMENT_APIKEY =
 
 
 const GOPAY_API_BASE_URL =
-  envOr('GOPAY_API_BASE_URL', envOr('GOPAY_BACKEND_BASE_URL',
-  'https://api-gopay.autoftbot.com'));
+  envOr('PAYMENT_GATEWAY_BASE_URL', envOr('GOPAY_API_BASE_URL', envOr('GOPAY_BACKEND_BASE_URL',
+  'https://pay.ketantech.my.id')));
 
 const { createGopayClient } = require('./payment/gopay');
 const gopayClient = createGopayClient({ getApiKey: getGopayApiKey, baseUrl: GOPAY_API_BASE_URL });
