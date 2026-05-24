@@ -240,15 +240,21 @@ Arti field:
 - `GROUP_ID`: ID grup Telegram untuk notifikasi transaksi. Add bot ke grup, kirim `/start@bot_kamu`, cek ID grup via log bot atau pakai bot lain seperti @getmyid_bot.
 - `BACKUP_CHAT_ID`: chat ID tujuan backup DB otomatis (biasanya sama dengan `USER_ID`).
 
-**Kalau mau auto-topup QRIS**, isi juga:
+**Kalau mau auto-topup QRIS lewat KetantechPay (recommended)**, isi juga:
 
 ```env
-GOPAY_API_KEY=agp_xxxxxxxxxxxxxxxxxxxxxxxx
-GOPAY_API_BASE_URL=https://v1-gateway.autogopay.site
-GOPAY_BASE_QR=0002010102...isi_string_QRIS_statis...
-ORDERKUOTA_AUTH_USERNAME=username_orderkuota
-ORDERKUOTA_AUTH_TOKEN=123:abcdef
+PAYMENT_GATEWAY_BASE_URL=https://pay.ketantech.my.id
+PAYMENT_GATEWAY_API_KEY=isi_client_api_key_dari_dashboard_ketantechpay
+
+# Legacy alias untuk kompatibilitas kode lama. Samakan dengan PAYMENT_GATEWAY_BASE_URL.
+GOPAY_API_BASE_URL=https://pay.ketantech.my.id
+GOPAY_API_KEY=
 ```
+
+Catatan penting:
+- BotVPN cukup pegang `PAYMENT_GATEWAY_API_KEY` milik KetantechPay.
+- API key AutoGoPay asli jangan ditaruh di BotVPN; simpan di dashboard KetantechPay credentials.
+- Jangan isi `PAYMENT_GATEWAY_BASE_URL` dengan endpoint OrderKuota/AutoGoPay langsung.
 
 **Save:** di nano, tekan `Ctrl+O` \u2192 Enter \u2192 `Ctrl+X`.
 
@@ -489,6 +495,17 @@ Script akan:
 3. `npm ci --omit=dev`.
 4. Smoke test (`node --check` + audit).
 5. `pm2 restart sellvpn --update-env`.
+
+Untuk update KetantechPay integration, pastikan `.env` berisi:
+
+```env
+PAYMENT_GATEWAY_BASE_URL=https://pay.ketantech.my.id
+PAYMENT_GATEWAY_API_KEY=isi_client_api_key_dari_dashboard_ketantechpay
+GOPAY_API_BASE_URL=https://pay.ketantech.my.id
+GOPAY_API_KEY=
+```
+
+Hindari duplicate `PAYMENT_GATEWAY_BASE_URL`; kalau ada dua baris, Node akan pakai yang terakhir dan bisa salah endpoint.
 
 **Kalau ada peringatan "perubahan lokal yang belum di-commit":**
 
