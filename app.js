@@ -12708,6 +12708,42 @@ if (baseHarga30 > 0) {
               // Kalau error, jangan blok user (anggap saja lolos)
             }
           }
+          let slotReserved = false;
+          const reserveCreateSlot = async () => {
+            if (action !== 'create') return true;
+            return await new Promise((resolve) => {
+              db.run(
+                'UPDATE Server SET total_create_akun = total_create_akun + 1 WHERE id = ? AND total_create_akun < batas_create_akun',
+                [serverId],
+                function (err) {
+                  if (err) {
+                    logger.error('⚠️ Gagal reservasi slot create server:', err.message);
+                    return resolve(false);
+                  }
+                  resolve((this.changes || 0) > 0);
+                }
+              );
+            });
+          };
+          const releaseCreateSlot = async () => {
+            if (action !== 'create' || !slotReserved) return;
+            await new Promise((resolve) => {
+              db.run(
+                'UPDATE Server SET total_create_akun = CASE WHEN total_create_akun > 0 THEN total_create_akun - 1 ELSE 0 END WHERE id = ?',
+                [serverId],
+                () => resolve()
+              );
+            });
+            slotReserved = false;
+          };
+
+          if (action === 'create') {
+            slotReserved = await reserveCreateSlot();
+            if (!slotReserved) {
+              return ctx.reply('⛔ *Server penuh atau sedang sibuk. Coba beberapa saat lagi atau pilih server lain.*', { parse_mode: 'Markdown' });
+            }
+          }
+
           let paymentDebited = false;
           if (totalHarga > 0) {
             try {
@@ -12721,6 +12757,7 @@ if (baseHarga30 > 0) {
               );
               paymentDebited = true;
             } catch (payErr) {
+              await releaseCreateSlot();
               logger.error('Gagal memproses pengurangan saldo & transaksi pembelian:', payErr.message || payErr);
               return ctx.reply('❌ *Transaksi dibatalkan karena saldo gagal dipotong. Silakan coba lagi.*', { parse_mode: 'Markdown' });
             }
@@ -12774,6 +12811,7 @@ if (baseHarga30 > 0) {
                 logger.error(`Refund gagal setelah provisioning gagal untuk user ${ctx.from.id}: ${refundErr.message || refundErr}`);
               }
             }
+            await releaseCreateSlot();
             logger.error(`Rollback transaksi user ${ctx.from.id}, type: ${type}, server: ${serverId}, respon: ${msg}`);
             try { if (waitCtrl) await waitCtrl.stop('❌ Gagal membuat akun. Coba lagi ya.', true); } catch (_) {}
             return ctx.reply(msg, { parse_mode: 'Markdown' });
@@ -12781,13 +12819,6 @@ if (baseHarga30 > 0) {
 
           logger.info(`✅ Transaksi sukses untuk user ${ctx.from.id}, type: ${type}, server: ${serverId}`);
           upsertAccount(ctx.from.id, username, type, serverId, exp);
-
-
-db.run('UPDATE Server SET total_create_akun = total_create_akun + 1 WHERE id = ?', [serverId], (err) => {
-  if (err) {
-    logger.error('⚠️ Kesalahan saat menambahkan total_create_akun:', err.message);
-  }
-});
 // ==== NOTIF PEMBELIAN / RENEW KE GRUP ====
 try {
    // Info user Telegram

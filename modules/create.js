@@ -16,7 +16,7 @@ function isValidNonNegative(value) {
 }
 
 async function createssh(username, password, exp, iplimit, serverId) {
-  console.log(`Creating SSH account for ${username} with expiry ${exp} days, IP limit ${iplimit}, and password ${password}`);
+  console.log(`Creating SSH account for ${username} with expiry ${exp} days, IP limit ${iplimit}`);
 
   // Validasi username
   if (!isValidUsername(username)) {
@@ -491,8 +491,7 @@ async function createshadowsocks(username, exp, quota, limitip, serverId) {
 
       const domain = server.domain;
       const auth = server.auth;
-      // TODO: pindah ke header auth (cek apakah endpoint mendukung header Authorization)
-      const param = `:5888/createshadowsocks?user=${username}&exp=${exp}&quota=${quota}&iplimit=${limitip}&auth=${auth}`;
+      const param = `:5888/createshadowsocks?user=${encodeURIComponent(username)}&exp=${encodeURIComponent(exp)}&quota=${encodeURIComponent(quota)}&iplimit=${encodeURIComponent(limitip)}`;
       const url = `http://${domain}${param}`;
       try {
         const response = await httpGet(url, {
