@@ -12795,7 +12795,10 @@ if (baseHarga30 > 0) {
             logger.info(`Account renewed and transaction recorded for user ${ctx.from.id}, type: ${type}`);
           }
 
-          if (msg.includes('???')) {
+          const normalizedMsg = String(msg || '').trim();
+          const isProvisionSuccess = normalizedMsg.startsWith('✅');
+
+          if (!isProvisionSuccess) {
             if (paymentDebited && totalHarga > 0) {
               try {
                 await refundAccountPayment(
@@ -12812,9 +12815,9 @@ if (baseHarga30 > 0) {
               }
             }
             await releaseCreateSlot();
-            logger.error(`Rollback transaksi user ${ctx.from.id}, type: ${type}, server: ${serverId}, respon: ${msg}`);
+            logger.error(`Rollback transaksi user ${ctx.from.id}, type: ${type}, server: ${serverId}, respon: ${normalizedMsg}`);
             try { if (waitCtrl) await waitCtrl.stop('❌ Gagal membuat akun. Coba lagi ya.', true); } catch (_) {}
-            return ctx.reply(msg, { parse_mode: 'Markdown' });
+            return ctx.reply(normalizedMsg || '❌ Gagal membuat akun. Server merespons error.', { parse_mode: 'Markdown' });
           }
 
           logger.info(`✅ Transaksi sukses untuk user ${ctx.from.id}, type: ${type}, server: ${serverId}`);
