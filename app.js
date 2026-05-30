@@ -1334,7 +1334,9 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
   const providerPayloadJson = (() => {
     try { return JSON.stringify(tx); } catch (_) { return null; }
   })();
-  const refIdAudit = transactionRef || `qris_${invoiceId}`;
+  // WAJIB stabil per-invoice untuk idempotency lintas jalur (auto poller, cek manual, retry).
+  // Jangan pakai transactionRef caller karena bisa beda prefix (qris_auto_* vs qris_manual_*).
+  const refIdAudit = `qris_pay_${invoiceId}`;
 
   if (!paymentId || !userId || !invoiceId || !Number.isFinite(baseAmount) || baseAmount <= 0) {
     throw new Error('Data finalize QRIS tidak valid');
