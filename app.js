@@ -12816,7 +12816,15 @@ if (baseHarga30 > 0) {
             }
             await releaseCreateSlot();
             logger.error(`Rollback transaksi user ${ctx.from.id}, type: ${type}, server: ${serverId}, respon: ${normalizedMsg}`);
-            const failText = normalizedMsg || '❌ Gagal membuat akun. Server merespons error.';
+            const lowerFail = String(normalizedMsg || '').toLowerCase();
+            let failText = '❌ Gagal membuat akun. Server sedang bermasalah, silakan coba lagi beberapa saat.';
+            if (lowerFail.includes('unauthorized') || lowerFail.includes('401')) {
+              failText = '❌ Gagal membuat akun. Server target tidak terautentikasi (unauthorized). Silakan hubungi admin.';
+            } else if (lowerFail.includes('timeout') || lowerFail.includes('timed out') || lowerFail.includes('etimedout')) {
+              failText = '❌ Gagal membuat akun. Server target terlalu lama merespons (timeout). Silakan coba lagi.';
+            } else if (lowerFail.includes('502') || lowerFail.includes('503') || lowerFail.includes('504') || lowerFail.includes('bad gateway')) {
+              failText = '❌ Gagal membuat akun. Server target sedang gangguan. Silakan coba lagi beberapa saat.';
+            }
             if (waitCtrl) {
               try { await waitCtrl.stop(failText, true); } catch (_) {}
               return;
