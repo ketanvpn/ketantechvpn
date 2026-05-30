@@ -12816,8 +12816,12 @@ if (baseHarga30 > 0) {
             }
             await releaseCreateSlot();
             logger.error(`Rollback transaksi user ${ctx.from.id}, type: ${type}, server: ${serverId}, respon: ${normalizedMsg}`);
-            try { if (waitCtrl) await waitCtrl.stop('❌ Gagal membuat akun. Coba lagi ya.', true); } catch (_) {}
-            return ctx.reply(normalizedMsg || '❌ Gagal membuat akun. Server merespons error.', { parse_mode: 'Markdown' });
+            const failText = normalizedMsg || '❌ Gagal membuat akun. Server merespons error.';
+            if (waitCtrl) {
+              try { await waitCtrl.stop(failText, true); } catch (_) {}
+              return;
+            }
+            return ctx.reply(failText, { parse_mode: 'Markdown' });
           }
 
           logger.info(`✅ Transaksi sukses untuk user ${ctx.from.id}, type: ${type}, server: ${serverId}`);
