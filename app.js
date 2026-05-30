@@ -10208,7 +10208,7 @@ bot.action(/(create|renew)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, 
   const action = ctx.match[1];
   const type = ctx.match[2];
   const serverId = ctx.match[3];
-  userState[ctx.chat.id] = { step: `username_${action}_${type}`, serverId, type, action };
+  userState[ctx.chat.id] = { step: `username_${action}_${type}`, serverId, type, action, flowStartedAt: Date.now() };
 
   db.get('SELECT batas_create_akun, total_create_akun FROM Server WHERE id = ?', [serverId], async (err, server) => {
     if (err) {
@@ -12627,6 +12627,8 @@ if (exp > 365) {
   state.iplimit = server.iplimit;
 
   const { username, password, exp, quota, iplimit, serverId, type, action } = state;
+      const paymentRef = state.paymentRef || `buy_${action}_${type}_${serverId}_${username}_${ctx.from.id}_${state.flowStartedAt || Date.now()}`;
+      state.paymentRef = paymentRef;
       let msg;
 
       db.get('SELECT harga FROM Server WHERE id = ?', [serverId], async (err, server) => {
@@ -12755,7 +12757,8 @@ if (baseHarga30 > 0) {
                 type,
                 action,
                 serverId,
-                username
+                username,
+                paymentRef
               );
               paymentDebited = true;
             } catch (payErr) {

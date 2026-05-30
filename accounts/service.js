@@ -149,11 +149,11 @@ function createAccountService({ db, logger, webApiClient = null, getLinkInfo = n
     });
   }
 
-  async function processAccountPayment(userId, amount, type, action, serverId, username) {
+  async function processAccountPayment(userId, amount, type, action, serverId, username, refIdOverride = null) {
     const trxType = action === 'create'
       ? 'buy_create_' + type
       : 'buy_renew_' + type;
-    const refId = 'buy-' + serverId + '-' + username + '-' + Date.now();
+    const refId = String(refIdOverride || '').trim() || ('buy-' + serverId + '-' + username + '-' + Date.now());
 
     const link = await _resolveLink(userId);
 
