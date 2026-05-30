@@ -12804,6 +12804,8 @@ if (baseHarga30 > 0) {
           const isProvisionSuccess = normalizedMsg.startsWith('✅');
 
           if (!isProvisionSuccess) {
+            let refundFailed = false;
+            let refundErrorText = '';
             if (paymentDebited && totalHarga > 0) {
               try {
                 await refundAccountPayment(
@@ -12813,10 +12815,29 @@ if (baseHarga30 > 0) {
                   action,
                   serverId,
                   username,
-                  'provision_failed'
+                  'provision_failed',
+                  `refund_${paymentRef}`
                 );
               } catch (refundErr) {
-                logger.error(`Refund gagal setelah provisioning gagal untuk user ${ctx.from.id}: ${refundErr.message || refundErr}`);
+                refundFailed = true;
+                refundErrorText = String(refundErr?.message || refundErr || 'unknown');
+                logger.error(`Refund gagal setelah provisioning gagal untuk user ${ctx.from.id}: ${refundErrorText}`);
+                try {
+                  if (GROUP_ID) {
+                    await bot.telegram.sendMessage(
+                      GROUP_ID,
+                      `🚨 <b>CRITICAL REFUND FAILURE</b>\n` +
+                      `User: <code>${ctx.from.id}</code>\n` +
+                      `Type: <code>${action}_${type}</code>\n` +
+                      `Server: <code>${serverId}</code>\n` +
+                      `Amount: <b>${rupiah(totalHarga)}</b>\n` +
+                      `Ref: <code>refund_${paymentRef}</code>\n` +
+                      `Error: <code>${htmlEscape(refundErrorText)}</code>\n` +
+                      `Action: refund manual diperlukan.`,
+                      { parse_mode: 'HTML' }
+                    );
+                  }
+                } catch (_) {}
               }
             }
             await releaseCreateSlot();
@@ -12829,6 +12850,9 @@ if (baseHarga30 > 0) {
               failText = '❌ Gagal membuat akun. Server target terlalu lama merespons (timeout). Silakan coba lagi.';
             } else if (lowerFail.includes('502') || lowerFail.includes('503') || lowerFail.includes('504') || lowerFail.includes('bad gateway')) {
               failText = '❌ Gagal membuat akun. Server target sedang gangguan. Silakan coba lagi beberapa saat.';
+            }
+            if (refundFailed) {
+              failText += '\n\n⚠️ Refund otomatis sedang bermasalah. Admin sudah diberi notifikasi untuk pengecekan manual.';
             }
             if (waitCtrl) {
               try { await waitCtrl.stop(failText, true); } catch (_) {}

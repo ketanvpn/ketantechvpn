@@ -240,11 +240,11 @@ function createAccountService({ db, logger, webApiClient = null, getLinkInfo = n
     });
   }
 
-  async function refundAccountPayment(userId, amount, type, action, serverId, username, reason = 'rollback_create_failed') {
+  async function refundAccountPayment(userId, amount, type, action, serverId, username, reason = 'rollback_create_failed', refIdOverride = null) {
     const trxType = action === 'create'
       ? 'refund_create_' + type
       : 'refund_renew_' + type;
-    const refId = 'refund-' + serverId + '-' + username + '-' + Date.now();
+    const refId = String(refIdOverride || '').trim() || ('refund-' + serverId + '-' + username + '-' + Date.now());
 
     const link = await _resolveLink(userId);
 
