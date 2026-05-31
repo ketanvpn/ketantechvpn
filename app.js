@@ -43,6 +43,7 @@ const {
 } = require('./lib/account-pricing');
 const { createAccountProviderDispatchers } = require('./lib/account-provider-dispatch');
 const { formatProvisioningFailure } = require('./lib/provisioning-errors');
+const { formatAccountGroupNotification } = require('./lib/account-notification');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -11827,51 +11828,17 @@ try {
     logger.error('Error hitung tanggal expired untuk notif grup:', e.message);
   }
 
-  // Susun teks notif dengan garis '=' (aman di semua HP)
-  let notifText = '';
-
-  if (action === 'create') {
-    // → NOTIF UNTUK BUAT AKUN BARU
-    notifText =
-      '<blockquote>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>ACCOUNT CREATED</b>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>' + htmlEscape(serverName) + '</b>\n' +
-      '<code>\n' + // <-- MULAI BLOK MONOSPACE
-      '-> Client  : ' + htmlEscape(userDisplay) + '\n' +
-      '-> Role    : ' + htmlEscape(roleLabel) + '\n' +
-      '-> User    : <code>' + htmlEscape(username) + '</code>\n' +
-      '-> Type    : ' + htmlEscape(type).toUpperCase() + '\n' +
-      '-> Durasi  : ' + exp + ' Hari\n' +       // durasi paket yang dipilih
-     // '-> Sisa    : ' + sisaHari + ' Hari\n' +  // sisa sekarang (harusnya = exp kalau baru dibuat)
-      '-> Expired : ' + expiredDateOnly + '\n' +
-      '</code>\n' + // <-- AKHIR BLOK MONOSPACE
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '</blockquote>';
-  } else {
-    // → NOTIF UNTUK RENEW / PERPANJANG
-    const sisaSebelum = Math.max(sisaHari - exp, 0); // kira2 sisa sebelum tambah hari
-
-    notifText =
-      '<blockquote>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>ACCOUNT RENEWED</b>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>' + htmlEscape(serverName) + '</b>\n' +
-      '<code>\n' + // <-- MULAI BLOK MONOSPACE
-      '-> Client  : ' + htmlEscape(userDisplay) + '\n' +
-      '-> Role    : ' + htmlEscape(roleLabel) + '\n' +
-      '-> User    : <code>' + htmlEscape(username) + '</code>\n' +
-      '-> Type    : ' + htmlEscape(type).toUpperCase() + '\n' +
-      '-> Sisa sebelum : ' + sisaSebelum + ' Hari\n' +
-      '-> Perpanjang   : +' + exp + ' Hari\n' +
-      '-> Sisa sekarang: ' + sisaHari + ' Hari\n' +
-      '-> Expired      : ' + expiredDateOnly + '\n' +
-      '</code>\n' + // <-- AKHIR BLOK MONOSPACE
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '</blockquote>';
-  }
+  const notifText = formatAccountGroupNotification({
+    action,
+    serverName,
+    userDisplay,
+    roleLabel,
+    username,
+    type,
+    exp,
+    sisaHari,
+    expiredDateOnly,
+  });
 
   await bot.telegram.sendMessage(GROUP_ID, notifText, { parse_mode: 'HTML' });
 
