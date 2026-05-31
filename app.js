@@ -44,6 +44,7 @@ const {
 const { createAccountProviderDispatchers } = require('./lib/account-provider-dispatch');
 const { formatProvisioningFailure } = require('./lib/provisioning-errors');
 const { formatAccountGroupNotification } = require('./lib/account-notification');
+const { createServerSlotManager } = require('./lib/server-slots');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -2183,6 +2184,7 @@ function saveExpiryReminderConfig() {
 })();
 /////
 const db = createConnection(null, logger);
+const serverSlotManager = createServerSlotManager({ db, logger });
 const { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe } = createDdlHelpers(db, logger);
 runMigrations(db, logger, { ensureSqliteColumn, createUniqueIndexIfSafe, createUniqueIndexMultiIfSafe });
 
@@ -11590,36 +11592,12 @@ const totalHarga = calculateAccountPrice(server.harga, days, isR, RESELLER_DISCO
             }
           }
           let slotReserved = false;
-          const reserveCreateSlot = async () => {
-            if (action !== 'create') return true;
-            return await new Promise((resolve) => {
-              db.run(
-                'UPDATE Server SET total_create_akun = total_create_akun + 1 WHERE id = ? AND total_create_akun < batas_create_akun',
-                [serverId],
-                function (err) {
-                  if (err) {
-                    logger.error('⚠️ Gagal reservasi slot create server:', err.message);
-                    return resolve(false);
-                  }
-                  resolve((this.changes || 0) > 0);
-                }
-              );
-            });
-          };
           const releaseCreateSlot = async () => {
-            if (action !== 'create' || !slotReserved) return;
-            await new Promise((resolve) => {
-              db.run(
-                'UPDATE Server SET total_create_akun = CASE WHEN total_create_akun > 0 THEN total_create_akun - 1 ELSE 0 END WHERE id = ?',
-                [serverId],
-                () => resolve()
-              );
-            });
-            slotReserved = false;
+            slotReserved = await serverSlotManager.releaseCreateSlot(action, serverId, slotReserved);
           };
 
           if (action === 'create') {
-            slotReserved = await reserveCreateSlot();
+            slotReserved = await serverSlotManager.reserveCreateSlot(action, serverId);
             if (!slotReserved) {
               return ctx.reply('⛔ *Server penuh atau sedang sibuk. Coba beberapa saat lagi atau pilih server lain.*', { parse_mode: 'Markdown' });
             }
