@@ -50,6 +50,7 @@ check('require db/migrations', () => require('../db/migrations'));
 
 check('require modules/http-client', () => require('../modules/http-client'));
 check('require modules/reseller', () => require('../modules/reseller'));
+check('require modules/user-dashboard', () => require('../modules/user-dashboard'));
 
 check('require payment/gopay', () => require('../payment/gopay'));
 check('require payment/qris-invoice', () => require('../payment/qris-invoice'));
@@ -302,6 +303,23 @@ check('createMyAccountsHandlers factory', () => {
     unlockHandlers: { vmess() {}, vless() {}, trojan() {}, shadowsocks() {}, ssh() {} },
   });
   if (typeof h.register !== 'function') throw new Error('missing register');
+});
+
+check('createUserDashboardHandlers factory', () => {
+  const { createUserDashboardHandlers } = require('../modules/user-dashboard');
+  const h = createUserDashboardHandlers({
+    bot: stubBot(),
+    db: { get() {}, all() {} },
+    logger: silentLogger(),
+    ensurePrivateChat: () => true,
+    sendCleanMenu: async () => {},
+    htmlEscape: (v) => String(v ?? ''),
+    getUserSaldo: async () => 0,
+    getUserLinkInfo: async () => null,
+    timeZone: 'Asia/Jakarta',
+  });
+  if (typeof h.register !== 'function') throw new Error('missing register');
+  if (typeof h.showPublicServerStatus !== 'function') throw new Error('missing showPublicServerStatus');
 });
 
 // ===== DB bootstrap in-memory =====
