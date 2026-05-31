@@ -10138,6 +10138,21 @@ bot.action(/(lock)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, async (c
   await ctx.reply('🔒 *Masukkan username yang ingin dikunci:*', { parse_mode: 'Markdown' });
 });
 
+function formatTrialProvisionFailure(rawMsg) {
+  const lowerFail = String(rawMsg || '').toLowerCase();
+  let failText = '❌ Gagal membuat akun trial. Server sedang bermasalah, silakan coba lagi beberapa saat.';
+
+  if (lowerFail.includes('unauthorized') || lowerFail.includes('401')) {
+    failText = '❌ Gagal membuat akun trial. Server target tidak terautentikasi (unauthorized). Silakan hubungi admin.';
+  } else if (lowerFail.includes('timeout') || lowerFail.includes('timed out') || lowerFail.includes('etimedout')) {
+    failText = '❌ Gagal membuat akun trial. Server target terlalu lama merespons (timeout). Silakan coba lagi.';
+  } else if (lowerFail.includes('502') || lowerFail.includes('503') || lowerFail.includes('504') || lowerFail.includes('bad gateway')) {
+    failText = '❌ Gagal membuat akun trial. Server target sedang gangguan. Silakan coba lagi beberapa saat.';
+  }
+
+  return failText;
+}
+
 bot.on('text', async (ctx) => {
 const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
  // === TEST KIRIM KE GRUP DARI /tesgroub ===
@@ -11914,7 +11929,8 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
             'Username dan password yang tampil di atas dibuat *acak otomatis oleh server*.\n' +
             'Teks yang kamu kirim tadi hanya dipakai sebagai konfirmasi, bukan sebagai username akun.';
 
-        await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
+        const replyText = isError ? formatTrialProvisionFailure(msg) : msg + extraInfo;
+        await ctx.reply(replyText, { parse_mode: 'Markdown' });
       }
 
     } catch (err) {
