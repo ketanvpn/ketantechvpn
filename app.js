@@ -5602,141 +5602,9 @@ bot.command('edittotalcreate', async (ctx) => {
       ctx.reply(`✅ Total create akun server \`${domain}\` berhasil diubah menjadi \`${total_create_akun}\`.`, { parse_mode: 'Markdown' });
   });
 });
-async function handleServiceAction(ctx, action) {
-  let keyboard;
+// ========= → MENU LAYANAN USER =========
+// --- Fase modularisasi: service_create/trial/renew/del/lock/unlock dipindah ke modules/service-menu.js
 
-  if (action === 'create') {
-    keyboard = [
-      [{ text: '🖥️ Buat SSH / OpenVPN', callback_data: 'create_ssh' }],
-      [
-        { text: '🔗 Buat VMess', callback_data: 'create_vmess' },
-        { text: '🔗 Buat VLess', callback_data: 'create_vless' }
-      ],
-      [
-        { text: '🛡️ Buat Trojan', callback_data: 'create_trojan' }
-      ],
-      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
-    ];
-  } else if (action === 'trial') {
-    keyboard = [
-      [{ text: '🖥️ Trial SSH / OpenVPN', callback_data: 'trial_ssh' }],
-      [
-        { text: '🔗 Trial VMess', callback_data: 'trial_vmess' },
-        { text: '🔗 Trial VLess', callback_data: 'trial_vless' }
-      ],
-      [
-        { text: '🛡️ Trial Trojan', callback_data: 'trial_trojan' }
-      ],
-      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
-    ];
-  } else if (action === 'renew') {
-    keyboard = [
-      [{ text: '♻️ Perpanjang SSH / OpenVPN', callback_data: 'renew_ssh' }],
-      [
-        { text: '♻️ Perpanjang VMess', callback_data: 'renew_vmess' },
-        { text: '♻️ Perpanjang VLess', callback_data: 'renew_vless' }
-      ],
-      [
-        { text: '♻️ Perpanjang Trojan', callback_data: 'renew_trojan' }
-      ],
-      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
-    ];
-  } else if (action === 'del') {
-    keyboard = [
-      [{ text: '🗑️ Hapus SSH / OpenVPN', callback_data: 'del_ssh' }],
-      [
-        { text: '🗑️ Hapus VMess', callback_data: 'del_vmess' },
-        { text: '🗑️ Hapus VLess', callback_data: 'del_vless' }
-      ],
-      [
-        { text: '🗑️ Hapus Trojan', callback_data: 'del_trojan' }
-      ],
-      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
-    ];
-  } else if (action === 'lock') {
-    keyboard = [
-      [{ text: '🔒 Lock SSH / OpenVPN', callback_data: 'lock_ssh' }],
-      [
-        { text: '🔒 Lock VMess', callback_data: 'lock_vmess' },
-        { text: '🔒 Lock VLess', callback_data: 'lock_vless' }
-      ],
-      [
-        { text: '🔒 Lock Trojan', callback_data: 'lock_trojan' }
-      ],
-      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
-    ];
-  } else if (action === 'unlock') {
-    keyboard = [
-      [{ text: '🔓 Unlock SSH / OpenVPN', callback_data: 'unlock_ssh' }],
-      [
-        { text: '🔓 Unlock VMess', callback_data: 'unlock_vmess' },
-        { text: '🔓 Unlock VLess', callback_data: 'unlock_vless' }
-      ],
-      [
-        { text: '🔓 Unlock Trojan', callback_data: 'unlock_trojan' }
-      ],
-      [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
-    ];
-  }
-
-  // ?→ Khusus menu TRIAL: kirim teks penjelasan + keyboard dalam satu pesan
-     if (action === 'trial') {
-    let durationHours = 1;
-    let maxPerDay = 1;
-    let minBalance = 0;
-
-    try {
-      const cfg = await getTrialConfig();
-      if (cfg) {
-        if (Number.isInteger(cfg.durationHours))      durationHours = cfg.durationHours;
-        if (Number.isInteger(cfg.maxPerDay))          maxPerDay     = cfg.maxPerDay;
-        if (Number.isInteger(cfg.minBalanceForTrial)) minBalance    = cfg.minBalanceForTrial;
-      }
-    } catch (e) {
-      logger.error('⚠️ Gagal membaca konfigurasi trial di handleServiceAction:', e.message);
-    }
-
-    let infoText =
-      '🆓 *Trial Akun*\n\n' +
-      `⏱️ Masa aktif trial saat ini sekitar *${durationHours} jam*.\n` +
-      `🔄 Setiap user bisa memakai trial hingga *${maxPerDay}x per hari* (kecuali reseller).\n`;
-
-    if (minBalance > 0) {
-      infoText +=
-        `💰 Trial hanya bisa digunakan jika saldo kamu minimal *Rp${minBalance}*.\n`;
-    }
-
-    infoText +=
-      '💡 Trial dipakai untuk coba kualitas server sebelum kamu beli akun berbayar.\n\n' +
-      'Kalau cocok, kamu bisa lanjut beli akun lewat menu *🛍️ Buat Akun* atau daftar sebagai *Reseller*.\n\n' +
-      'Silakan pilih jenis akun yang mau kamu coba:';
-
-        try {
-      await sendCleanMenu(ctx, infoText, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: keyboard }
-      });
-      logger.info('trial service menu sent (clean)');
-    } catch (error) {
-      logger.error('Error saat mengirim menu trial:', error);
-    }
-    return;
- }
-
-    // ?→ Untuk create / renew / del / lock / unlock → tampilkan menu lewat sendCleanMenu
-  try {
-    const msgText = `Pilih jenis layanan yang ingin Anda ${action}:`;
-    await sendCleanMenu(ctx, msgText, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: keyboard
-      }
-    });
-    logger.info(`${action} service menu sent (clean)`);
-  } catch (error) {
-    logger.error(`Error saat mengirim menu ${action}:`, error);
-  }
-}
 
 async function sendAdminMenu(ctx) {
   // === SUSUN TEKS INFO LISENSI (HANYA UNTUK ADMIN) ===
@@ -9036,99 +8904,16 @@ bot.action('sendMainMenu', async (ctx) => {
 });
 
 
-bot.action('service_trial', async (ctx) => {
-  if (!ctx || !ctx.match) {
-    try {
-      await ctx.answerCbQuery('❌ Terjadi kesalahan, silakan coba lagi.', { show_alert: true });
-    } catch (e) {
-      console.error('Gagal kirim callback error service_trial:', e.message);
-    }
-    return;
-  }
-
-  // Cek status trial dari konfigurasi
-  try {
-    const cfg = await getTrialConfig();
-    if (!cfg.enabled) {
-  return sendCleanMenu(ctx,
-    '⛔ <b>Fitur trial sedang dimatikan oleh admin.</b>\n\n' +
-    'Silakan gunakan menu <b>🛍️ Buat Akun</b> untuk membeli akun,\n' +
-    'atau coba lagi nanti ketika trial diaktifkan kembali.',
-    { parse_mode: 'HTML' }
-  );
-}
-
-  } catch (err) {
-    logger.error('⚠️ Gagal membaca konfigurasi trial:', err.message);
-    // Kalau gagal baca config, biarkan lanjut supaya user tidak terkunci total
-  }
-
-  await handleServiceAction(ctx, 'trial');
+// ========= → MENU LAYANAN USER =========
+// --- Fase modularisasi: service_create/trial/renew/del/lock/unlock dipindah ke modules/service-menu.js
+const { createServiceMenuHandlers } = require('./modules/service-menu');
+const serviceMenuHandlers = createServiceMenuHandlers({
+  bot,
+  logger,
+  sendCleanMenu,
+  getTrialConfig,
 });
-
-bot.action('service_create', async (ctx) => {
-  if (!ctx || !ctx.match) {
-    try {
-      await ctx.answerCbQuery('❌ Terjadi kesalahan, silakan coba lagi.', { show_alert: true });
-    } catch (e) {
-      console.error('Gagal kirim callback error service_create:', e.message);
-    }
-    return;
-  }
-  await handleServiceAction(ctx, 'create');
-});
-
-
-bot.action('service_renew', async (ctx) => {
-  if (!ctx || !ctx.match) {
-    try {
-      await ctx.answerCbQuery('❌ Terjadi kesalahan, silakan coba lagi.', { show_alert: true });
-    } catch (e) {
-      console.error('Gagal kirim callback error service_renew:', e.message);
-    }
-    return;
-  }
-  await handleServiceAction(ctx, 'renew');
-});
-
-
-bot.action('service_del', async (ctx) => {
-  if (!ctx || !ctx.match) {
-    try {
-      await ctx.answerCbQuery('❌ Terjadi kesalahan, silakan coba lagi.', { show_alert: true });
-    } catch (e) {
-      console.error('Gagal kirim callback error service_del:', e.message);
-    }
-    return;
-  }
-  await handleServiceAction(ctx, 'del');
-});
-
-
-bot.action('service_lock', async (ctx) => {
-  if (!ctx || !ctx.match) {
-    try {
-      await ctx.answerCbQuery('❌ Terjadi kesalahan, silakan coba lagi.', { show_alert: true });
-    } catch (e) {
-      console.error('Gagal kirim callback error service_lock:', e.message);
-    }
-    return;
-  }
-  await handleServiceAction(ctx, 'lock');
-});
-
-
-bot.action('service_unlock', async (ctx) => {
-  if (!ctx || !ctx.match) {
-    try {
-      await ctx.answerCbQuery('❌ Terjadi kesalahan, silakan coba lagi.', { show_alert: true });
-    } catch (e) {
-      console.error('Gagal kirim callback error service_unlock:', e.message);
-    }
-    return;
-  }
-  await handleServiceAction(ctx, 'unlock');
-});
+serviceMenuHandlers.register();
 
 
 const { exec, spawn } = require('child_process');

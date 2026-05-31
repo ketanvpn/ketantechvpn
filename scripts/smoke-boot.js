@@ -53,6 +53,7 @@ check('require modules/reseller', () => require('../modules/reseller'));
 check('require modules/user-dashboard', () => require('../modules/user-dashboard'));
 check('require modules/reseller-sales', () => require('../modules/reseller-sales'));
 check('require modules/reseller-upgrade', () => require('../modules/reseller-upgrade'));
+check('require modules/service-menu', () => require('../modules/service-menu'));
 
 check('require payment/gopay', () => require('../payment/gopay'));
 check('require payment/qris-invoice', () => require('../payment/qris-invoice'));
@@ -369,6 +370,20 @@ check('createResellerUpgradeHandlers factory', () => {
   });
   if (typeof h.register !== 'function') throw new Error('missing register');
   if (typeof h.showUpgradeInfo !== 'function') throw new Error('missing showUpgradeInfo');
+});
+
+check('createServiceMenuHandlers factory', () => {
+  const { createServiceMenuHandlers } = require('../modules/service-menu');
+  const h = createServiceMenuHandlers({
+    bot: stubBot(),
+    logger: silentLogger(),
+    sendCleanMenu: async () => {},
+    getTrialConfig: async () => ({ enabled: true, durationHours: 1, maxPerDay: 1, minBalanceForTrial: 0 }),
+  });
+  if (typeof h.register !== 'function') throw new Error('missing register');
+  if (typeof h.showServiceMenu !== 'function') throw new Error('missing showServiceMenu');
+  if (typeof h.showTrialMenu !== 'function') throw new Error('missing showTrialMenu');
+  if (typeof h.buildKeyboard !== 'function') throw new Error('missing buildKeyboard');
 });
 
 // ===== DB bootstrap in-memory =====
