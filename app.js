@@ -45,6 +45,10 @@ const { createAccountProviderDispatchers } = require('./lib/account-provider-dis
 const { formatProvisioningFailure } = require('./lib/provisioning-errors');
 const { formatAccountGroupNotification } = require('./lib/account-notification');
 const { createServerSlotManager } = require('./lib/server-slots');
+const {
+  isCancellableAccountFlowStep,
+  isCancelText,
+} = require('./lib/account-flow-state');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -9498,6 +9502,22 @@ bot.action(/my_stats:(\d+)/, async (ctx) => {
 // --- Fase 4 split: accrenew dipindah ke accounts/
 
 // --- Service username selection callbacks dipindah ke modules/service-username-selection.js
+bot.action('account_flow_cancel', async (ctx) => {
+  try { await ctx.answerCbQuery('Dibatalkan').catch(() => {}); } catch (_) {}
+  const chatId = ctx.chat && ctx.chat.id;
+  const state = chatId ? userState[chatId] : null;
+  if (state && isCancellableAccountFlowStep(state.step)) {
+    delete userState[chatId];
+    return sendCleanMenu(ctx, '⛔ Proses akun dibatalkan. Tidak ada saldo yang dipotong.', {
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: [[{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }]] },
+    });
+  }
+  return sendCleanMenu(ctx, 'ℹ️ Tidak ada proses akun yang bisa dibatalkan saat ini.', {
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: [[{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }]] },
+  });
+});
 
 bot.on('text', async (ctx) => {
 const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
@@ -10266,6 +10286,14 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
   
     
     const lowerText = text.toLowerCase();
+
+  if (isCancellableAccountFlowStep(state.step) && isCancelText(text)) {
+    delete userState[ctx.chat.id];
+    return ctx.reply('⛔ Proses akun dibatalkan. Tidak ada saldo yang dipotong.', {
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: [[{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }]] },
+    });
+  }
 
 processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount, forcedUniqueSuffix = null) {
   let loadingMsg = null;
@@ -11477,14 +11505,23 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
     if (action === 'create') {
       if (type === 'ssh') {
         state.step = `password_${state.action}_${state.type}`;
-        await ctx.reply('🔑 *Masukkan password:*', { parse_mode: 'Markdown' });
+        await ctx.reply('🔑 *Masukkan password:*\n\nKetik *batal* atau tekan tombol di bawah untuk membatalkan.', {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'account_flow_cancel' }]] },
+        });
       } else {
         state.step = `exp_${state.action}_${state.type}`;
-        await ctx.reply('✏️ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
+        await ctx.reply('✏️ *Masukkan masa aktif (hari):*\n\nKetik *batal* atau tekan tombol di bawah untuk membatalkan.', {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'account_flow_cancel' }]] },
+        });
       }
     } else if (action === 'renew') {
       state.step = `exp_${state.action}_${state.type}`;
-      await ctx.reply('✏️ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
+      await ctx.reply('✏️ *Masukkan masa aktif (hari):*\n\nKetik *batal* atau tekan tombol di bawah untuk membatalkan.', {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'account_flow_cancel' }]] },
+      });
     }
   } else if (state.step.startsWith('password_')) {
     const passwordCheck = validateAccountPasswordInput(ctx.message.text);
@@ -11493,7 +11530,10 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
     }
     state.password = passwordCheck.value;
     state.step = `exp_${state.action}_${state.type}`;
-    await ctx.reply('✏️ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
+    await ctx.reply('✏️ *Masukkan masa aktif (hari):*\n\nKetik *batal* atau tekan tombol di bawah untuk membatalkan.', {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'account_flow_cancel' }]] },
+    });
   } else if (state.step.startsWith('exp_')) {
     const expCheck = validateAccountExpiryInput(ctx.message.text);
     if (!expCheck.ok) {

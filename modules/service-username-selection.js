@@ -53,7 +53,10 @@ function createServiceUsernameSelectionHandlers(options = {}) {
         );
       }
 
-      await ctx.reply('👤 <b>Masukkan username:</b>', { parse_mode: 'HTML' });
+      await ctx.reply('👤 <b>Masukkan username:</b>\n\nKetik <code>batal</code> atau tekan tombol di bawah untuk membatalkan.', {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'account_flow_cancel' }]] },
+      });
     });
   }
 
@@ -75,7 +78,10 @@ function createServiceUsernameSelectionHandlers(options = {}) {
       lock: '🔒 *Masukkan username yang ingin dikunci:*',
     };
 
-    await ctx.reply(prompts[action] || '👤 *Masukkan username:*', { parse_mode: 'Markdown' });
+    await ctx.reply((prompts[action] || '👤 *Masukkan username:*') + '\n\nKetik *batal* atau tekan tombol di bawah untuk membatalkan.', {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'account_flow_cancel' }]] },
+    });
   }
 
   async function handleTrialUsername(ctx) {
@@ -136,9 +142,13 @@ function createServiceUsernameSelectionHandlers(options = {}) {
         '\nUsername untuk akun trial akan dibuat <b>acak otomatis oleh server</b>.\n' +
         'Jadi kamu <b>tidak perlu menentukan username sendiri</b>.\n\n' +
         'Kalau setuju, balas pesan ini dengan teks apa saja (contoh: <code>ok</code>, <code>lanjut</code>, atau emoji).\n' +
+        'Atau tekan <b>❌ Batal</b> jika tidak jadi membuat trial.\n' +
         'Setelah itu bot akan langsung membuat akun trial dan menampilkan username & password yang dibuat otomatis.';
 
-      await sendCleanMenu(ctx, info, { parse_mode: 'HTML' });
+      await sendCleanMenu(ctx, info, {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: '❌ Batal', callback_data: 'account_flow_cancel' }]] },
+      });
     });
   }
 

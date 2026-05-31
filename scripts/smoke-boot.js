@@ -44,6 +44,7 @@ check('require lib/account-provider-dispatch', () => require('../lib/account-pro
 check('require lib/provisioning-errors', () => require('../lib/provisioning-errors'));
 check('require lib/account-notification', () => require('../lib/account-notification'));
 check('require lib/server-slots', () => require('../lib/server-slots'));
+check('require lib/account-flow-state', () => require('../lib/account-flow-state'));
 check('require lib/bonus', () => require('../lib/bonus'));
 check('require lib/html', () => require('../lib/html'));
 check('require lib/masker', () => require('../lib/masker'));
