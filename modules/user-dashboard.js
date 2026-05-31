@@ -122,7 +122,8 @@ function createUserDashboardHandlers({
     const text =
       '♻️ <b>PERPANJANG AKUN</b>\n' +
       '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      'Untuk perpanjang akun, buka <b>📂 Akun Saya</b>, pilih akun yang mau diperpanjang, lalu tekan <b>♻️ Perpanjang Akun</b>.\n\n' +
+      'Untuk perpanjang akun, bot akan membuka <b>📂 Akun Saya</b> dan menampilkan akun yang masih aktif/belum expired.\n' +
+      'Pilih akun yang mau diperpanjang, lalu tekan <b>♻️ Perpanjang Akun</b>.\n\n' +
       'Cara ini lebih aman karena bot langsung memakai data akun yang benar: username, tipe akun, dan server.';
 
     return sendCleanMenu(ctx, text, {

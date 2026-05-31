@@ -4285,7 +4285,7 @@ ${commandPanelText}
   let keyboard = [
     [
       { text: '🛍️ Buat Akun', callback_data: 'service_create' },
-      { text: '♻️ Perpanjang Akun', callback_data: 'renew_menu' }
+      { text: '♻️ Perpanjang Akun', callback_data: 'my_accounts' }
     ],
     [
       { text: '📂 Akun Saya', callback_data: 'my_accounts' },

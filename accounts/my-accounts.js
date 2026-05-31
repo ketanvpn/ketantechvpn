@@ -337,6 +337,27 @@ function createMyAccountsHandlers({
             return ctx.reply('\u274c Akun ini tidak ditemukan atau bukan milik kamu.');
           }
 
+          const now = new Date();
+          const todayStart = new Date(
+            now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0
+          ).getTime();
+          if (row.expires_at !== null && row.expires_at < todayStart) {
+            return sendCleanMenu(ctx,
+              '\u26a0\ufe0f <b>Akun ini sudah expired.</b>\n\n'
+              + 'Untuk keamanan, menu perpanjang hanya tersedia untuk akun yang masih aktif/belum expired.\n'
+              + 'Silakan buat akun baru atau hubungi admin kalau butuh bantuan.',
+              {
+                parse_mode: 'HTML',
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: '\ud83d\udcc2 Lihat Akun Aktif', callback_data: 'my_accounts_active' }],
+                    [{ text: '\ud83d\uded2 Buat Akun Baru', callback_data: 'service_create' }],
+                  ],
+                },
+              }
+            );
+          }
+
           // Akun Direct EDU (vpnbiz) tidak punya server_id lokal, dan flow renew
           // lokal akan memanggil renewssh/renewvmess yang butuh server lokal.
           // Redirect ke flow edukasi_renew_ask supaya pakai vpnbiz API.
