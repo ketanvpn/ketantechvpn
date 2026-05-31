@@ -227,7 +227,7 @@ else
 fi
 
 # =================== step 7: smoke test ===================
-log "Step 7/10: Smoke test (syntax + audit)"
+log "Step 7/10: Smoke test (syntax + audit + boot)"
 if [ "$DRY_RUN" -eq 0 ]; then
   if ! node --check app.js; then
     err "Syntax error di app.js. Stop."
@@ -235,6 +235,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
   if [ -f scripts/smoke-audit.js ]; then
     node scripts/smoke-audit.js || warn "Smoke audit gagal, tapi lanjut (cek output di atas)."
+  fi
+  if [ -f scripts/smoke-boot.js ]; then
+    node scripts/smoke-boot.js || warn "Smoke boot gagal, tapi lanjut (cek output di atas)."
   fi
   ok "Smoke test lolos."
 fi

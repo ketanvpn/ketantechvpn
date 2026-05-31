@@ -18,7 +18,10 @@ pm2 start ecosystem.config.js
 pm2 save
 ```
 
-Checklist deploy VPS baru lengkap ada di [DEPLOY.md](./DEPLOY.md).
+Panduan instalasi tersedia dalam 2 versi:
+
+- [INSTALL-AWAM.md](./INSTALL-AWAM.md) — panduan paling mudah untuk pemula, dari kebutuhan awal sampai update.
+- [DEPLOY.md](./DEPLOY.md) — panduan teknis lebih lengkap untuk deploy/migrasi VPS.
 
 ## Update Production
 
