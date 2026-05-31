@@ -55,6 +55,7 @@ check('require modules/reseller-sales', () => require('../modules/reseller-sales
 check('require modules/reseller-upgrade', () => require('../modules/reseller-upgrade'));
 check('require modules/service-menu', () => require('../modules/service-menu'));
 check('require modules/service-protocol', () => require('../modules/service-protocol'));
+check('require modules/server-selection', () => require('../modules/server-selection'));
 
 check('require payment/gopay', () => require('../payment/gopay'));
 check('require payment/qris-invoice', () => require('../payment/qris-invoice'));
@@ -398,6 +399,20 @@ check('createServiceProtocolHandlers factory', () => {
   if (typeof h.register !== 'function') throw new Error('missing register');
   if (typeof h.handleProtocol !== 'function') throw new Error('missing handleProtocol');
   if (typeof h.handleSimpleProtocol !== 'function') throw new Error('missing handleSimpleProtocol');
+});
+
+check('createServerSelectionHandlers factory', () => {
+  const { createServerSelectionHandlers } = require('../modules/server-selection');
+  const h = createServerSelectionHandlers({
+    bot: stubBot(),
+    db: { all() {} },
+    logger: silentLogger(),
+    userState: {},
+    isUserReseller: async () => false,
+    resellerDiscount: 0.65,
+  });
+  if (typeof h.register !== 'function') throw new Error('missing register');
+  if (typeof h.startSelectServer !== 'function') throw new Error('missing startSelectServer');
 });
 
 // ===== DB bootstrap in-memory =====
