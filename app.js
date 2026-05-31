@@ -8999,6 +8999,27 @@ const userDashboardHandlers = createUserDashboardHandlers({
 });
 userDashboardHandlers.register();
 
+// ========= → RINGKASAN PENJUALAN RESELLER =========
+// --- Fase modularisasi: sales_summary dipindah ke modules/reseller-sales.js
+const { createResellerSalesHandlers } = require('./modules/reseller-sales');
+const resellerSalesHandlers = createResellerSalesHandlers({
+  bot,
+  db,
+  logger,
+  ensurePrivateChat,
+  sendCleanMenu,
+  isResellerId,
+  adminIds,
+  getResellerActiveBonusStats,
+  getTargetMin30dAccounts: () => RESELLER_TARGET_MIN_30D_ACCOUNTS,
+  getTargetMinDaysPerMonth: () => RESELLER_TARGET_MIN_DAYS_PER_MONTH,
+  getBonusEnabled: () => RESELLER_ACTIVE_BONUS_ENABLED,
+  getBonusMinDurationDays: () => RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS,
+  getBonusMinDailyOmzet: () => RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET,
+  timeZone: TIME_ZONE,
+});
+resellerSalesHandlers.register();
+
 // ========= → BANTUAN UNTUK PENGGUNA =========
 // --- Fase modularisasi: help_user dipindah ke modules/user-dashboard.js
 
@@ -9407,147 +9428,7 @@ bot.action('send_main_menu', async (ctx) => {
 });
 
 // === HANDLER: Ringkasan Penjualan Reseller (pakai akun & hari) ===
-bot.action('sales_summary', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-
-  if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from) return;
-
-  const userId = ctx.from.id;
-
-  if (!isResellerId(userId) && !adminIds.includes(userId)) {
-    return ctx.reply(
-      '🚫 Fitur <b>Penjualan Saya</b> hanya untuk reseller.',
-      { parse_mode: 'HTML' }
-    );
-  }
-
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  db.all(
-    `SELECT created_at, expires_at, type, username
-     FROM accounts
-     WHERE user_id = ?
-       AND created_at >= ?
-       AND created_at < ?
-     ORDER BY created_at ASC`,
-    [userId, monthStart, monthEnd],
-    async (err, rows) => {
-      if (err) {
-        logger.error('Gagal ambil data penjualan reseller (sales_summary):', err.message || err);
-        return ctx.reply('❌ Gagal memuat ringkasan penjualan kamu. Silakan coba lagi.', { parse_mode: 'HTML' });
-      }
-
-      const bonusStats = await getResellerActiveBonusStats(userId, { offsetMonths: 0 });
-      const bulanLabel = now.toLocaleDateString('id-ID', {
-        timeZone: TIME_ZONE,
-        year: 'numeric',
-        month: 'long'
-      });
-
-      let totalAccounts = 0;
-      let totalDays = 0;
-      let count30Days = 0;
-
-      for (const acc of (rows || [])) {
-        totalAccounts += 1;
-        if (!acc.expires_at || !acc.created_at) continue;
-        const durMs = acc.expires_at - acc.created_at;
-        let durDays = Math.round(durMs / dayMs);
-        if (durDays < 1) durDays = 1;
-        totalDays += durDays;
-        if (durDays >= 30) count30Days += 1;
-      }
-
-      const meets30 = count30Days >= RESELLER_TARGET_MIN_30D_ACCOUNTS;
-      const meetsDays = totalDays >= RESELLER_TARGET_MIN_DAYS_PER_MONTH;
-
-      let bonusProgressText = '';
-      if (RESELLER_ACTIVE_BONUS_ENABLED) {
-        bonusProgressText += `<b>🎁 Progress Bonus Aktif</b>
-`;
-        bonusProgressText += `• Hari aktif valid       : <b>${bonusStats.validActiveDays}</b> hari
-`;
-        bonusProgressText += `• Akun valid bonus       : <b>${bonusStats.validAccounts}</b> akun
-`;
-        bonusProgressText += `• Omzet valid estimasi   : <b>Rp${Number(bonusStats.validOmzet || 0).toLocaleString('id-ID')}</b>
-`;
-        bonusProgressText += `• Min durasi dihitung    : <b>${RESELLER_ACTIVE_BONUS_MIN_DURATION_DAYS}</b> hari
-`;
-        bonusProgressText += `• Min omzet / hari       : <b>Rp${Number(RESELLER_ACTIVE_BONUS_MIN_DAILY_OMZET || 0).toLocaleString('id-ID')}</b>
-`;
-        if (bonusStats.currentTier) {
-          bonusProgressText += `• Tier tercapai          : <b>${bonusStats.currentTier.label}</b> (Rp${Number(bonusStats.currentTier.bonusAmount || 0).toLocaleString('id-ID')})
-`;
-        } else {
-          bonusProgressText += `• Tier tercapai          : <b>Belum ada</b>
-`;
-        }
-        if (bonusStats.nextTier) {
-          const need = Math.max(0, bonusStats.nextTier.minDays - bonusStats.validActiveDays);
-          bonusProgressText += `• Target berikutnya      : <b>${bonusStats.nextTier.label}</b> → sisa <b>${need}</b> hari lagi
-`;
-        } else if (bonusStats.currentTier) {
-          bonusProgressText += `• Target berikutnya      : <b>Tier tertinggi sudah tercapai</b>
-`;
-        }
-        if (bonusStats.invalidShortAccounts > 0) {
-          bonusProgressText += `• Akun terlalu pendek    : <b>${bonusStats.invalidShortAccounts}</b> akun tidak dihitung
-`;
-        }
-        if (bonusStats.invalidLowOmzetDays > 0) {
-          bonusProgressText += `• Hari omzet kurang      : <b>${bonusStats.invalidLowOmzetDays}</b> hari tidak dihitung
-`;
-        }
-      }
-
-      let text =
-        `<b>💵 Penjualan Saya • ${bulanLabel}</b>
-
-` +
-        `• Total akun terjual       : <b>${totalAccounts}</b>
-` +
-        `• Akun durasi ≥ 30 hari    : <b>${count30Days}</b>
-` +
-        `• Total hari akumulasi     : <b>${totalDays}</b> hari
-
-` +
-        `<b>🎯 Target Bulanan</b>
-` +
-        `• Minimal <b>${RESELLER_TARGET_MIN_30D_ACCOUNTS}</b> akun berdurasi ≥ 30 hari
-` +
-        `• Atau total <b>${RESELLER_TARGET_MIN_DAYS_PER_MONTH}</b> hari dari semua akun
-
-` +
-        `<b>📊 Status Target Bulan Ini</b>
-` +
-        `• Target akun 30 hari : ${meets30 ? '✅ Tercapai' : '❌ Belum tercapai'}
-` +
-        `• Target total hari   : ${meetsDays ? '✅ Tercapai' : '❌ Belum tercapai'}
-
-`;
-
-      if (bonusProgressText) {
-        text += bonusProgressText + `
-`;
-      }
-
-      text += `<i>Catatan: bonus reseller aktif hanya menghitung akun berbayar yang memenuhi durasi minimum dan omzet harian minimum. Akun 1 hari / terlalu pendek tidak dihitung.</i>`;
-
-      return sendCleanMenu(ctx, text, {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]
-          ]
-        }
-      });
-    }
-  );
-});
+// --- Fase modularisasi: dipindah ke modules/reseller-sales.js
 
 
 

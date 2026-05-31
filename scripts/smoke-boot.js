@@ -51,6 +51,7 @@ check('require db/migrations', () => require('../db/migrations'));
 check('require modules/http-client', () => require('../modules/http-client'));
 check('require modules/reseller', () => require('../modules/reseller'));
 check('require modules/user-dashboard', () => require('../modules/user-dashboard'));
+check('require modules/reseller-sales', () => require('../modules/reseller-sales'));
 
 check('require payment/gopay', () => require('../payment/gopay'));
 check('require payment/qris-invoice', () => require('../payment/qris-invoice'));
@@ -324,6 +325,36 @@ check('createUserDashboardHandlers factory', () => {
   if (typeof h.register !== 'function') throw new Error('missing register');
   if (typeof h.showPublicServerStatus !== 'function') throw new Error('missing showPublicServerStatus');
   if (typeof h.showHelpUser !== 'function') throw new Error('missing showHelpUser');
+});
+
+check('createResellerSalesHandlers factory', () => {
+  const { createResellerSalesHandlers } = require('../modules/reseller-sales');
+  const h = createResellerSalesHandlers({
+    bot: stubBot(),
+    db: { all() {} },
+    logger: silentLogger(),
+    ensurePrivateChat: () => true,
+    sendCleanMenu: async () => {},
+    isResellerId: () => true,
+    adminIds: [1],
+    getResellerActiveBonusStats: async () => ({
+      validActiveDays: 0,
+      validAccounts: 0,
+      validOmzet: 0,
+      currentTier: null,
+      nextTier: null,
+      invalidShortAccounts: 0,
+      invalidLowOmzetDays: 0,
+    }),
+    getTargetMin30dAccounts: () => 3,
+    getTargetMinDaysPerMonth: () => 90,
+    getBonusEnabled: () => false,
+    getBonusMinDurationDays: () => 7,
+    getBonusMinDailyOmzet: () => 10000,
+    timeZone: 'Asia/Jakarta',
+  });
+  if (typeof h.register !== 'function') throw new Error('missing register');
+  if (typeof h.showSalesSummary !== 'function') throw new Error('missing showSalesSummary');
 });
 
 // ===== DB bootstrap in-memory =====
