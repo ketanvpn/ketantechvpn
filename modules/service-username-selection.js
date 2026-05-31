@@ -57,6 +57,27 @@ function createServiceUsernameSelectionHandlers(options = {}) {
     });
   }
 
+  async function handleManageUsername(ctx) {
+    const action = ctx.match[1];
+    const type = ctx.match[2];
+    const serverId = ctx.match[3];
+
+    userState[ctx.chat.id] = {
+      step: `username_${action}_${type}`,
+      serverId,
+      type,
+      action,
+    };
+
+    const prompts = {
+      del: '✏️ *Masukkan username yang ingin dihapus:*',
+      unlock: '🔓 *Masukkan username yang ingin dibuka:*',
+      lock: '🔒 *Masukkan username yang ingin dikunci:*',
+    };
+
+    await ctx.reply(prompts[action] || '👤 *Masukkan username:*', { parse_mode: 'Markdown' });
+  }
+
   async function handleTrialUsername(ctx) {
     const [action, type, serverId] = [ctx.match[1], ctx.match[2], ctx.match[3]];
 
@@ -123,12 +144,14 @@ function createServiceUsernameSelectionHandlers(options = {}) {
 
   function register() {
     bot.action(/(create|renew)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, handleCreateOrRenewUsername);
+    bot.action(/(del|unlock|lock)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, handleManageUsername);
     bot.action(/(trial)_username_(vmess|vless|trojan|shadowsocks|ssh)_(\d+)/, handleTrialUsername);
   }
 
   return {
     register,
     handleCreateOrRenewUsername,
+    handleManageUsername,
     handleTrialUsername,
   };
 }

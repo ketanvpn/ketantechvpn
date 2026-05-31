@@ -430,6 +430,7 @@ check('createServiceUsernameSelectionHandlers factory', () => {
   });
   if (typeof h.register !== 'function') throw new Error('missing register');
   if (typeof h.handleCreateOrRenewUsername !== 'function') throw new Error('missing handleCreateOrRenewUsername');
+  if (typeof h.handleManageUsername !== 'function') throw new Error('missing handleManageUsername');
   if (typeof h.handleTrialUsername !== 'function') throw new Error('missing handleTrialUsername');
 });
 

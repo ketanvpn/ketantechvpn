@@ -9465,33 +9465,7 @@ bot.action(/my_stats:(\d+)/, async (ctx) => {
 // ========= ???→ PERPANJANG AKUN DARI "AKUN SAYA" =========
 // --- Fase 4 split: accrenew dipindah ke accounts/
 
-bot.action(/(del)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, async (ctx) => {
-  const [action, type, serverId] = [ctx.match[1], ctx.match[2], ctx.match[3]];
-
-  userState[ctx.chat.id] = {
-    step: `username_${action}_${type}`,
-    serverId, type, action
-  };
-  await ctx.reply('✏️ *Masukkan username yang ingin dihapus:*', { parse_mode: 'Markdown' });
-});
-bot.action(/(unlock)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, async (ctx) => {
-  const [action, type, serverId] = [ctx.match[1], ctx.match[2], ctx.match[3]];
-
-  userState[ctx.chat.id] = {
-    step: `username_${action}_${type}`,
-    serverId, type, action
-  };
-  await ctx.reply('🔓 *Masukkan username yang ingin dibuka:*', { parse_mode: 'Markdown' });
-});
-bot.action(/(lock)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, async (ctx) => {
-  const [action, type, serverId] = [ctx.match[1], ctx.match[2], ctx.match[3]];
-
-  userState[ctx.chat.id] = {
-    step: `username_${action}_${type}`,
-    serverId, type, action
-  };
-  await ctx.reply('🔒 *Masukkan username yang ingin dikunci:*', { parse_mode: 'Markdown' });
-});
+// --- Service username selection callbacks dipindah ke modules/service-username-selection.js
 
 function formatTrialProvisionFailure(rawMsg) {
   const lowerFail = String(rawMsg || '').toLowerCase();
