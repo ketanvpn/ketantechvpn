@@ -56,6 +56,7 @@ check('require modules/reseller-upgrade', () => require('../modules/reseller-upg
 check('require modules/service-menu', () => require('../modules/service-menu'));
 check('require modules/service-protocol', () => require('../modules/service-protocol'));
 check('require modules/server-selection', () => require('../modules/server-selection'));
+check('require modules/service-username-selection', () => require('../modules/service-username-selection'));
 
 check('require payment/gopay', () => require('../payment/gopay'));
 check('require payment/qris-invoice', () => require('../payment/qris-invoice'));
@@ -413,6 +414,23 @@ check('createServerSelectionHandlers factory', () => {
   });
   if (typeof h.register !== 'function') throw new Error('missing register');
   if (typeof h.startSelectServer !== 'function') throw new Error('missing startSelectServer');
+});
+
+check('createServiceUsernameSelectionHandlers factory', () => {
+  const { createServiceUsernameSelectionHandlers } = require('../modules/service-username-selection');
+  const h = createServiceUsernameSelectionHandlers({
+    bot: stubBot(),
+    db: { get() {} },
+    logger: silentLogger(),
+    userState: {},
+    sendCleanMenu: async () => {},
+    showErrorOnMenu: async () => {},
+    getTrialConfig: async () => ({ durationHours: 1, maxPerDay: 1, minBalanceForTrial: 0 }),
+    defaultTrialConfig: { durationHours: 1, maxPerDay: 1, minBalanceForTrial: 0 },
+  });
+  if (typeof h.register !== 'function') throw new Error('missing register');
+  if (typeof h.handleCreateOrRenewUsername !== 'function') throw new Error('missing handleCreateOrRenewUsername');
+  if (typeof h.handleTrialUsername !== 'function') throw new Error('missing handleTrialUsername');
 });
 
 // ===== DB bootstrap in-memory =====
