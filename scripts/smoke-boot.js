@@ -52,6 +52,7 @@ check('require modules/http-client', () => require('../modules/http-client'));
 check('require modules/reseller', () => require('../modules/reseller'));
 check('require modules/user-dashboard', () => require('../modules/user-dashboard'));
 check('require modules/reseller-sales', () => require('../modules/reseller-sales'));
+check('require modules/reseller-upgrade', () => require('../modules/reseller-upgrade'));
 
 check('require payment/gopay', () => require('../payment/gopay'));
 check('require payment/qris-invoice', () => require('../payment/qris-invoice'));
@@ -355,6 +356,19 @@ check('createResellerSalesHandlers factory', () => {
   });
   if (typeof h.register !== 'function') throw new Error('missing register');
   if (typeof h.showSalesSummary !== 'function') throw new Error('missing showSalesSummary');
+});
+
+check('createResellerUpgradeHandlers factory', () => {
+  const { createResellerUpgradeHandlers } = require('../modules/reseller-upgrade');
+  const h = createResellerUpgradeHandlers({
+    bot: stubBot(),
+    sendCleanMenu: async () => {},
+    htmlEscape: (v) => String(v ?? ''),
+    storeName: 'Smoke VPN',
+    adminUsername: '@admin',
+  });
+  if (typeof h.register !== 'function') throw new Error('missing register');
+  if (typeof h.showUpgradeInfo !== 'function') throw new Error('missing showUpgradeInfo');
 });
 
 // ===== DB bootstrap in-memory =====

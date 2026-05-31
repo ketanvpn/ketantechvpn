@@ -8939,46 +8939,7 @@ bot.action(/list_all_users_p_(\d+)/, async (ctx) => {
 ///////////////
 
 // ====== PROGRAM RESELLER ======
-bot.action('jadi_reseller', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-
-  const userId = ctx.from.id;
-  const storeName = NAMA_STORE || 'Layanan VPN';
-  const adminName = ADMIN_USERNAME || 'Admin';
-
-  const msg = `
-<b>💎 Program Reseller ${storeName}</b>
-
-Pengen jualan akun VPN sendiri dengan modal lebih hemat?
-Kamu bisa daftar sebagai <b>reseller resmi</b> di ${storeName}.
-
-<b>✨ Keuntungan jadi reseller:</b>
-• 💰 Dapat harga akun lebih murah dari harga user biasa.
-• 💵 Bebas atur harga jual ke pelanggan kamu sendiri.
-• ⚡ Prioritas akses server & bantuan kalau ada kendala teknis.
-• 💬 Support langsung dari admin ${adminName} lewat chat.
-
-<b>✍️ Cara daftar reseller:</b>
-1. Salin format pesan di bawah ini.
-2. Kirim ke ${adminName} lewat chat Telegram.
-
-<code>
-Mau jadi reseller.
-ID Telegram : ${userId}
-Nama        : ....
-</code>
-
-<b>ℹ️ Keterangan tambahan:</b>
-• Minimal deposit, list harga reseller, dan aturan lengkap akan dijelaskan oleh admin.
-• Saldo reseller nantinya bisa dipakai untuk membuat akun VPN langsung dari bot.
-• Disarankan pakai nomor & akun Telegram yang aktif agar mudah dihubungi.
-`.trim();
-
-    await sendCleanMenu(ctx, msg, {
-    parse_mode: 'HTML',
-  });
-});
-
+// --- Fase modularisasi: jadi_reseller dipindah ke modules/reseller-upgrade.js
 
 // ========= → MENU CEPAT: SALDO, RENEW, TRANSAKSI, PANDUAN =========
 // --- Fase modularisasi: handler dashboard user dipindah ke modules/user-dashboard.js
@@ -9019,6 +8980,18 @@ const resellerSalesHandlers = createResellerSalesHandlers({
   timeZone: TIME_ZONE,
 });
 resellerSalesHandlers.register();
+
+// ========= → UPGRADE RESELLER USER =========
+// --- Fase modularisasi: jadi_reseller dipindah ke modules/reseller-upgrade.js
+const { createResellerUpgradeHandlers } = require('./modules/reseller-upgrade');
+const resellerUpgradeHandlers = createResellerUpgradeHandlers({
+  bot,
+  sendCleanMenu,
+  htmlEscape,
+  storeName: NAMA_STORE,
+  adminUsername: ADMIN_USERNAME,
+});
+resellerUpgradeHandlers.register();
 
 // ========= → BANTUAN UNTUK PENGGUNA =========
 // --- Fase modularisasi: help_user dipindah ke modules/user-dashboard.js
