@@ -41,6 +41,7 @@ const {
   calculateAccountQuota,
   calculateAccountPrice,
 } = require('./lib/account-pricing');
+const { createAccountProviderDispatchers } = require('./lib/account-provider-dispatch');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -134,6 +135,23 @@ const {
   unlocktrojan,
   unlockshadowsocks
 } = require('./modules/unlock');
+
+const { provisionAccount } = createAccountProviderDispatchers({
+  createHandlers: {
+    ssh: createssh,
+    vmess: createvmess,
+    vless: createvless,
+    trojan: createtrojan,
+    shadowsocks: createshadowsocks,
+  },
+  renewHandlers: {
+    ssh: renewssh,
+    vmess: renewvmess,
+    vless: renewvless,
+    trojan: renewtrojan,
+    shadowsocks: renewshadowsocks,
+  },
+});
 
 const fsPromises = require('fs/promises');
 const path = require('path');
@@ -11642,33 +11660,18 @@ const totalHarga = calculateAccountPrice(server.harga, days, isR, RESELLER_DISCO
 
           let waitCtrl = null;
           waitCtrl = await startWaiting(ctx, '⏳ Sedang membuat akun...');
+          msg = await provisionAccount(action, {
+            type,
+            username,
+            password,
+            exp,
+            quota,
+            iplimit,
+            serverId,
+          });
           if (action === 'create') {
-            if (type === 'vmess') {
-              msg = await createvmess(username, exp, quota, iplimit, serverId);
-            } else if (type === 'vless') {
-              msg = await createvless(username, exp, quota, iplimit, serverId);
-            } else if (type === 'trojan') {
-              msg = await createtrojan(username, exp, quota, iplimit, serverId);
-            } else if (type === 'shadowsocks') {
-              msg = await createshadowsocks(username, exp, quota, iplimit, serverId);
-            } else if (type === 'ssh') {
-              msg = await createssh(username, password, exp, iplimit, serverId);
-            }
-
             logger.info(`Account created and transaction recorded for user ${ctx.from.id}, type: ${type}`);
           } else if (action === 'renew') {
-            if (type === 'vmess') {
-              msg = await renewvmess(username, exp, quota, iplimit, serverId);
-            } else if (type === 'vless') {
-              msg = await renewvless(username, exp, quota, iplimit, serverId);
-            } else if (type === 'trojan') {
-              msg = await renewtrojan(username, exp, quota, iplimit, serverId);
-            } else if (type === 'shadowsocks') {
-              msg = await renewshadowsocks(username, exp, quota, iplimit, serverId);
-            } else if (type === 'ssh') {
-              msg = await renewssh(username, exp, iplimit, serverId);
-            }
-
             logger.info(`Account renewed and transaction recorded for user ${ctx.from.id}, type: ${type}`);
           }
 
