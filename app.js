@@ -37,6 +37,10 @@ const {
   validateAccountPasswordInput,
   validateAccountExpiryInput,
 } = require('./lib/validators');
+const {
+  calculateAccountQuota,
+  calculateAccountPrice,
+} = require('./lib/account-pricing');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -11504,14 +11508,7 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
   const baseQuota = server.quota;
   const days = state.exp || 30; // kalau exp nggak kebaca, anggap 30 hari
 
-  let computedQuota = baseQuota;
-
-  // Kalau baseQuota > 0 ? hitung proporsional
-  if (baseQuota && baseQuota > 0) {
-    computedQuota = Math.max(1, Math.floor(baseQuota * days / 30));
-  }
-
-  state.quota = computedQuota;
+  state.quota = calculateAccountQuota(baseQuota, days);
   state.iplimit = server.iplimit;
 
   const { username, password, exp, quota, iplimit, serverId, type, action } = state;
@@ -11530,23 +11527,10 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
         }
 
                 // Harga dasar dari tabel Server (sebagai harga paket 30 hari)
-const baseHarga30 = Number(server.harga) || 0;
 const days = state.exp || 30;
 // cek status reseller lebih awal agar bisa dipakai di bawah
 const isR = await isUserReseller(ctx.from.id).catch(() => false);
-
-let totalHarga = 0;
-if (baseHarga30 > 0) {
-  // Harga normal proporsional terhadap lama hari
-  totalHarga = Math.max(1, Math.floor(baseHarga30 * days / 30));
-
-
-  if (isR) {
-    totalHarga = Math.max(1, Math.floor(totalHarga * RESELLER_DISCOUNT));
-  }
-} else {
-  totalHarga = 0;
-}
+const totalHarga = calculateAccountPrice(server.harga, days, isR, RESELLER_DISCOUNT);
 
 
         // Pre-check saldo. PENTING: pakai getUserSaldo() yang aware-link.

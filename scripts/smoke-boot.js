@@ -39,6 +39,7 @@ function check(label, fn) {
 check('require lib/qris', () => require('../lib/qris'));
 check('require lib/time', () => require('../lib/time'));
 check('require lib/validators', () => require('../lib/validators'));
+check('require lib/account-pricing', () => require('../lib/account-pricing'));
 check('require lib/bonus', () => require('../lib/bonus'));
 check('require lib/html', () => require('../lib/html'));
 check('require lib/masker', () => require('../lib/masker'));
