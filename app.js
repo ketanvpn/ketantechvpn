@@ -31,6 +31,12 @@ const {
   shortStatus,
 } = require('./lib/time');
 const { getLicenseInfo: _getLicenseInfoLib } = require('./lib/licence');
+const {
+  validateAccountUsernameInput,
+  validateManageUsernameInput,
+  validateAccountPasswordInput,
+  validateAccountExpiryInput,
+} = require('./lib/validators');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -11274,11 +11280,11 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
 }
 
     if (state.step.startsWith('username_unlock_')) {
-    const username = text;
-    // Validasi username (hanya huruf kecil dan angka, 3-20 karakter)
-    if (!/^[a-z0-9]{3,20}$/.test(username)) {
-      return ctx.reply('❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*', { parse_mode: 'Markdown' });
+    const usernameCheck = validateManageUsernameInput(text);
+    if (!usernameCheck.ok) {
+      return ctx.reply(usernameCheck.message, { parse_mode: 'Markdown' });
     }
+    const username = usernameCheck.value;
        //izin ressel saja
     const resselDbPath = './ressel.db';
     fs.readFile(resselDbPath, 'utf8', async (err, data) => {
@@ -11333,11 +11339,11 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
     return; // Penting! Jangan lanjut ke case lain
   }
     if (state.step.startsWith('username_lock_')) {
-    const username = text;
-    // Validasi username (hanya huruf kecil dan angka, 3-20 karakter)
-    if (!/^[a-z0-9]{3,20}$/.test(username)) {
-      return ctx.reply('❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*', { parse_mode: 'Markdown' });
+    const usernameCheck = validateManageUsernameInput(text);
+    if (!usernameCheck.ok) {
+      return ctx.reply(usernameCheck.message, { parse_mode: 'Markdown' });
     }
+    const username = usernameCheck.value;
        //izin ressel saja
     const resselDbPath = './ressel.db';
     fs.readFile(resselDbPath, 'utf8', async (err, data) => {
@@ -11392,11 +11398,11 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
     return; // Penting! Jangan lanjut ke case lain
   }
   if (state.step.startsWith('username_del_')) {
-    const username = text;
-    // Validasi username (hanya huruf kecil dan angka, 3-20 karakter)
-    if (!/^[a-z0-9]{3,20}$/.test(username)) {
-      return ctx.reply('❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*', { parse_mode: 'Markdown' });
+    const usernameCheck = validateManageUsernameInput(text);
+    if (!usernameCheck.ok) {
+      return ctx.reply(usernameCheck.message, { parse_mode: 'Markdown' });
     }
+    const username = usernameCheck.value;
        //izin ressel saja
     const resselDbPath = './ressel.db';
     fs.readFile(resselDbPath, 'utf8', async (err, data) => {
@@ -11451,20 +11457,11 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
     return; // Penting! Jangan lanjut ke case lain
   }
   if (state.step.startsWith('username_')) {
-    state.username = text;
-
-    if (!state.username) {
-      return ctx.reply('❌ *Username tidak valid. Masukkan username yang valid.*', { parse_mode: 'Markdown' });
+    const usernameCheck = validateAccountUsernameInput(text);
+    if (!usernameCheck.ok) {
+      return ctx.reply(usernameCheck.message, { parse_mode: 'Markdown' });
     }
-    if (state.username.length < 4 || state.username.length > 20) {
-      return ctx.reply('❌ *Username harus terdiri dari 4 hingga 20 karakter.*', { parse_mode: 'Markdown' });
-    }
-    if (/[A-Z]/.test(state.username)) {
-      return ctx.reply('❌ *Username tidak boleh menggunakan huruf kapital. Gunakan huruf kecil saja.*', { parse_mode: 'Markdown' });
-    }
-    if (/[^a-z0-9]/.test(state.username)) {
-      return ctx.reply('❌ *Username tidak boleh mengandung karakter khusus atau spasi. Gunakan huruf kecil dan angka saja.*', { parse_mode: 'Markdown' });
-    }
+    state.username = usernameCheck.value;
     const { type, action } = state;
     if (action === 'create') {
       if (type === 'ssh') {
@@ -11479,36 +11476,19 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
       await ctx.reply('✏️ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
     }
   } else if (state.step.startsWith('password_')) {
-    state.password = ctx.message.text.trim();
-    if (!state.password) {
-      return ctx.reply('❌ *Password tidak valid. Masukkan password yang valid.*', { parse_mode: 'Markdown' });
+    const passwordCheck = validateAccountPasswordInput(ctx.message.text);
+    if (!passwordCheck.ok) {
+      return ctx.reply(passwordCheck.message, { parse_mode: 'Markdown' });
     }
-    if (state.password.length < 3) {
-      return ctx.reply('❌ *Password harus terdiri dari minimal 3 karakter.*', { parse_mode: 'Markdown' });
-    }
-    if (/[^a-zA-Z0-9]/.test(state.password)) {
-      return ctx.reply('❌ *Password tidak boleh mengandung karakter khusus atau spasi.*', { parse_mode: 'Markdown' });
-    }
+    state.password = passwordCheck.value;
     state.step = `exp_${state.action}_${state.type}`;
     await ctx.reply('✏️ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
   } else if (state.step.startsWith('exp_')) {
-    const expInput = ctx.message.text.trim();
-    
-// Cek hanya angka
-if (!/^\d+$/.test(expInput)) {
-  return ctx.reply('❌ *Masa aktif hanya boleh angka, contoh: 30*', { parse_mode: 'Markdown' });
-}
-
-const exp = parseInt(expInput, 10);
-
-if (isNaN(exp) || exp <= 0) {
-  return ctx.reply('❌ *Masa aktif tidak valid. Masukkan angka yang valid.*', { parse_mode: 'Markdown' });
-}
-
-if (exp > 365) {
-  return ctx.reply('❌ *Masa aktif tidak boleh lebih dari 365 hari.*', { parse_mode: 'Markdown' });
-}
-    state.exp = exp;
+    const expCheck = validateAccountExpiryInput(ctx.message.text);
+    if (!expCheck.ok) {
+      return ctx.reply(expCheck.message, { parse_mode: 'Markdown' });
+    }
+    state.exp = expCheck.value;
 
     db.get('SELECT quota, iplimit FROM Server WHERE id = ?', [state.serverId], async (err, server) => {
       if (err) {

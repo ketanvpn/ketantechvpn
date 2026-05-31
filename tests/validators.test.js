@@ -8,6 +8,10 @@ const {
   isValidPassword,
   isValidPositiveInt,
   isValidNonNegativeInt,
+  validateAccountUsernameInput,
+  validateManageUsernameInput,
+  validateAccountPasswordInput,
+  validateAccountExpiryInput,
 } = require('../lib/validators');
 
 test('isSafeSqlIdent: accepts alnum + underscore', () => {
@@ -60,4 +64,32 @@ test('isValidPositiveInt & isValidNonNegativeInt', () => {
   assert.equal(isValidNonNegativeInt(0), true);
   assert.equal(isValidNonNegativeInt('0'), true);
   assert.equal(isValidNonNegativeInt(-1), false);
+});
+
+test('validateAccountUsernameInput: mirrors account flow messages', () => {
+  assert.deepEqual(validateAccountUsernameInput('user123'), { ok: true, value: 'user123' });
+  assert.equal(validateAccountUsernameInput('').message, '❌ *Username tidak valid. Masukkan username yang valid.*');
+  assert.equal(validateAccountUsernameInput('abc').message, '❌ *Username harus terdiri dari 4 hingga 20 karakter.*');
+  assert.equal(validateAccountUsernameInput('User123').message, '❌ *Username tidak boleh menggunakan huruf kapital. Gunakan huruf kecil saja.*');
+  assert.equal(validateAccountUsernameInput('user-1').message, '❌ *Username tidak boleh mengandung karakter khusus atau spasi. Gunakan huruf kecil dan angka saja.*');
+});
+
+test('validateManageUsernameInput: mirrors del/lock/unlock flow', () => {
+  assert.deepEqual(validateManageUsernameInput('abc'), { ok: true, value: 'abc' });
+  assert.equal(validateManageUsernameInput('ab').message, '❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*');
+  assert.equal(validateManageUsernameInput('User').message, '❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*');
+});
+
+test('validateAccountPasswordInput: mirrors SSH password flow', () => {
+  assert.deepEqual(validateAccountPasswordInput('abc123'), { ok: true, value: 'abc123' });
+  assert.equal(validateAccountPasswordInput('').message, '❌ *Password tidak valid. Masukkan password yang valid.*');
+  assert.equal(validateAccountPasswordInput('ab').message, '❌ *Password harus terdiri dari minimal 3 karakter.*');
+  assert.equal(validateAccountPasswordInput('abc-1').message, '❌ *Password tidak boleh mengandung karakter khusus atau spasi.*');
+});
+
+test('validateAccountExpiryInput: mirrors expiry flow', () => {
+  assert.deepEqual(validateAccountExpiryInput('30'), { ok: true, value: 30 });
+  assert.equal(validateAccountExpiryInput('3x').message, '❌ *Masa aktif hanya boleh angka, contoh: 30*');
+  assert.equal(validateAccountExpiryInput('0').message, '❌ *Masa aktif tidak valid. Masukkan angka yang valid.*');
+  assert.equal(validateAccountExpiryInput('366').message, '❌ *Masa aktif tidak boleh lebih dari 365 hari.*');
 });
