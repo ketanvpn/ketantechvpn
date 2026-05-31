@@ -316,10 +316,14 @@ check('createUserDashboardHandlers factory', () => {
     htmlEscape: (v) => String(v ?? ''),
     getUserSaldo: async () => 0,
     getUserLinkInfo: async () => null,
+    getTrialConfig: async () => ({ maxPerDay: 1 }),
+    storeName: 'Smoke VPN',
+    adminUsername: '@admin',
     timeZone: 'Asia/Jakarta',
   });
   if (typeof h.register !== 'function') throw new Error('missing register');
   if (typeof h.showPublicServerStatus !== 'function') throw new Error('missing showPublicServerStatus');
+  if (typeof h.showHelpUser !== 'function') throw new Error('missing showHelpUser');
 });
 
 // ===== DB bootstrap in-memory =====

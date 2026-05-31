@@ -12,6 +12,9 @@ function createUserDashboardHandlers({
   htmlEscape,
   getUserSaldo,
   getUserLinkInfo,
+  getTrialConfig,
+  storeName,
+  adminUsername,
   timeZone,
 }) {
   if (!bot) throw new Error('createUserDashboardHandlers: bot required');
@@ -23,6 +26,11 @@ function createUserDashboardHandlers({
   if (typeof getUserSaldo !== 'function') throw new Error('createUserDashboardHandlers: getUserSaldo required');
   if (typeof getUserLinkInfo !== 'function') throw new Error('createUserDashboardHandlers: getUserLinkInfo required');
 
+  const getTrialCfg = typeof getTrialConfig === 'function'
+    ? getTrialConfig
+    : async () => ({ maxPerDay: 1 });
+  const STORE_NAME = storeName || 'Layanan VPN';
+  const ADMIN_NAME = adminUsername || 'Admin';
   const TIME_ZONE = timeZone || 'Asia/Jakarta';
 
   function formatUserMenuDateTime(ts) {
@@ -282,6 +290,105 @@ function createUserDashboardHandlers({
     });
   }
 
+  async function showHelpUser(ctx) {
+    try { await ctx.answerCbQuery().catch(() => {}); } catch (_) {}
+
+    let trialMaxPerDay = 1;
+    try {
+      const cfg = await getTrialCfg();
+      if (cfg && Number.isInteger(cfg.maxPerDay) && cfg.maxPerDay > 0) {
+        trialMaxPerDay = cfg.maxPerDay;
+      }
+    } catch (e) {
+      logger.error('⚠️ Gagal membaca trial config di help_user:', e.message || e);
+    }
+    const trialFreqText = trialMaxPerDay === 1
+      ? '<b>1x per hari</b>'
+      : `<b>${trialMaxPerDay}x per hari</b>`;
+
+    const text = `
+<b>Bantuan Pengguna ${htmlEscape(STORE_NAME)}</b>
+
+<b>1. Cara beli akun VPN</b>
+• Tekan tombol "<b>🛍️ Buat Akun</b>" di menu utama.
+• Pilih jenis akun (VMess / VLess / Trojan / SSH / lain-lain).
+• Pilih server dan durasi paket.
+• Konfirmasi pembelian sesuai petunjuk di layar.
+
+<b>2. Cara cek akun & masa aktif</b>
+• Tekan tombol "<b>📂 Akun Saya</b>".
+• Bot akan menampilkan daftar akun milik kamu.
+• Status akun:
+  • ✅ Aktif (~X hari lagi)
+  • ⚠️ Aktif (habis HARI INI)
+  • 🔒 Sudah expired
+
+<b>3. Cara melihat riwayat akun</b>
+• Tekan tombol "<b>📈 Statistik & Riwayat Akun</b>".
+• Di sana ada ringkasan:
+  • Total akun yang pernah dibuat.
+  • Berapa yang masih aktif.
+  • Berapa yang sudah expired.
+• Riwayat bisa digeser dengan tombol ⬅️ dan ➡️ di bawah pesan.
+
+<b>4. Trial akun</b>
+• Tekan tombol "<b>🆓 Trial Akun</b>" (jika tersedia).
+• Trial bisa dipakai ${trialFreqText} per akun Telegram (non-reseller).
+• Jika kuota trial hari ini sudah habis, bot akan memberi info bahwa trial belum bisa dipakai lagi.
+
+<b>5. TopUp saldo (QRIS Otomatis)</b>
+• Tekan tombol "<b>💳 TopUp Saldo QRIS</b>" di menu utama.
+• Masukkan nominal yang ingin di-topup, lalu bot akan menampilkan QRIS dinamis.
+• Scan QRIS pakai aplikasi pembayaran kamu (DANA, OVO, GoPay, BCA Mobile, dll).
+• Setelah pembayaran sukses, saldo akan otomatis masuk tanpa perlu konfirmasi admin.
+• Saldo bisa langsung dipakai untuk beli akun lewat tombol "🛍️ Buat Akun".
+
+<b>6. Program Reseller (harga lebih murah)</b>
+• Kalau kamu mau jualan akun VPN sendiri, atau ingin harga akun lebih murah dari harga user biasa:
+  • Tekan tombol "<b>💎 Upgrade ke Reseller (harga murah)</b>" di menu utama.
+  • Di sana ada format pesan yang bisa kamu salin dan kirim ke admin.
+• Setelah disetujui dan diaktifkan sebagai reseller:
+  • Kamu akan dapat harga akun lebih murah.
+  • Kamu bisa jual lagi ke pelangganmu dengan harga sendiri.
+  • Saldo yang kamu isi bisa dipakai untuk membuat akun lewat bot.
+
+<b>7. Butuh bantuan / komplain?</b>
+Kalau kamu mengalami kendala:
+• Akun tidak bisa konek.
+• Config error / tidak bisa di-import.
+• Salah pilih paket / server, dll.
+
+Silakan hubungi admin <b>${htmlEscape(ADMIN_NAME)}</b> melalui Telegram.
+Saat menghubungi admin, sertakan:
+• Username akun VPN.
+• Jenis akun (VMess / VLess / Trojan / SSH).
+• Server yang dipakai.
+• Kendala yang kamu alami (sedetail mungkin).
+
+<b>8. Peraturan singkat pemakaian VPN</b>
+• Dilarang membagikan akun, 1 akun 1 perangkat, kecuali server yang ada keterangan [2 device].
+• Dilarang menggunakan VPN untuk aktivitas yang melanggar hukum.
+• Admin berhak memutus/mematikan akun yang melanggar ketentuan.
+
+Terima kasih sudah memakai layanan ${htmlEscape(STORE_NAME)}.
+Jika masih bingung, kamu selalu bisa tekan tombol ini lagi: "<b>❓ Bantuan / Support</b>".
+    `.trim();
+
+    try {
+      return await sendCleanMenu(ctx, text, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📘 Panduan Pakai', callback_data: 'vpn_guide' }],
+            [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }],
+          ],
+        },
+      });
+    } catch (e) {
+      logger.error('Gagal kirim pesan bantuan:', e.message || e);
+    }
+  }
+
   async function showPublicServerStatus(ctx) {
     const rows = await new Promise((resolve) => {
       db.all(
@@ -338,6 +445,7 @@ function createUserDashboardHandlers({
     bot.action('renew_menu', showRenewMenu);
     bot.action(/^transaction_history:(\d+)$/, async (ctx) => showTransactionHistoryPage(ctx, parseInt(ctx.match[1], 10) || 0));
     bot.action('vpn_guide', showVpnGuide);
+    bot.action('help_user', showHelpUser);
   }
 
   return {
@@ -346,6 +454,7 @@ function createUserDashboardHandlers({
     showRenewMenu,
     showTransactionHistoryPage,
     showVpnGuide,
+    showHelpUser,
     showPublicServerStatus,
   };
 }
