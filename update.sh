@@ -133,10 +133,15 @@ node --check app.js
 if [ -f scripts/smoke-audit.js ]; then
   node scripts/smoke-audit.js
 fi
+if [ -f scripts/smoke-boot.js ]; then
+  node scripts/smoke-boot.js
+fi
 if [ -d tests ]; then
-  node --test tests/*.test.js tests/integration/*.test.js >/dev/null 2>&1 && \
-    echo -e "${GREEN}Unit test: pass${NC}" || \
-    echo -e "${YELLOW}Unit test: ada yang fail / skip (tidak blocking)${NC}"
+  if compgen -G "tests/*.test.js" >/dev/null || compgen -G "tests/integration/*.test.js" >/dev/null; then
+    node --test tests/*.test.js tests/integration/*.test.js >/dev/null 2>&1 && \
+      echo -e "${GREEN}Unit/integration test: pass${NC}" || \
+      echo -e "${YELLOW}Unit/integration test: ada yang fail / skip (tidak blocking)${NC}"
+  fi
 fi
 
 echo -e "${YELLOW}==> Restart PM2${NC}"
