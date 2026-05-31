@@ -42,6 +42,7 @@ const {
   calculateAccountPrice,
 } = require('./lib/account-pricing');
 const { createAccountProviderDispatchers } = require('./lib/account-provider-dispatch');
+const { formatProvisioningFailure } = require('./lib/provisioning-errors');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -9495,21 +9496,6 @@ bot.action(/my_stats:(\d+)/, async (ctx) => {
 
 // --- Service username selection callbacks dipindah ke modules/service-username-selection.js
 
-function formatTrialProvisionFailure(rawMsg) {
-  const lowerFail = String(rawMsg || '').toLowerCase();
-  let failText = '❌ Gagal membuat akun trial. Server sedang bermasalah, silakan coba lagi beberapa saat.';
-
-  if (lowerFail.includes('unauthorized') || lowerFail.includes('401')) {
-    failText = '❌ Gagal membuat akun trial. Server target tidak terautentikasi (unauthorized). Silakan hubungi admin.';
-  } else if (lowerFail.includes('timeout') || lowerFail.includes('timed out') || lowerFail.includes('etimedout')) {
-    failText = '❌ Gagal membuat akun trial. Server target terlalu lama merespons (timeout). Silakan coba lagi.';
-  } else if (lowerFail.includes('502') || lowerFail.includes('503') || lowerFail.includes('504') || lowerFail.includes('bad gateway')) {
-    failText = '❌ Gagal membuat akun trial. Server target sedang gangguan. Silakan coba lagi beberapa saat.';
-  }
-
-  return failText;
-}
-
 bot.on('text', async (ctx) => {
 const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
  // === TEST KIRIM KE GRUP DARI /tesgroub ===
@@ -11286,7 +11272,7 @@ fs.readFile(resselDbPath, 'utf8', async (err, data) => {
             'Username dan password yang tampil di atas dibuat *acak otomatis oleh server*.\n' +
             'Teks yang kamu kirim tadi hanya dipakai sebagai konfirmasi, bukan sebagai username akun.';
 
-        const replyText = isError ? formatTrialProvisionFailure(msg) : msg + extraInfo;
+        const replyText = isError ? formatProvisioningFailure(msg, { trial: true }) : msg + extraInfo;
         await ctx.reply(replyText, { parse_mode: 'Markdown' });
       }
 
@@ -11717,18 +11703,7 @@ const totalHarga = calculateAccountPrice(server.harga, days, isR, RESELLER_DISCO
             }
             await releaseCreateSlot();
             logger.error(`Rollback transaksi user ${ctx.from.id}, type: ${type}, server: ${serverId}, respon: ${normalizedMsg}`);
-            const lowerFail = String(normalizedMsg || '').toLowerCase();
-            let failText = '❌ Gagal membuat akun. Server sedang bermasalah, silakan coba lagi beberapa saat.';
-            if (lowerFail.includes('unauthorized') || lowerFail.includes('401')) {
-              failText = '❌ Gagal membuat akun. Server target tidak terautentikasi (unauthorized). Silakan hubungi admin.';
-            } else if (lowerFail.includes('timeout') || lowerFail.includes('timed out') || lowerFail.includes('etimedout')) {
-              failText = '❌ Gagal membuat akun. Server target terlalu lama merespons (timeout). Silakan coba lagi.';
-            } else if (lowerFail.includes('502') || lowerFail.includes('503') || lowerFail.includes('504') || lowerFail.includes('bad gateway')) {
-              failText = '❌ Gagal membuat akun. Server target sedang gangguan. Silakan coba lagi beberapa saat.';
-            }
-            if (refundFailed) {
-              failText += '\n\n⚠️ Refund otomatis sedang bermasalah. Admin sudah diberi notifikasi untuk pengecekan manual.';
-            }
+            const failText = formatProvisioningFailure(normalizedMsg, { refundFailed });
             if (waitCtrl) {
               try { await waitCtrl.stop(failText, true); } catch (_) {}
               return;

@@ -41,6 +41,7 @@ check('require lib/time', () => require('../lib/time'));
 check('require lib/validators', () => require('../lib/validators'));
 check('require lib/account-pricing', () => require('../lib/account-pricing'));
 check('require lib/account-provider-dispatch', () => require('../lib/account-provider-dispatch'));
+check('require lib/provisioning-errors', () => require('../lib/provisioning-errors'));
 check('require lib/bonus', () => require('../lib/bonus'));
 check('require lib/html', () => require('../lib/html'));
 check('require lib/masker', () => require('../lib/masker'));
