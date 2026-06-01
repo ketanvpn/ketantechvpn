@@ -6360,10 +6360,6 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
-  let targetLabel = 'semua user';
-  if (target === 'reseller') targetLabel = 'semua reseller';
-  else if (target === 'member') targetLabel = 'member (bukan reseller & bukan admin)';
-
   // Simpan target, dan tunggu user pilih MODE (manual / template)
   broadcastSessions[adminId] = {
     step: 'choose_mode',
@@ -6373,41 +6369,10 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
   // Edit pesan pilih target jadi pilih mode (tidak numpuk pesan baru).
   await editOrReply(
     ctx,
-    `📢 Pengumuman ke <b>${targetLabel}</b>\n\n` +
-      'Pilih cara membuat pengumuman:\n' +
-      '• ✏️ Tulis manual (ketik bebas)\n' +
-      '• 🛠️ Template Maintenance VPN\n' +
-      '• ✅ Template Maintenance Selesai\n' +
-      '• 🎁 Template Promo/Diskon VPN\n' +
-      '• 🔥 Template Slot/Stok Terbatas\n' +
-      '• 📋 Template Info / Pengumuman Umum',
+    buildBroadcastModeText(target),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '⚠️ Tulis Manual', callback_data: 'broadcast_mode_manual' },
-          ],
-          [
-            { text: '🛠️ Maintenance VPN', callback_data: 'broadcast_mode_maintenance' },
-          ],
-          [
-            { text: '✅ Maintenance Selesai', callback_data: 'broadcast_mode_maintenance_done' },
-          ],
-          [
-            { text: '🎁 Promo / Diskon', callback_data: 'broadcast_mode_promo' },
-          ],
-          [
-            { text: '🔥 Slot/Stok Terbatas', callback_data: 'broadcast_mode_slot' },
-          ],
-          [
-            { text: '📋 Info / Pengumuman Umum', callback_data: 'broadcast_mode_info' },
-          ],
-          [
-            { text: '❌ Batal', callback_data: 'broadcast_cancel' },
-          ],
-        ],
-      },
+      reply_markup: buildBroadcastModeKeyboard(),
     }
   );
 }
@@ -6432,15 +6397,10 @@ bot.action('broadcast_mode_manual', async (ctx) => {
   state.step = 'wait_message';
 
   await ctx.reply(
-    '⚠️ Silakan kirim teks pengumuman yang ingin dikirim.\n' +
-      'ℹ️ Atau tekan ❌ Batal di bawah untuk membatalkan.',
+    buildBroadcastManualPromptText(),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
-        ],
-      },
+      reply_markup: buildBroadcastCancelKeyboard(),
     }
   );
 });
@@ -6467,19 +6427,10 @@ bot.action('broadcast_mode_maintenance', async (ctx) => {
   state.step = 'tm_ask_layanan';
 
   await ctx.reply(
-    '🛠️ Template Maintenance VPN\n\n' +
-      '1️⃣ Masukkan nama server atau layanan yang terkena maintenance.\n' +
-      'Contoh:\n' +
-      '• Semua server VPN\n' +
-      '• Server SG-1 & SG-2\n' +
-      '• Layanan SSH & VMESS',
+    buildBroadcastTemplatePromptText('maintenance'),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
-        ],
-      },
+      reply_markup: buildBroadcastCancelKeyboard(),
     }
   );
 });
@@ -6508,19 +6459,10 @@ bot.action('broadcast_mode_maintenance_done', async (ctx) => {
   state.step = 'mtdone_ask_layanan';
 
   await ctx.reply(
-    '✅ Template Maintenance Selesai\n\n' +
-      '1️⃣ Masukkan nama server atau layanan yang maintenance-nya sudah selesai.\n' +
-      'Contoh:\n' +
-      '• Semua server VPN\n' +
-      '• Server SG-1 & SG-2\n' +
-      '• Layanan SSH & VMESS',
+    buildBroadcastTemplatePromptText('maintenanceDone'),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
-        ],
-      },
+      reply_markup: buildBroadcastCancelKeyboard(),
     }
   );
 });
@@ -6547,19 +6489,10 @@ bot.action('broadcast_mode_promo', async (ctx) => {
   state.step = 'promo_ask_paket';
 
   await ctx.reply(
-    '🎁 Template Promo / Diskon VPN\n\n' +
-      '1️⃣ Masukkan nama paket atau jenis promo.\n' +
-      'Contoh:\n' +
-      '• Paket 30 Hari All Server\n' +
-      '• Promo Akhir Bulan 7 Hari\n' +
-      '• Diskon 30% semua paket bulanan',
+    buildBroadcastTemplatePromptText('promo'),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
-        ],
-      },
+      reply_markup: buildBroadcastCancelKeyboard(),
     }
   );
 });
@@ -6588,19 +6521,10 @@ bot.action('broadcast_mode_slot', async (ctx) => {
   state.step = 'slot_ask_layanan';
 
   await ctx.reply(
-    '🔥 Template Slot / Stok Terbatas\n\n' +
-      '1️⃣ Masukkan nama layanan / produk yang slotnya terbatas.\n' +
-      'Contoh:\n' +
-      '• Akun Direct EDU\n' +
-      '• Slot promo bulanan\n' +
-      '• Server SG-1 reseller',
+    buildBroadcastTemplatePromptText('slot'),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
-        ],
-      },
+      reply_markup: buildBroadcastCancelKeyboard(),
     }
   );
 });
@@ -6629,19 +6553,10 @@ bot.action('broadcast_mode_info', async (ctx) => {
   state.step = 'info_ask_judul';
 
   await ctx.reply(
-    '📋 Template Info / Pengumuman Umum\n\n' +
-      '1️⃣ Masukkan judul pengumuman.\n' +
-      'Contoh:\n' +
-      '• Server Baru Tersedia\n' +
-      '• Update Aturan Pemakaian\n' +
-      '• Libur Lebaran',
+    buildBroadcastTemplatePromptText('info'),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '❌ Batal', callback_data: 'broadcast_cancel' }],
-        ],
-      },
+      reply_markup: buildBroadcastCancelKeyboard(),
     }
   );
 });
@@ -6740,11 +6655,7 @@ bot.action('broadcast_cancel', async (ctx) => {
 
   // Edit pesan konfirmasi jadi notif "dibatalkan" + tombol kembali ke Menu Admin.
   await editOrReply(ctx, '⛔ Pengumuman dibatalkan.', {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' }],
-      ],
-    },
+    reply_markup: buildBroadcastBackToAdminKeyboard(),
   });
 });
 
