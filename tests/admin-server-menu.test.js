@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 const {
   buildAdminServerMenuText,
   buildAdminServerMenuKeyboard,
+  buildServerListText,
+  buildServerMenuBackKeyboard,
+  buildResetDbConfirmKeyboard,
+  buildDeleteServerKeyboard,
 } = require('../lib/admin-server-menu');
 
 test('buildAdminServerMenuText: includes server management sections', () => {
@@ -35,4 +39,37 @@ test('buildAdminServerMenuKeyboard: keeps server admin callbacks', () => {
   ]) {
     assert.ok(callbacks.includes(expected), `missing ${expected}`);
   }
+});
+
+test('buildServerListText: numbers servers and totals', () => {
+  const text = buildServerListText([
+    { domain: 'a.example.com' },
+    { domain: 'b.example.com' },
+  ]);
+  assert.match(text, /Daftar Server/);
+  assert.match(text, /• 1\. a\.example\.com/);
+  assert.match(text, /• 2\. b\.example\.com/);
+  assert.match(text, /Total Jumlah Server: 2/);
+});
+
+test('buildServerMenuBackKeyboard: back to server menu', () => {
+  const kb = buildServerMenuBackKeyboard();
+  assert.equal(kb.inline_keyboard[0][0].callback_data, 'admin_server_menu');
+});
+
+test('buildResetDbConfirmKeyboard: confirm/cancel callbacks', () => {
+  const kb = buildResetDbConfirmKeyboard();
+  assert.equal(kb.inline_keyboard[0][0].callback_data, 'confirm_resetdb');
+  assert.equal(kb.inline_keyboard[1][0].callback_data, 'cancel_resetdb');
+});
+
+test('buildDeleteServerKeyboard: per-server delete + back', () => {
+  const kb = buildDeleteServerKeyboard([
+    { id: 1, nama_server: 'SG-1' },
+    { id: 2, nama_server: 'ID-1' },
+  ]);
+  assert.equal(kb.inline_keyboard[0][0].callback_data, 'confirm_delete_server_1');
+  assert.equal(kb.inline_keyboard[0][0].text, 'SG-1');
+  assert.equal(kb.inline_keyboard[1][0].callback_data, 'confirm_delete_server_2');
+  assert.equal(kb.inline_keyboard[2][0].callback_data, 'admin_server_menu');
 });

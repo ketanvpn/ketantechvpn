@@ -100,6 +100,10 @@ const {
 const {
   buildAdminServerMenuText,
   buildAdminServerMenuKeyboard,
+  buildServerListText,
+  buildServerMenuBackKeyboard,
+  buildResetDbConfirmKeyboard,
+  buildDeleteServerKeyboard,
 } = require('./lib/admin-server-menu');
 const {
   buildResellerListText,
@@ -11630,21 +11634,12 @@ bot.action('listserver', async (ctx) => {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia saat ini.*', { parse_mode: 'Markdown' });
     }
 
-    let serverList = '🗑️ *Daftar Server* 🗑️\n\n';
-    servers.forEach((server, index) => {
-      serverList += `• ${index + 1}. ${server.domain}\n`;
-    });
-
-    serverList += `\nTotal Jumlah Server: ${servers.length}`;
+    const serverList = buildServerListText(servers);
 
     // Edit pesan menu server, tambah tombol kembali biar admin gampang balik.
     await editOrReply(ctx, serverList, {
       parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
-        ],
-      },
+      reply_markup: buildServerMenuBackKeyboard(),
     });
   } catch (error) {
     logger.error('⚠️ Kesalahan saat mengambil daftar server:', error);
@@ -11658,12 +11653,7 @@ bot.action('resetdb', async (ctx) => {
   }
     await ctx.answerCbQuery();
     await ctx.reply('⚠️ *PERHATIAN! Anda akan menghapus semua server yang tersedia. Apakah Anda yakin?*', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '✅ Ya', callback_data: 'confirm_resetdb' }],
-          [{ text: '⛔ Tidak', callback_data: 'cancel_resetdb' }]
-        ]
-      },
+      reply_markup: buildResetDbConfirmKeyboard(),
       parse_mode: 'Markdown'
     });
   } catch (error) {
@@ -11723,14 +11713,9 @@ bot.action('deleteserver', async (ctx) => {
         return ctx.reply('?? *PERHATIAN! Tidak ada server yang tersedia saat ini.*', { parse_mode: 'Markdown' });
       }
 
-      const keyboard = servers.map((server) => [{ text: server.nama_server, callback_data: `confirm_delete_server_${server.id}` }]);
-      // Tombol Kembali sebelumnya pakai callback 'kembali_ke_menu' yang tidak ada handler-nya.
-      // Sekarang langsung balik ke Menu Server (admin_server_menu).
-      keyboard.push([{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }]);
-
       // Edit pesan menu server, fallback reply kalau pesan asli sudah hilang.
       editOrReply(ctx, '🗑️ *Pilih server yang ingin dihapus:*', {
-        reply_markup: { inline_keyboard: keyboard },
+        reply_markup: buildDeleteServerKeyboard(servers),
         parse_mode: 'Markdown',
       });
     });
