@@ -11,6 +11,8 @@ const {
   buildDeleteServerKeyboard,
   buildDetailServerKeyboard,
   buildEditNumericFieldPromptText,
+  buildEditHargaPromptText,
+  buildEditHargaInputText,
 } = require('../lib/admin-server-menu');
 
 test('buildAdminServerMenuText: includes server management sections', () => {
@@ -99,4 +101,23 @@ test('buildEditNumericFieldPromptText: renders label/server/value', () => {
   assert.match(text, /Server: \*SG-1\*/);
   assert.match(text, /Nilai sekarang: \*2 IP\*/);
   assert.match(text, /Batal untuk membatalkan/);
+});
+
+test('buildEditHargaPromptText: renders current price prompt', () => {
+  const text = buildEditHargaPromptText({ serverName: 'SG-1', oldHarga: 15000 });
+  assert.match(text, /Edit Harga Server/);
+  assert.match(text, /Server: \*SG-1\*/);
+  assert.match(text, /Harga sekarang: \*Rp 15\.000\*/);
+  assert.match(text, /masukkan harga baru/);
+});
+
+test('buildEditHargaInputText: renders typed amount preview', () => {
+  const text = buildEditHargaInputText({
+    serverName: 'SG-1',
+    oldHarga: 15000,
+    currentAmount: '25000',
+  });
+  assert.match(text, /Harga sekarang: \*Rp 15\.000\*/);
+  assert.match(text, /Input baru: \*Rp 25000\*/);
+  assert.match(text, /Tekan ✅ untuk simpan/);
 });

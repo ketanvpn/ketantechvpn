@@ -106,6 +106,8 @@ const {
   buildDeleteServerKeyboard,
   buildDetailServerKeyboard,
   buildEditNumericFieldPromptText,
+  buildEditHargaPromptText,
+  buildEditHargaInputText,
 } = require('./lib/admin-server-menu');
 const {
   buildResellerListText,
@@ -11733,11 +11735,10 @@ bot.action(/edit_harga_(\d+)/, async (ctx) => {
     };
 
     await ctx.reply(
-      '✏️ *Edit Harga Server (paket 30 hari)*\n\n' +
-        '📍 Server: *' + namaServer + '*\n' +
-        '💰 Harga sekarang: *Rp ' + oldHarga.toLocaleString('id-ID') + '*\n\n' +
-        '_Silakan masukkan harga baru menggunakan keypad di bawah._\n' +
-        '_Tekan ❌ Batal untuk membatalkan._',
+      buildEditHargaPromptText({
+        serverName: namaServer,
+        oldHarga,
+      }),
       {
         reply_markup: { inline_keyboard: keyboard_nomor() },
         parse_mode: 'Markdown',
@@ -12355,12 +12356,11 @@ async function handleEditHarga(ctx, userStateData, data) {
   userStateData.amount = currentAmount;
   const oldHarga = Number(userStateData.oldValue) || 0;
   const serverName = userStateData.serverName || ('Server #' + userStateData.serverId);
-  const newMessage =
-    '✏️ *Edit Harga Server (paket 30 hari)*\n\n' +
-    '📍 Server: *' + serverName + '*\n' +
-    '💰 Harga sekarang: *Rp ' + oldHarga.toLocaleString('id-ID') + '*\n' +
-    '🆕 Input baru: *Rp ' + (currentAmount || '0') + '*\n\n' +
-    '_Tekan ✅ untuk simpan atau ❌ Batal untuk membatalkan._';
+  const newMessage = buildEditHargaInputText({
+    serverName,
+    oldHarga,
+    currentAmount,
+  });
   const oldText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || '';
   if (newMessage !== oldText) {
     try {
