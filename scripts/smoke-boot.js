@@ -49,6 +49,8 @@ check('require lib/bonus', () => require('../lib/bonus'));
 check('require lib/html', () => require('../lib/html'));
 check('require lib/masker', () => require('../lib/masker'));
 check('require lib/licence', () => require('../lib/licence'));
+check('require lib/audit-logger', () => require('../lib/audit-logger'));
+check('require lib/error-logger', () => require('../lib/error-logger'));
 
 check('require db/connection', () => require('../db/connection'));
 check('require db/ddl-safe', () => require('../db/ddl-safe'));
@@ -438,6 +440,21 @@ check('createServiceUsernameSelectionHandlers factory', () => {
   if (typeof h.handleCreateOrRenewUsername !== 'function') throw new Error('missing handleCreateOrRenewUsername');
   if (typeof h.handleManageUsername !== 'function') throw new Error('missing handleManageUsername');
   if (typeof h.handleTrialUsername !== 'function') throw new Error('missing handleTrialUsername');
+});
+
+// ===== Quality Improvements: audit & error logger =====
+
+check('audit-logger helpers', () => {
+  const { logAuditAction, getAuditLogs } = require('../lib/audit-logger');
+  if (typeof logAuditAction !== 'function') throw new Error('missing logAuditAction');
+  if (typeof getAuditLogs !== 'function') throw new Error('missing getAuditLogs');
+});
+
+check('error-logger helpers', () => {
+  const { logError, getErrorLogs, getErrorCount } = require('../lib/error-logger');
+  if (typeof logError !== 'function') throw new Error('missing logError');
+  if (typeof getErrorLogs !== 'function') throw new Error('missing getErrorLogs');
+  if (typeof getErrorCount !== 'function') throw new Error('missing getErrorCount');
 });
 
 // ===== DB bootstrap in-memory =====
