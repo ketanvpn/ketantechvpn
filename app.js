@@ -151,6 +151,11 @@ const {
   buildBroadcastManualPromptText,
   buildBroadcastTemplatePromptText,
 } = require('./lib/broadcast-menu');
+const {
+  buildAddSaldoPromptText,
+  buildAddSaldoPreviewText,
+  buildAddSaldoSuccessText,
+} = require('./lib/admin-saldo-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -11765,7 +11770,7 @@ bot.action(/add_saldo_(\d+)/, async (ctx) => {
   logger.info(`User ${ctx.from.id} memilih untuk menambahkan saldo user dengan ID: ${userId}`);
   userState[ctx.chat.id] = { step: 'add_saldo', userId: userId };
 
-  await ctx.reply('?? *Silakan masukkan jumlah saldo yang ingin ditambahkan:*', {
+  await ctx.reply(buildAddSaldoPromptText(), {
     reply_markup: { inline_keyboard: keyboard_nomor() },
     parse_mode: 'Markdown'
   });
@@ -12183,17 +12188,12 @@ async function handleAddSaldo(ctx, userStateData, data) {
         logger.error('⚠️ Gagal mencatat transaksi tambah saldo manual:', e.message);
       }
 
-      let msg =
-        '✅ *Saldo user berhasil ditambahkan.*\n\n' +
-        '📋 *Detail:*\n' +
-        `- Nominal Bayar : *Rp ${amount.toLocaleString('id-ID')}*\n`;
-
-      if (bonus > 0) {
-        msg +=
-          `- Bonus        : *Rp ${bonus.toLocaleString('id-ID')} (${percent}%)*\n`;
-      }
-
-      msg += `- Saldo Masuk   : *Rp ${totalCredit.toLocaleString('id-ID')}*`;
+      const msg = buildAddSaldoSuccessText({
+        amount,
+        bonus,
+        percent,
+        totalCredit,
+      });
 
       await ctx.reply(msg, { parse_mode: 'Markdown' });
     } catch (error) {
@@ -12223,9 +12223,7 @@ async function handleAddSaldo(ctx, userStateData, data) {
   }
 
   userStateData.saldo = currentSaldo;
-  const newMessage =
-    `💰 *Silakan masukkan jumlah saldo yang ingin ditambahkan:*\n\n` +
-    `Jumlah saldo saat ini: *${currentSaldo || '0'}*`;
+  const newMessage = buildAddSaldoPreviewText(currentSaldo);
 
   await ctx.editMessageText(newMessage, {
     reply_markup: { inline_keyboard: keyboard_nomor() },
