@@ -108,6 +108,8 @@ const {
   buildEditNumericFieldPromptText,
   buildEditHargaPromptText,
   buildEditHargaInputText,
+  maskServerAuth,
+  buildServerDetailText,
 } = require('./lib/admin-server-menu');
 const {
   buildResellerListText,
@@ -11868,10 +11870,7 @@ bot.action(/edit_auth_(\d+)/, async (ctx) => {
       const currentDomain = row.domain || '-';
       const currentNama = row.nama_server || '-';
 
-      let maskedAuth = currentAuth;
-      if (currentAuth.length > 8) {
-        maskedAuth = currentAuth.slice(0, 4) + '...' + currentAuth.slice(-4);
-      }
+      const maskedAuth = maskServerAuth(currentAuth);
 
       userState[ctx.chat.id] = {
         step: 'edit_auth',
@@ -12011,21 +12010,7 @@ bot.action(/server_detail_(\d+)/, async (ctx) => {
       return ctx.reply('?? *PERHATIAN! Server tidak ditemukan.*', { parse_mode: 'Markdown' });
     }
 
-    const maskedAuth = String(server.auth || '').length > 8
-      ? `${String(server.auth).slice(0, 4)}...${String(server.auth).slice(-4)}`
-      : String(server.auth || '-');
-
-    const serverDetails = `?? *Detail Server* ??\n\n` +
-      `?? *Domain:* \`${server.domain}\`\n` +
-      `?? *Auth:* \`${maskedAuth}\`\n` +
-      `• *Nama Server:* \`${server.nama_server}\`\n` +
-      `?? *Quota:* \`${server.quota}\`\n` +
-      `?? *Limit IP:* \`${server.iplimit}\`\n` +
-      `?? *Batas Create Akun:* \`${server.batas_create_akun}\`\n` +
-      `?? *Total Create Akun:* \`${server.total_create_akun}\`\n` +
-      `?? *Harga 30 hari:* \`Rp ${server.harga}\`\n\n`;
-
-    await ctx.reply(serverDetails, { parse_mode: 'Markdown' });
+    await ctx.reply(buildServerDetailText(server), { parse_mode: 'Markdown' });
   } catch (error) {
     logger.error('?? Kesalahan saat mengambil detail server:', error);
     await ctx.reply('?? *Terjadi kesalahan saat mengambil detail server.*', { parse_mode: 'Markdown' });

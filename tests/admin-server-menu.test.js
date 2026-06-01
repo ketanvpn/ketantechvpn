@@ -13,6 +13,8 @@ const {
   buildEditNumericFieldPromptText,
   buildEditHargaPromptText,
   buildEditHargaInputText,
+  maskServerAuth,
+  buildServerDetailText,
 } = require('../lib/admin-server-menu');
 
 test('buildAdminServerMenuText: includes server management sections', () => {
@@ -120,4 +122,28 @@ test('buildEditHargaInputText: renders typed amount preview', () => {
   assert.match(text, /Harga sekarang: \*Rp 15\.000\*/);
   assert.match(text, /Input baru: \*Rp 25000\*/);
   assert.match(text, /Tekan ✅ untuk simpan/);
+});
+
+test('maskServerAuth: masks long auth and keeps short/fallback', () => {
+  assert.equal(maskServerAuth('abcd1234xyz'), 'abcd...4xyz');
+  assert.equal(maskServerAuth('short'), 'short');
+  assert.equal(maskServerAuth(''), '-');
+});
+
+test('buildServerDetailText: renders masked server detail', () => {
+  const text = buildServerDetailText({
+    domain: 'sg.example.com',
+    auth: 'abcd1234xyz',
+    nama_server: 'SG-1',
+    quota: 100,
+    iplimit: 2,
+    batas_create_akun: 50,
+    total_create_akun: 10,
+    harga: 15000,
+  });
+  assert.match(text, /Detail Server/);
+  assert.match(text, /sg\.example\.com/);
+  assert.match(text, /abcd\.\.\.4xyz/);
+  assert.match(text, /SG-1/);
+  assert.match(text, /Rp 15000/);
 });
