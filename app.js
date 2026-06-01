@@ -1862,16 +1862,7 @@ const txLock = new Map(); // userId -> { action, until }
 // karena checkTrialAccess -> saveTrialAccess ada race window (file JSON).
 const trialLock = new Set();
 
-function isTxAction(data = '') {
-  return (
-    data.startsWith('create_') ||   // create_ssh/vmess/vless/trojan...
-    data.startsWith('renew_')  ||   // renew_ssh/vmess/vless/trojan...
-    data.startsWith('trial_')  ||   // trial_ssh/vmess/vless/trojan...
-    data === 'topup_manual'    ||   // topup manual QRIS
-    data === 'topup_saldo'     ||   // kalau suatu saat kamu hidupkan lagi
-    data === 'qris_topup_confirm_yes'
-  );
-}
+const { isTxAction } = require('./lib/service-action-router');
 
 bot.on('callback_query', async (ctx, next) => {
   const userId = ctx.from?.id;
