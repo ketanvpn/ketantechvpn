@@ -8545,38 +8545,13 @@ bot.action('cek_service', async (ctx) => {
         logger.error(`Error dari skrip cek-port.sh: ${stderr}`);
       }
 
-      // Bersihkan kode warna ANSI supaya rapi
-      let cleanOutput = stdout.replace(/\x1b\[[0-9;]*m/g, '').trim();
-      if (!cleanOutput) {
-        cleanOutput = 'Tidak ada output dari skrip cek-port.sh.';
-      }
-
-      // Escape karakter berbahaya untuk HTML
-      cleanOutput = cleanOutput
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-
-      // Batasi panjang output supaya tidak terlalu panjang
-      if (cleanOutput.length > 1500) {
-        cleanOutput = cleanOutput.slice(0, 1500) + '\n... (dipotong, output terlalu panjang)';
-      }
-
       const timestamp = new Date().toLocaleString('id-ID', {
         timeZone: TIME_ZONE,
       });
-
-      const legend =
-        '\n\n<b>Keterangan:</b>\n' +
-        '? <b>OPEN</b>      : Port terbuka dan layanan merespons dengan baik.\n' +
-        '? <b>CLOSED</b>    : Port tertutup atau layanan tidak aktif.\n' +
-        '? <b>TIMEOUT</b>   : Tidak ada balasan dari server, kemungkinan gangguan koneksi.';
-
-      const resultText =
-        `<b>?? STATUS SERVER </b>\n` +
-        `Waktu cek: <b>${timestamp}</b>\n\n` +
-        `<pre>${cleanOutput}</pre>` +
-        legend;
+      const resultText = buildServerStatusResultText({
+        stdout,
+        timestamp,
+      });
 
       ctx.telegram.editMessageText(
         loadingMsg.chat.id,
