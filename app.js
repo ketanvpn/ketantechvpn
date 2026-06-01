@@ -78,6 +78,16 @@ const {
   buildQrisInvoiceCaption,
   buildQrisInvoiceKeyboard,
 } = require('./lib/qris-topup-menu');
+const {
+  buildWebLinkSuccessText,
+  buildWebLinkSuccessKeyboard,
+  buildWebLinkedStatusText,
+  buildWebLinkedStatusKeyboard,
+  buildWebLinkInstructionsText,
+  buildWebLinkInstructionsKeyboard,
+  buildWebUnlinkSuccessText,
+  buildWebUnlinkSuccessKeyboard,
+} = require('./lib/web-link-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -2948,32 +2958,18 @@ async function handleWebLinkToken(ctx, token) {
   }
 
   const username = webUser.username || webUser.email || ('User #' + webUser.id);
+  const webDomain = getWebDomain() || 'web';
 
-  const lines = [];
-  lines.push(wasLinked
-    ? '✅ <b>Akun web kamu sudah terhubung ulang.</b>'
-    : '🎉 <b>Akun web kamu berhasil terhubung!</b>');
-  lines.push('');
-  lines.push('🌐 Web: <b>' + htmlEscape(getWebDomain() || 'web') + '</b>');
-  lines.push('👤 Username web: <code>' + htmlEscape(username) + '</code>');
-  if (migratedAmount > 0) {
-    lines.push('🔄 Saldo lokal bot di-migrate: <b>+Rp ' + migratedAmount.toLocaleString('id-ID') + '</b>');
-  } else if (migrateError) {
-    lines.push('⚠️ <i>Migrasi saldo lokal gagal:</i> <code>' + htmlEscape(migrateError) + '</code>');
-    lines.push('<i>Saldo lokal kamu tidak hilang — silakan hubungi admin untuk migrasi manual.</i>');
-  }
-  lines.push('💰 Saldo sekarang: <b>Rp ' + finalWebBalance.toLocaleString('id-ID') + '</b>');
-  lines.push('');
-  lines.push('Mulai sekarang, transaksi di bot ini & di web akan menggunakan akun yang sama.');
-
-  await ctx.reply(lines.join('\n'), {
+  await ctx.reply(buildWebLinkSuccessText({
+    wasLinked,
+    webDomain,
+    username,
+    migratedAmount,
+    migrateError,
+    finalWebBalance,
+  }), {
     parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🌐 Buka Web', url: getWebDomain() || 'https://ketantech.my.id' }],
-        [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
-      ],
-    },
+    reply_markup: buildWebLinkSuccessKeyboard(getWebDomain()),
   });
 }
 
@@ -3010,56 +3006,16 @@ bot.action('web_link_menu', async (ctx) => {
       logger.warn('Gagal ambil info user web (web_link_menu): ' + (e.message || e));
     }
 
-    const lines = [];
-    lines.push('🔗 <b>Akun Web Sudah Terhubung</b>');
-    lines.push('');
-    lines.push('🌐 Web: ' + htmlEscape(webDomain));
-    if (webUser) {
-      lines.push('👤 Username: <code>' + htmlEscape(webUser.username || webUser.email || ('User #' + webUser.id)) + '</code>');
-      lines.push('💰 Saldo web: <b>Rp ' + Number(webUser.balance || 0).toLocaleString('id-ID') + '</b>');
-    } else {
-      lines.push('<i>(Tidak bisa ambil info terbaru dari web. Coba lagi nanti.)</i>');
-    }
-    lines.push('');
-    lines.push('Saldo & transaksi kamu sinkron antara bot ini dan web.');
-
-    return sendCleanMenu(ctx, lines.join('\n'), {
+    return sendCleanMenu(ctx, buildWebLinkedStatusText({ webDomain, webUser }), {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🌐 Buka Web', url: webDomain }],
-          [{ text: '🔌 Putuskan Koneksi', callback_data: 'web_link_unlink' }],
-          [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }],
-        ],
-      },
+      reply_markup: buildWebLinkedStatusKeyboard(webDomain),
     });
   }
 
   // Belum link → kasih instruksi
-  const lines = [];
-  lines.push('🔗 <b>Hubungkan Akun ke Web</b>');
-  lines.push('');
-  lines.push('Kamu bisa menghubungkan akun bot ini dengan akun di:');
-  lines.push('🌐 <b>' + htmlEscape(webDomain) + '</b>');
-  lines.push('');
-  lines.push('Setelah terhubung, <b>saldo dan akun</b> kamu akan sinkron antara bot dan web.');
-  lines.push('');
-  lines.push('<b>Cara menghubungkan:</b>');
-  lines.push('1. Login (atau daftar) di ' + htmlEscape(webDomain));
-  lines.push('2. Buka menu <b>Profil</b> → <b>Hubungkan ke Telegram</b>');
-  lines.push('3. Klik link yang diberikan oleh web');
-  lines.push('4. Akun akan otomatis terhubung');
-  lines.push('');
-  lines.push('Belum punya akun web? Daftar dulu lewat tombol di bawah.');
-
-  return sendCleanMenu(ctx, lines.join('\n'), {
+  return sendCleanMenu(ctx, buildWebLinkInstructionsText(webDomain), {
     parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🌐 Buka Web Sekarang', url: webDomain }],
-        [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }],
-      ],
-    },
+    reply_markup: buildWebLinkInstructionsKeyboard(webDomain),
   });
 });
 
@@ -3085,19 +3041,10 @@ bot.action('web_link_unlink', async (ctx) => {
     );
   });
 
-  await sendCleanMenu(ctx,
-    '🔌 <b>Akun web sudah diputuskan dari bot ini.</b>\n\n' +
-    'Saldo & transaksi kamu di bot kembali memakai data lokal.\n' +
-    'Kamu bisa hubungkan ulang kapan saja lewat menu <b>🔗 Hubungkan ke Web</b>.',
-    {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Menu Utama', callback_data: 'send_main_menu' }],
-        ],
-      },
-    }
-  );
+  await sendCleanMenu(ctx, buildWebUnlinkSuccessText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildWebUnlinkSuccessKeyboard(),
+  });
 });
 
 // ============================================================================
