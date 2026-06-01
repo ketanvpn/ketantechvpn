@@ -1855,12 +1855,9 @@ async function renderPickServer(ctx) {
       if (err || !rows || rows.length === 0) {
         return showErrorOnMenu(ctx, 'Server tidak tersedia.');
       }
-      const buttons = rows.map(s => [{ text: s.nama_server, callback_data: `flow_pick_server:${s.id}` }]);
-      buttons.push([{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]);
-
       await sendCleanMenu(ctx,
-        `<b>${st.mode === 'trial' ? 'Trial' : 'Buat Akun'} ${st.type.toUpperCase()}</b>\nPilih server:`,
-        { parse_mode:'HTML', reply_markup:{ inline_keyboard: buttons } }
+        buildFlowPickServerText(st),
+        { parse_mode:'HTML', reply_markup: buildFlowPickServerKeyboard(rows) }
       );
     });
   } catch {
@@ -1875,28 +1872,20 @@ async function renderConfirm(ctx) {
 
   const { serverId, username } = st.payload;
   const trialCfg = await getTrialConfig();
-  const days = Math.max(1, Math.ceil(trialCfg.durationHours / 24));
 
   const srow = await new Promise((resolve)=> {
     db.get(`SELECT nama_server FROM Server WHERE id=?`, [serverId], (e, r) => resolve(r || null));
   });
 
-  const namaServer = srow?.nama_server || `Server #${serverId}`;
+  const msg = buildFlowConfirmText({
+    type: st.type,
+    serverName: srow?.nama_server,
+    serverId,
+    username,
+    durationHours: trialCfg.durationHours,
+  });
 
-  const msg = [
-    `<b>Konfirmasi Trial ${st.type.toUpperCase()}</b>`,
-    `Server   : <b>${namaServer}</b>`,
-    `Username : <code>${username}</code>`,
-    `Durasi   : ~<b>${trialCfg.durationHours} jam</b> (${days} hari dibulatkan)`,
-  ].join('\n');
-
-  const kb = [
-    [{ text: '✅ Konfirmasi', callback_data: 'flow_confirm' }],
-    [{ text: '✏️ Ubah Server', callback_data: 'flow_back_server' }],
-    [{ text: '❌ Batal', callback_data: 'flow_cancel' }],
-  ];
-
-  await sendCleanMenu(ctx, msg, { parse_mode:'HTML', reply_markup:{ inline_keyboard: kb } });
+  await sendCleanMenu(ctx, msg, { parse_mode:'HTML', reply_markup: buildFlowConfirmKeyboard() });
 }
 
 // =====================================================
