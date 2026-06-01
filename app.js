@@ -5631,28 +5631,14 @@ bot.action('admin_trial_save', async (ctx) => {
     // Hapus draft sementara
     delete adminTrialTemp[adminId];
 
-    const statusText = normalized.enabled ? 'Aktif ✅' : 'Nonaktif ⛔';
-    const wlLabel = normalized.watchlistMaxPerDay === 0
-      ? 'tidak boleh trial'
-      : `${normalized.watchlistMaxPerDay}x per hari`;
-
     // Audit fix MEDIUM: pakai editOrReply biar pesan menu di-update jadi
     // notif "berhasil disimpan", bukan kirim pesan baru di bawah menu lama.
     await editOrReply(
       ctx,
-      '✅ *Pengaturan trial berhasil disimpan.*\n\n' +
-      `Status trial          : *${statusText}*\n` +
-      `Max trial / hari      : *${normalized.maxPerDay}x per user*\n` +
-      `Lama trial per akun   : *${normalized.durationHours} jam*\n` +
-      `Min saldo untuk trial : *Rp${normalized.minBalanceForTrial}*\n` +
-      `Batas WATCHLIST       : *${wlLabel}*`,
+      buildAdminTrialSaveSuccessText(normalized),
       {
         parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' }],
-          ],
-        },
+        reply_markup: buildAdminTrialBackKeyboard(),
       }
     );
   } catch (err) {
@@ -5688,63 +5674,15 @@ async function renderAdminTrialMenu(ctx, cfg, options = {}) {
   // Admin), kita pakai editOrReply supaya tidak buat pesan baru.
   const isEdit = options.edit || false;
 
-  const statusText = cfg.enabled ? 'Aktif ✅' : 'Nonaktif ⛔';
-  const maxPerDay = cfg.maxPerDay;
-  const durationHours = cfg.durationHours;
-  const minBalance = cfg.minBalanceForTrial || 0;
-  // Audit fix: tampilkan juga setting watchlistMaxPerDay supaya admin tahu
-  // batas trial untuk user WATCHLIST tanpa harus buka file JSON.
-  const watchlistMax = Number.isInteger(cfg.watchlistMaxPerDay)
-    ? cfg.watchlistMaxPerDay
-    : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay;
-
-  const watchlistLabel = watchlistMax === 0
-    ? 'tidak boleh trial'
-    : `${watchlistMax}x per hari`;
-
-  const message =
-    '🧪 *Pengaturan Trial Akun*\n\n' +
-    `Status trial saat ini           : *${statusText}*\n` +
-    `Maksimal trial / user / hari    : *${maxPerDay}x*\n` +
-    `Lama trial (masa aktif akun)    : *${durationHours} jam*\n` +
-    `Minimal saldo untuk trial       : *Rp${minBalance}*\n` +
-    `Batas trial user WATCHLIST      : *${watchlistLabel}*\n\n` +
-    'Silakan atur nilai di bawah ini.\n' +
-    'Perubahan *belum disimpan* sebelum kamu menekan tombol *💾 Simpan Pengaturan*.\n';
-
-  const toggleText = cfg.enabled ? '⛔ Matikan Trial' : '✅ Aktifkan Trial';
-
-  const replyMarkup = {
-    inline_keyboard: [
-      [{ text: toggleText, callback_data: 'admin_trial_toggle' }],
-      [
-        { text: '➖', callback_data: 'admin_trial_max_dec' },
-        { text: `Max/Hari: ${maxPerDay}x`, callback_data: 'admin_trial_nop' },
-        { text: '➕', callback_data: 'admin_trial_max_inc' }
-      ],
-      [
-        { text: '➖', callback_data: 'admin_trial_dur_dec' },
-        { text: `Lama: ${durationHours} jam`, callback_data: 'admin_trial_dur_nop' },
-        { text: '➕', callback_data: 'admin_trial_dur_inc' }
-      ],
-      [
-        { text: '➖➖', callback_data: 'admin_trial_min_dec' },
-        { text: `Min Saldo: Rp${minBalance}`, callback_data: 'admin_trial_min_nop' },
-        { text: '➕➕', callback_data: 'admin_trial_min_inc' }
-      ],
-      [
-        { text: '➖', callback_data: 'admin_trial_wlmax_dec' },
-        { text: `WATCHLIST: ${watchlistMax}x`, callback_data: 'admin_trial_wlmax_nop' },
-        { text: '➕', callback_data: 'admin_trial_wlmax_inc' }
-      ],
-      [
-        { text: '💾 Simpan Pengaturan', callback_data: 'admin_trial_save' }
-      ],
-      [
-        { text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' }
-      ]
-    ]
+  const menuCfg = {
+    ...cfg,
+    minBalanceForTrial: cfg.minBalanceForTrial || 0,
+    watchlistMaxPerDay: Number.isInteger(cfg.watchlistMaxPerDay)
+      ? cfg.watchlistMaxPerDay
+      : DEFAULT_TRIAL_CONFIG.watchlistMaxPerDay,
   };
+  const message = buildAdminTrialMenuText(menuCfg);
+  const replyMarkup = buildAdminTrialMenuKeyboard(menuCfg);
 
   if (isEdit) {
     try {
