@@ -65,6 +65,10 @@ const {
   buildAutoBackupStatusText,
   buildAutoBackupKeyboard: buildAutoBackupKeyboardMarkup,
 } = require('./lib/admin-system-menu');
+const {
+  buildMyStatsText,
+  buildMyStatsKeyboard,
+} = require('./lib/user-stats-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -9022,7 +9026,7 @@ serviceUsernameSelectionHandlers.register();
 // ========= ?→ RIWAYAT / LAPORAN SAYA (VERSI DETAIL + PAGING) =========
 const MY_STATS_PAGE_SIZE = 10; // ?→ ganti ke 15 / 20 kalau mau
 
-    async function showMyStatsPage(ctx, page) {
+async function showMyStatsPage(ctx, page) {
   try {
     if (!ctx.from) {
       return ctx.reply('⚠️ Tidak bisa membaca data pengguna.');
@@ -9030,9 +9034,6 @@ const MY_STATS_PAGE_SIZE = 10; // ?→ ganti ke 15 / 20 kalau mau
 
     const userId = ctx.from.id;
     await ctx.answerCbQuery().catch(() => {});
-
-    const nowTs = Date.now();
-    const dayMs = 24 * 60 * 60 * 1000;
 
     // Awal hari ini (00:00) untuk logika aktif/expired berbasis TANGGAL
     const nowDate = new Date();
@@ -9099,104 +9100,17 @@ const MY_STATS_PAGE_SIZE = 10; // ?→ ganti ke 15 / 20 kalau mau
       );
     });
 
-    const typeLabel = (t) => {
-      switch (t) {
-        case 'ssh':          return '🖥️ SSH';
-        case 'vmess':        return '🔐 VMess';
-        case 'vless':        return '🔒 VLess';
-        case 'trojan':       return '🛡️ Trojan';
-        case 'shadowsocks':  return '🌶️ Shadowsocks';
-        default:             return t || '-';
-      }
-    };
-
-        const formatDateTime = (ts) => {
-      if (!ts) return '-';
-      return new Date(ts).toLocaleString('id-ID', {
-        timeZone: TIME_ZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    };
-
-    const formatExpireStatus = (expiresAt) => {
-      if (!expiresAt) return 'Tanpa masa aktif';
-      // Hanya tampilkan TANGGAL, tanpa jam, supaya tidak bikin bingung
-      return new Date(expiresAt).toLocaleDateString('id-ID', {
-        timeZone: TIME_ZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      });
-    };
-
-        const lines = [];
-
-    lines.push('<b>📈 Riwayat Akun Kamu</b>');
-    lines.push('<i>Catatan: Tanggal Expire adalah hari terakhir akun aktif. Setelah lewat tanggal itu, akun dianggap expired walaupun jam belum tertera di config.</i>\n');
-
-    // Ringkasan akun
-    lines.push('<code>Ringkasan Akun</code>');
-    lines.push(`• Total dibuat   : <b>${totalAll}</b> akun`);
-    lines.push(`• Aktif sekarang : <b>${totalActive}</b> akun`);
-    lines.push(`• Sudah expired  : <b>${totalExpired}</b> akun\n`);
-
-    lines.push(
-      `<code>Riwayat Akun (halaman ${currentPage + 1} dari ${totalPages})</code>`
-    );
-
-    if (recentAccounts.length === 0) {
-      lines.push('Belum ada akun yang tercatat di riwayat kamu.');
-    } else {
-      recentAccounts.forEach((row, idx) => {
-        const dibuatText = formatDateTime(row.created_at);
-        const expireText = formatExpireStatus(row.expires_at);
-
-        const serverName =
-          row.nama_server ||
-          row.domain ||
-          (row.server_id ? `Server #${row.server_id}` : '-');
-
-        const username = row.username || '-';
-
-        const nomor = offset + idx + 1;
-
-        lines.push(
-          `#${nomor} ${typeLabel(row.type)}\n` +
-          `   User   : <b>${username}</b>\n` +
-          `   Server : ${serverName}\n` +
-          `   Dibuat : ${dibuatText}\n` +
-          `   Expire : ${expireText}`
-        );
-      });
-    }
-
-    const text = lines.join('\n');
-
-    // Inline keyboard untuk paging
-    const navButtons = [];
-    if (currentPage > 0) {
-      navButtons.push({
-        text: '⬅️ Sebelumnya',
-        callback_data: `my_stats:${currentPage - 1}`,
-      });
-    }
-    if (currentPage < totalPages - 1) {
-      navButtons.push({
-        text: 'Selanjutnya ➡️',
-        callback_data: `my_stats:${currentPage + 1}`,
-      });
-    }
-
-    const keyboardRows = [];
-    if (navButtons.length > 0) keyboardRows.push(navButtons);
-    keyboardRows.push([
-      { text: '🔙 Menu Utama', callback_data: 'send_main_menu' },
-    ]);
-    const replyMarkup = { inline_keyboard: keyboardRows };
+    const text = buildMyStatsText({
+      totalAll,
+      totalActive,
+      totalExpired,
+      currentPage,
+      totalPages,
+      offset,
+      accounts: recentAccounts,
+      timeZone: TIME_ZONE,
+    });
+    const replyMarkup = buildMyStatsKeyboard({ currentPage, totalPages });
 
     try {
       await ctx.editMessageText(text, {
@@ -9204,12 +9118,12 @@ const MY_STATS_PAGE_SIZE = 10; // ?→ ganti ke 15 / 20 kalau mau
         reply_markup: replyMarkup,
       });
     } catch (e) {
-          await sendCleanMenu(ctx, text, {
-      parse_mode: 'HTML',
-      reply_markup: replyMarkup,
-    });
+      await sendCleanMenu(ctx, text, {
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup,
+      });
     }
-    } catch (err) {
+  } catch (err) {
     logger.error('❌ Error di showMyStatsPage:', err);
     try {
       await sendCleanMenu(ctx, '❌ Terjadi kesalahan saat menampilkan riwayat.', {
