@@ -7965,14 +7965,12 @@ bot.action('list_reseller', async (ctx) => {
       return ctx.reply('⚠️ Belum ada reseller terdaftar.');
     }
 
-    const lines = [];
-    let no = 1;
+    const items = [];
 
     for (const idStr of resellerList) {
       const userId = Number(idStr);
       if (!userId) continue;
 
-      // Ambil username Telegram
       let username = '';
       try {
         username = await getUsernameById(userId);
@@ -7980,40 +7978,24 @@ bot.action('list_reseller', async (ctx) => {
         username = '';
       }
 
-      const displayName = username
-        ? (username.startsWith('@') ? username : '@' + username)
-        : `ID:${userId}`;
-
-      // Ambil saldo dari tabel users
       const saldoRow = await new Promise((resolve) => {
         db.get(
           'SELECT saldo FROM users WHERE user_id = ?',
           [userId],
-          (err, row) => {
-            if (err || !row) return resolve(null);
-            resolve(row);
-          }
+          (err, row) => resolve(err || !row ? null : row)
         );
       });
 
-      const saldoText = saldoRow ? `Rp${saldoRow.saldo}` : 'Rp0';
-
-      lines.push(`${no}. ${displayName} (${userId}) • Saldo: ${saldoText}`);
-      no++;
+      items.push({
+        userId,
+        username,
+        saldo: saldoRow ? saldoRow.saldo : 0,
+      });
     }
 
-    const message =
-      '<b>💎 DAFTAR RESELLER</b>\n\n' +
-      (lines.length ? lines.join('\n') : 'Belum ada reseller yang tercatat di database users.');
-
-    // Edit pesan submenu list, tambah tombol kembali biar ada navigasi.
-    await editOrReply(ctx, message, {
+    await editOrReply(ctx, buildResellerListText(items), {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Kembali', callback_data: 'list_res_mem' }],
-        ],
-      },
+      reply_markup: buildListResMemberBackKeyboard(),
     });
   } catch (err) {
     logger.error('❌ Error saat menampilkan daftar reseller:', err);
@@ -8068,10 +8050,8 @@ bot.action('list_member', async (ctx) => {
       return ctx.reply('⚠️ Belum ada member biasa yang terdaftar.');
     }
 
-    const lines = [];
-    let no = 1;
+    const items = [];
 
-    // Susun teks dengan username + saldo
     for (const user of memberUsers) {
       const userId = user.user_id;
 
@@ -8082,25 +8062,16 @@ bot.action('list_member', async (ctx) => {
         username = '';
       }
 
-      const displayName = username
-        ? (username.startsWith('@') ? username : '@' + username)
-        : `ID:${userId}`;
-
-      const saldoText = Number(user.saldo || 0).toLocaleString('id-ID');
-
-      lines.push(`${no}. ${displayName} (${userId}) • Saldo: Rp${saldoText}`);
-      no++;
+      items.push({
+        userId,
+        username,
+        saldo: user.saldo || 0,
+      });
     }
 
-    const message = '<b>👤 DAFTAR MEMBER</b>\n\n' + lines.join('\n');
-    // Edit pesan submenu list, tambah tombol kembali biar ada navigasi.
-    await editOrReply(ctx, message, {
+    await editOrReply(ctx, buildMemberListText(items), {
       parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Kembali', callback_data: 'list_res_mem' }],
-        ],
-      },
+      reply_markup: buildListResMemberBackKeyboard(),
     });
   } catch (error) {
     logger.error('❌ Error saat menampilkan daftar member:', error);
