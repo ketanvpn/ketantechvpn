@@ -88,6 +88,12 @@ const {
   buildWebUnlinkSuccessText,
   buildWebUnlinkSuccessKeyboard,
 } = require('./lib/web-link-menu');
+const {
+  formatBotStatusLicenseText,
+  formatTrialInfoText,
+  buildBotStatusText,
+  buildHelpAdminMessage,
+} = require('./lib/admin-status');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -4282,90 +4288,30 @@ bot.command(['botstatus', 'statusbot'], async (ctx) => {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
-  // --- Lisensi ---
-  let licenseText = '';
-  if (EXPIRE_DATE) {
-    const info = getLicenseInfo();
-    if (info) {
-      if (info.daysLeft > 0) {
-        licenseText =
-          `✅ Sampai: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          `📅 Sisa  : <b>${info.daysLeft}</b> hari`;
-      } else if (info.daysLeft === 0) {
-        licenseText =
-          `✅ Sampai: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          '⚠️ Status: <b>HARI INI</b>';
-      } else {
-        licenseText =
-          `🕒 Habis : <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          `📅 Lewat : <b>${Math.abs(info.daysLeft)}</b> hari`;
-      }
-    } else {
-      licenseText = '⚠️ Tidak dapat membaca informasi lisensi.';
-    }
-  } else {
-    licenseText = '⚠️ Lisensi: <b>lifetime / belum diatur</b>';
-  }
+  const licenseInfo = EXPIRE_DATE ? getLicenseInfo() : null;
+  const licenseText = formatBotStatusLicenseText(EXPIRE_DATE, licenseInfo);
 
-  // --- Auto-backup ---
-  const abStatus = AUTO_BACKUP_ENABLED ? '🟢 ON' : '🔴 OFF';
-  const abInterval =
-    AUTO_BACKUP_INTERVAL_HOURS && AUTO_BACKUP_INTERVAL_HOURS > 0
-      ? `${AUTO_BACKUP_INTERVAL_HOURS} jam`
-      : 'tidak di-set';
-  const abChat =
-    BACKUP_CHAT_ID && BACKUP_CHAT_ID !== ''
-      ? `<code>${BACKUP_CHAT_ID}</code>`
-      : '<i>belum di-set</i>';
-
-  // --- Pengingat expired ---
-  const erStatus = EXPIRY_REMINDER_ENABLED ? '🟢 ON' : '🔴 OFF';
-  const erTime = `${String(EXPIRY_REMINDER_HOUR).padStart(
-    2,
-    '0'
-  )}:${String(EXPIRY_REMINDER_MINUTE).padStart(2, '0')}`;
-  const erDays = EXPIRY_REMINDER_DAYS_BEFORE;
-
-  // --- Trial config ---
   let trialInfoText = '';
   try {
-    const trialCfg = await getTrialConfig();
-    const tStatus = trialCfg.enabled ? '🟢 ON' : '🔴 OFF';
-    trialInfoText =
-      `Status   : ${tStatus}\n` +
-      `Max/hari : <b>${trialCfg.maxPerDay}</b> x\n` +
-      `Durasi   : <b>${trialCfg.durationHours}</b> jam\n` +
-      `Min saldo: <b>${trialCfg.minBalanceForTrial}</b>`;
+    trialInfoText = formatTrialInfoText(await getTrialConfig());
   } catch (e) {
     logger.error('❌ Gagal membaca trial_config di /botstatus:', e);
-    trialInfoText = '⚠️ Gagal membaca konfigurasi trial.';
+    trialInfoText = formatTrialInfoText(null);
   }
 
-  const text = `
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-<b>📊 STATUS BOT VPN ${NAMA_STORE}</b>
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-<code>━━━━━ LISENSI BOT ━━━━━━━━━━━━━━</code>
-${licenseText}
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-<code>━━━━━ AUTO BACKUP DB ━━━━━━━━━━━</code>
-• Status   : <b>${abStatus}</b>
-• Interval : <b>${abInterval}</b>
-• Chat ID  : ${abChat}
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-<code>━━━━━ PENGINGAT EXPIRED ━━━━━━━━</code>
-• Status   : <b>${erStatus}</b>
-• H-       : <b>${erDays}</b> hari
-• Jam      : <b>${erTime}</b> (zona ${TIME_ZONE})
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-<code>━━━━━ PENGATURAN TRIAL ━━━━━━━━━</code>
-${trialInfoText}
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-`.trim();
+  const text = buildBotStatusText({
+    storeName: NAMA_STORE,
+    licenseText,
+    autoBackupEnabled: AUTO_BACKUP_ENABLED,
+    autoBackupIntervalHours: AUTO_BACKUP_INTERVAL_HOURS,
+    backupChatId: BACKUP_CHAT_ID,
+    expiryReminderEnabled: EXPIRY_REMINDER_ENABLED,
+    expiryReminderHour: EXPIRY_REMINDER_HOUR,
+    expiryReminderMinute: EXPIRY_REMINDER_MINUTE,
+    expiryReminderDaysBefore: EXPIRY_REMINDER_DAYS_BEFORE,
+    timeZone: TIME_ZONE,
+    trialInfoText,
+  });
 
   return ctx.reply(text, { parse_mode: 'HTML' });
 });
@@ -4383,69 +4329,7 @@ bot.command('helpadmin', async (ctx) => {
 }
 
 
-  const helpMessage =
-    '📜 DAFTAR PERINTAH ADMIN TAPEKETAN VPN\n' +
-    '\n' +
-    'Gunakan perintah berikut hanya jika Anda memahami fungsinya.\n' +
-    'Beberapa perintah tertentu sebaiknya hanya dipakai OWNER / MASTER.\n' +
-    '\n' +
-    '1) PANEL & BANTUAN\n' +
-    '- /admin        → Buka Menu Admin (panel tombol)\n' +
-    '- /helpadmin    → Menampilkan daftar perintah admin ini\n' +
-    '- /botstatus atau /statusbot -> Cek status bot & server\n' +
-    '\n' +
-    '2) MANAJEMEN USER & RESELLER\n' +
-    '- /listuser     → Menampilkan daftar user yang terdaftar di database\n' +
-    '- /addressel    → Menambahkan reseller baru\n' +
-    '- /delressel    → Menghapus ID reseller\n' +
-    '- /deluser      → Menghapus user dari database (hati-hati)\n' +
-    '\n' +
-    '3) SALDO & TRANSAKSI\n' +
-    '- /addsaldo     → Menambahkan saldo ke akun user\n' +
-    '- /minsaldo     → Mengurangi saldo akun user (misal setelah beli akun)\n' +
-    '- /cekqris <invoice_id> -> Cek status QRIS manual (invoice tertentu)\n' +
-    '\n' +
-    '4) SERVER & PAKET\n' +
-    '- /addserver          → Menambahkan server baru\n' +
-    '- /addserver_reseller → Mengatur server default untuk reseller\n' +
-    '- /editharga          → Mengedit harga paket pada server\n' +
-    '- /editauth           → Mengedit akun/auth panel (jika dipakai)\n' +
-    '- /editdomain         → Mengedit domain server\n' +
-    '- /editlimitcreate    → Mengedit batas pembuatan akun per server\n' +
-    '- /editlimitip        → Mengedit batas jumlah IP per akun\n' +
-    '- /editlimitquota     → Mengedit batas kuota paket\n' +
-    '- /editnama           → Mengedit nama server\n' +
-    '- /edittotalcreate    → Mengedit total limit pembuatan akun server\n' +
-    '\n' +
-    '5) BROADCAST & PENGUMUMAN\n' +
-    '- /broadcast      → Broadcast ke semua user\n' +
-    '- /broadcastres   → Broadcast ke semua reseller\n' +
-    '- /broadcastmem   → Broadcast ke semua member biasa\n' +
-    '- /lastbroadcast  → Menampilkan ringkasan broadcast terakhir\n' +
-    '\n' +
-    '6) LOG & MAINTENANCE\n' +
-    '- /hapuslog       → Menghapus file log bot\n' +
-    '- /testgroup      → Menguji kirim pesan ke GROUP_ID (alat uji/debug)\n' +
-    '\n' +
-    '7) LISENSI BOT\n' +
-    '- /lisensi        → Melihat masa aktif lisensi bot (expire date & sisa hari)\n' +
-    '- /addhari        → Menambah masa aktif lisensi bot (biasanya khusus OWNER/MASTER)\n' +
-    '- /kuranghari     → Mengurangi masa aktif lisensi bot (biasanya khusus OWNER/MASTER)\n' +
-    '\n' +
-    '8) LAPORAN, BACKUP & REMINDER\n' +
-    '- /health               → Cek kesehatan bot (lisensi, database, auto-backup, laporan harian, pengingat expired, uptime)\n' +
-    '- /daily_report_test    → Mengirim laporan harian secara manual (mode test)\n' +
-    '- /backup_auto_test     → Menguji fungsi auto-backup sekali (test kirim backup)\n' +
-    '- /expired_reminder_test → Preview tampilan pesan pengingat akun expired ke chat Anda\n' +
-    '\n' +
-    '9) TROUBLESHOOTING / MODERASI\n' +
-    '- /setflag <user_id> <NORMAL|WATCHLIST|NAKAL> [catatan...] -> Tandai status user\n' +
-    '\n' +
-    'Catatan:\n' +
-    '- Hak akses admin diatur melalui MASTER_ID dan ADMIN_IDS di file .vars.json\n' +
-    '- Jangan gunakan perintah penghapusan/ubah server/lisensi jika belum paham akibatnya.\n';
-
-  return ctx.reply(helpMessage);
+  return ctx.reply(buildHelpAdminMessage());
 });
 
 //////////
