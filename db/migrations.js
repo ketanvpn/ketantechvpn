@@ -296,6 +296,58 @@ function runMigrations(db, logger, helpers) {
       }
     );
   });
+
+  // ============================================================================
+  // QUALITY IMPROVEMENTS: audit_logs & error_logs (2026-06-02)
+  // ============================================================================
+  
+  // Audit logs: track admin actions (add/edit/delete server, saldo, broadcast, dll)
+  db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT,
+    timestamp INTEGER NOT NULL
+  )`, (err) => {
+    if (err) logger.error('Kesalahan membuat tabel audit_logs:', err.message);
+    else logger.info('audit_logs table created or already exists');
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_user_time ON audit_logs(user_id, timestamp DESC)',
+      (err2) => {
+        if (err2) logger.warn('Gagal bikin idx_audit_logs_user_time: ' + err2.message);
+      }
+    );
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_action_time ON audit_logs(action, timestamp DESC)',
+      (err2) => {
+        if (err2) logger.warn('Gagal bikin idx_audit_logs_action_time: ' + err2.message);
+      }
+    );
+  });
+
+  // Error logs: track runtime errors untuk admin dashboard monitoring
+  db.run(`CREATE TABLE IF NOT EXISTS error_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    context TEXT,
+    timestamp INTEGER NOT NULL
+  )`, (err) => {
+    if (err) logger.error('Kesalahan membuat tabel error_logs:', err.message);
+    else logger.info('error_logs table created or already exists');
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_error_logs_source_time ON error_logs(source, timestamp DESC)',
+      (err2) => {
+        if (err2) logger.warn('Gagal bikin idx_error_logs_source_time: ' + err2.message);
+      }
+    );
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_error_logs_time ON error_logs(timestamp DESC)',
+      (err2) => {
+        if (err2) logger.warn('Gagal bikin idx_error_logs_time: ' + err2.message);
+      }
+    );
+  });
 }
 
 module.exports = { runMigrations };
