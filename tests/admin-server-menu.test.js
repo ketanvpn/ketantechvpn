@@ -9,6 +9,8 @@ const {
   buildServerMenuBackKeyboard,
   buildResetDbConfirmKeyboard,
   buildDeleteServerKeyboard,
+  buildDetailServerKeyboard,
+  buildEditNumericFieldPromptText,
 } = require('../lib/admin-server-menu');
 
 test('buildAdminServerMenuText: includes server management sections', () => {
@@ -72,4 +74,29 @@ test('buildDeleteServerKeyboard: per-server delete + back', () => {
   assert.equal(kb.inline_keyboard[0][0].text, 'SG-1');
   assert.equal(kb.inline_keyboard[1][0].callback_data, 'confirm_delete_server_2');
   assert.equal(kb.inline_keyboard[2][0].callback_data, 'admin_server_menu');
+});
+
+test('buildDetailServerKeyboard: two columns + back', () => {
+  const kb = buildDetailServerKeyboard([
+    { id: 1, nama_server: 'SG-1' },
+    { id: 2, nama_server: 'ID-1' },
+    { id: 3, nama_server: 'JP-1' },
+  ]);
+  assert.equal(kb.inline_keyboard[0][0].callback_data, 'server_detail_1');
+  assert.equal(kb.inline_keyboard[0][1].callback_data, 'server_detail_2');
+  assert.equal(kb.inline_keyboard[1][0].callback_data, 'server_detail_3');
+  assert.equal(kb.inline_keyboard[1].length, 1);
+  assert.equal(kb.inline_keyboard[2][0].callback_data, 'admin_server_menu');
+});
+
+test('buildEditNumericFieldPromptText: renders label/server/value', () => {
+  const text = buildEditNumericFieldPromptText({
+    label: 'Limit IP per Akun',
+    serverName: 'SG-1',
+    formattedValue: '2 IP',
+  });
+  assert.match(text, /Edit Limit IP per Akun/);
+  assert.match(text, /Server: \*SG-1\*/);
+  assert.match(text, /Nilai sekarang: \*2 IP\*/);
+  assert.match(text, /Batal untuk membatalkan/);
 });

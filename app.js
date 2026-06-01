@@ -104,6 +104,8 @@ const {
   buildServerMenuBackKeyboard,
   buildResetDbConfirmKeyboard,
   buildDeleteServerKeyboard,
+  buildDetailServerKeyboard,
+  buildEditNumericFieldPromptText,
 } = require('./lib/admin-server-menu');
 const {
   buildResellerListText,
@@ -11580,28 +11582,9 @@ bot.action('detailserver', async (ctx) => {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia saat ini.*', { parse_mode: 'Markdown' });
     }
 
-    const buttons = [];
-    for (let i = 0; i < servers.length; i += 2) {
-      const row = [];
-      row.push({
-        text: `${servers[i].nama_server}`,
-        callback_data: `server_detail_${servers[i].id}`
-      });
-      if (i + 1 < servers.length) {
-        row.push({
-          text: `${servers[i + 1].nama_server}`,
-          callback_data: `server_detail_${servers[i + 1].id}`
-        });
-      }
-      buttons.push(row);
-    }
-
-    // Tambah tombol kembali ke Menu Server biar admin gampang balik.
-    buttons.push([{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }]);
-
     // Edit pesan menu server, fallback reply kalau pesan asli sudah hilang.
     await editOrReply(ctx, '🔍 *Silakan pilih server untuk melihat detail:*', {
-      reply_markup: { inline_keyboard: buttons },
+      reply_markup: buildDetailServerKeyboard(servers),
       parse_mode: 'Markdown',
     });
   } catch (error) {
@@ -11799,11 +11782,11 @@ function _openEditNumericFieldPrompt(ctx, serverId, dbCol, step, label, fmt) {
         serverName: namaServer,
       };
       await ctx.reply(
-        '✏️ *Edit ' + label + '*\n\n' +
-          '📍 Server: *' + namaServer + '*\n' +
-          '🔢 Nilai sekarang: *' + fmt(oldValue) + '*\n\n' +
-          '_Silakan masukkan nilai baru menggunakan keypad di bawah._\n' +
-          '_Tekan ❌ Batal untuk membatalkan._',
+        buildEditNumericFieldPromptText({
+          label,
+          serverName: namaServer,
+          formattedValue: fmt(oldValue),
+        }),
         {
           reply_markup: { inline_keyboard: keyboard_nomor() },
           parse_mode: 'Markdown',
