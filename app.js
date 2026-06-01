@@ -53,6 +53,10 @@ const {
   buildMainMenuMessage,
   buildMainMenuKeyboard,
 } = require('./lib/main-menu');
+const {
+  buildAdminMenuHeader,
+  buildAdminMenuKeyboard,
+} = require('./lib/admin-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -5534,87 +5538,14 @@ bot.command('edittotalcreate', async (ctx) => {
 
 
 async function sendAdminMenu(ctx) {
-  // === SUSUN TEKS INFO LISENSI (HANYA UNTUK ADMIN) ===
-  let headerText = '<b>⚙️ MENU ADMIN</b>';
-  if (EXPIRE_DATE && ADMIN_IDS.includes(ctx.from.id)) {
-    const info = getLicenseInfo();
-    if (info) {
-      const expireText = info.expire.toLocaleDateString('id-ID', {
-        timeZone: TIME_ZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
+  const headerText = buildAdminMenuHeader({
+    expireDate: EXPIRE_DATE,
+    licenseInfo: EXPIRE_DATE && ADMIN_IDS.includes(ctx.from.id) ? getLicenseInfo() : null,
+    timeZone: TIME_ZONE,
+  });
+  const adminKeyboard = buildAdminMenuKeyboard();
 
-      let statusText;
-      if (info.daysLeft > 0) {
-        statusText =
-          `📜 <b>INFO LISENSI BOT</b>\n` +
-          `Aktif sampai: <b>${expireText}</b>\n` +
-          `Sisa: <b>${info.daysLeft}</b> hari`;
-      } else if (info.daysLeft === 0) {
-        statusText =
-          `📜 <b>INFO LISENSI BOT</b>\n` +
-          `Berakhir: <b>${expireText}</b>\n` +
-          `⚠️ Status: <b>HARI INI</b>`;
-      } else {
-        statusText =
-          `📜 <b>INFO LISENSI BOT</b>\n` +
-          `Habis: <b>${expireText}</b>\n` +
-          `📅 Lewat: <b>${Math.abs(info.daysLeft)}</b> hari lalu`;
-      }
-
-      headerText += `\n\n${statusText}`;
-    }
-  }
-
-      // === TOMBOL ADMIN (Group: User → Finance → Server → System) ===
-      const adminKeyboard = [
-        // —— USER MANAGEMENT ——
-        [
-          { text: '📊 Monitor User & Reseller', callback_data: 'monitor_panel' },
-          { text: '📋 List Semua User',         callback_data: 'list_all_users' }
-        ],
-        [
-          { text: '🚩 Tandai User',       callback_data: 'flag_user_start' },
-          { text: '🧪 Pengaturan Trial',  callback_data: 'admin_trial_menu' }
-        ],
-
-        // —— FINANCE & PROMOSI ——
-        [
-          { text: '🧾 Reseller & Saldo', callback_data: 'admin_reseller_menu' }
-        ],
-        [
-          { text: '🎓 Akun EDU / Ilmupedia', callback_data: 'admin_edukasi_menu' }
-        ],
-        [
-          { text: '🎁 Template Promosi', callback_data: 'promo_template_menu' },
-          { text: '📢 Kirim Pengumuman', callback_data: 'broadcast_menu' }
-        ],
-
-        // —— SERVER ——
-        [
-          { text: '🖥️ Menu Server',          callback_data: 'admin_server_menu' },
-          { text: '🔔 Pengingat Expired',  callback_data: 'expiry_reminder_menu' }
-        ],
-
-        // —— SYSTEM ——
-        [
-          { text: '📦 Backup Database', callback_data: 'backup_db' },
-          { text: '💾 Auto Backup',     callback_data: 'backup_auto_menu' }
-        ],
-        [
-          { text: '🌐 Timezone Bot',    callback_data: 'timezone_menu' }
-        ],
-
-        [
-          { text: '🔙 Kembali', callback_data: 'send_main_menu' }
-        ]
-      ];
-
-
-
-    try {
+  try {
     await ctx.editMessageReplyMarkup({
       inline_keyboard: adminKeyboard
     });
@@ -5633,6 +5564,7 @@ async function sendAdminMenu(ctx) {
     }
   }
 }
+
 // ====== ADMIN: PENGATURAN TRIAL ======
 bot.action('admin_trial_menu', async (ctx) => {
   try {
