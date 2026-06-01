@@ -51,6 +51,8 @@ check('require lib/masker', () => require('../lib/masker'));
 check('require lib/licence', () => require('../lib/licence'));
 check('require lib/audit-logger', () => require('../lib/audit-logger'));
 check('require lib/error-logger', () => require('../lib/error-logger'));
+check('require lib/dashboard-stats', () => require('../lib/dashboard-stats'));
+check('require lib/dashboard-menu', () => require('../lib/dashboard-menu'));
 
 check('require db/connection', () => require('../db/connection'));
 check('require db/ddl-safe', () => require('../db/ddl-safe'));
@@ -77,6 +79,7 @@ check('require accounts/my-accounts', () => require('../accounts/my-accounts'));
 check('require admin/menu', () => require('../admin/menu'));
 check('require admin/promo', () => require('../admin/promo'));
 check('require admin/reseller', () => require('../admin/reseller'));
+check('require admin/dashboard', () => require('../admin/dashboard'));
 
 check('require scheduler/auto-backup', () => require('../scheduler/auto-backup'));
 check('require scheduler/daily-report', () => require('../scheduler/daily-report'));
