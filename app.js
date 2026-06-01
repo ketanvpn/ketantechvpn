@@ -93,6 +93,9 @@ const {
   formatTrialInfoText,
   buildBotStatusText,
   buildHelpAdminMessage,
+  buildLicenseInfoText,
+  buildHealthLicenseStatus,
+  buildHealthText,
 } = require('./lib/admin-status');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
@@ -3232,40 +3235,11 @@ bot.command('lisensi', async (ctx) => {
   }
 
   const info = getLicenseInfo();
-  const now  = new Date();
-
-  const nowText = now.toLocaleString('id-ID', {
+  return ctx.reply(buildLicenseInfoText({
+    licenseInfo: info,
+    now: new Date(),
     timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-
-  const expireText = info.expire.toLocaleDateString('id-ID', {
-    timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-
-  let statusText;
-  if (info.daysLeft > 0) {
-    statusText = `✅ Lisensi masih aktif.\nSisa: <b>${info.daysLeft}</b> hari lagi.`;
-  } else if (info.daysLeft === 0) {
-    statusText = '⚠️ Lisensi akan berakhir <b>hari ini</b>.';
-  } else {
-    statusText = `⛔ Lisensi sudah kadaluarsa <b>${Math.abs(info.daysLeft)}</b> hari yang lalu.`;
-  }
-
-  const msg =
-    '<b>📜 INFO LISENSI BOT</b>\n\n' +
-    `Aktif sampai: <b>${expireText}</b>\n` +
-    `${statusText}\n\n` +
-    `Waktu sekarang: ${nowText}`;
-
-  return ctx.reply(msg, { parse_mode: 'HTML' });
+  }), { parse_mode: 'HTML' });
 });
 // Command: /health
 // Cek kesehatan bot: lisensi, database, backup, laporan harian, pengingat expired
@@ -3298,81 +3272,29 @@ bot.command('health', async (ctx) => {
   }
 
   // Info lisensi
-  let licenseStatus = '⚠️ EXPIRE_DATE belum di-set di .vars.json';
-  if (EXPIRE_DATE) {
-    const info = getLicenseInfo();
-    const expireText = info.expire.toLocaleDateString('id-ID', {
-      timeZone: TIME_ZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
+  const licenseStatus = buildHealthLicenseStatus(
+    EXPIRE_DATE,
+    EXPIRE_DATE ? getLicenseInfo() : null,
+    TIME_ZONE
+  );
 
-    if (info.daysLeft > 0) {
-      licenseStatus = `✅ Aktif, sisa <b>${info.daysLeft}</b> hari (sampai <b>${expireText}</b>)`;
-    } else if (info.daysLeft === 0) {
-      licenseStatus = `⚠️ Akan berakhir <b>HARI INI</b> (sampai ${expireText})`;
-    } else {
-      licenseStatus = `⛔ Sudah kadaluarsa <b>${Math.abs(
-        info.daysLeft
-      )}</b> hari yang lalu (terakhir <b>${expireText}</b>)`;
-    }
-  }
-
-  // Status auto-backup
-  const abStatus = AUTO_BACKUP_ENABLED ? '🟢 ON' : '🔴 OFF';
-  const abDetail = BACKUP_CHAT_ID
-    ? `Interval: <b>${AUTO_BACKUP_INTERVAL_HOURS}</b> jam\n   Tujuan : <code>${BACKUP_CHAT_ID}</code>`
-    : '⚠️ BACKUP_CHAT_ID belum di-set (pakai MASTER_ID atau set manual).';
-
-  // Status laporan harian
-  const drStatus = DAILY_REPORT_ENABLED ? '🟢 ON' : '🔴 OFF';
-  const drTime = `${String(DAILY_REPORT_HOUR).padStart(2, '0')}:${String(
-    DAILY_REPORT_MINUTE
-  ).padStart(2, '0')}`;
-
-  // Status pengingat expired
-  const erStatus = EXPIRY_REMINDER_ENABLED ? '🟢 ON' : '🔴 OFF';
-  const erTime = `${String(EXPIRY_REMINDER_HOUR).padStart(2, '0')}:${String(
-    EXPIRY_REMINDER_MINUTE
-  ).padStart(2, '0')}`;
-  const erDays = `H-${EXPIRY_REMINDER_DAYS_BEFORE}`;
-
-  // Uptime process (dalam jam & menit)
-  const upSec = Math.floor(process.uptime());
-  const upHour = Math.floor(upSec / 3600);
-  const upMin = Math.floor((upSec % 3600) / 60);
-
-  const now = new Date();
-  const nowText = now.toLocaleString('id-ID', {
+  const msg = buildHealthText({
+    now: new Date(),
     timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
+    uptimeSeconds: process.uptime(),
+    licenseStatus,
+    dbStatus,
+    autoBackupEnabled: AUTO_BACKUP_ENABLED,
+    autoBackupIntervalHours: AUTO_BACKUP_INTERVAL_HOURS,
+    backupChatId: BACKUP_CHAT_ID,
+    dailyReportEnabled: DAILY_REPORT_ENABLED,
+    dailyReportHour: DAILY_REPORT_HOUR,
+    dailyReportMinute: DAILY_REPORT_MINUTE,
+    expiryReminderEnabled: EXPIRY_REMINDER_ENABLED,
+    expiryReminderHour: EXPIRY_REMINDER_HOUR,
+    expiryReminderMinute: EXPIRY_REMINDER_MINUTE,
+    expiryReminderDaysBefore: EXPIRY_REMINDER_DAYS_BEFORE,
   });
-
-  const msg =
-    '<b>📊 STATUS BOT & SERVER</b>\n\n' +
-    `<code>Waktu Sekarang</code>\n` +
-    `⏰ ${nowText}\n` +
-    `⏱️ Uptime bot: <b>${upHour} jam ${upMin} menit</b>\n\n` +
-    `<code>Lisensi Bot</code>\n` +
-    `📅 ${licenseStatus}\n\n` +
-    `<code>Database</code>\n` +
-    `💾 ${dbStatus}\n\n` +
-    `<code>Auto Backup</code>\n` +
-    `• Status  : ${abStatus}\n` +
-    `• ${abDetail}\n\n` +
-    `<code>Laporan Harian</code>\n` +
-    `• Status : ${drStatus}\n` +
-    `• Jam    : <b>${drTime}</b>\n\n` +
-    `<code>Pengingat Expired Akun</code>\n` +
-    `• Status : ${erStatus}\n` +
-    `• Jadwal : <b>${erTime}</b>\n` +
-    `• Mode   : <b>${erDays}</b>\n\n` +
-    'Kalau ada yang merah/kuning, cek pengaturan di .vars.json atau menu Admin.';
 
   try {
     await ctx.reply(msg, { parse_mode: 'HTML' });

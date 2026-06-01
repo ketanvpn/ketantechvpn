@@ -7,6 +7,9 @@ const {
   formatTrialInfoText,
   buildBotStatusText,
   buildHelpAdminMessage,
+  buildLicenseInfoText,
+  buildHealthLicenseStatus,
+  buildHealthText,
 } = require('../lib/admin-status');
 
 test('formatBotStatusLicenseText: lifetime and invalid info', () => {
@@ -68,4 +71,59 @@ test('buildHelpAdminMessage: includes important admin commands', () => {
   for (const expected of ['/admin', '/helpadmin', '/addsaldo', '/cekqris', '/health', '/setflag']) {
     assert.ok(text.includes(expected), `missing ${expected}`);
   }
+});
+
+
+test('buildLicenseInfoText: active and expired states', () => {
+  const active = buildLicenseInfoText({
+    licenseInfo: { expire: new Date('2026-12-31T00:00:00Z'), daysLeft: 7 },
+    now: new Date('2026-12-01T00:00:00Z'),
+    timeZone: 'Asia/Jayapura',
+  });
+  assert.match(active, /INFO LISENSI BOT/);
+  assert.match(active, /Sisa: <b>7<\/b> hari lagi/);
+
+  const expired = buildLicenseInfoText({
+    licenseInfo: { expire: new Date('2026-12-31T00:00:00Z'), daysLeft: -3 },
+    now: new Date('2027-01-03T00:00:00Z'),
+    timeZone: 'Asia/Jayapura',
+  });
+  assert.match(expired, /kadaluarsa <b>3<\/b> hari/);
+});
+
+test('buildHealthLicenseStatus: no expire and active states', () => {
+  assert.equal(buildHealthLicenseStatus(null, null), '⚠️ EXPIRE_DATE belum di-set di .vars.json');
+  const text = buildHealthLicenseStatus('2026-12-31', {
+    expire: new Date('2026-12-31T00:00:00Z'),
+    daysLeft: 5,
+  }, 'Asia/Jayapura');
+  assert.match(text, /Aktif, sisa <b>5<\/b> hari/);
+});
+
+test('buildHealthText: includes health sections and fallback backup detail', () => {
+  const text = buildHealthText({
+    now: new Date('2026-06-01T00:00:00Z'),
+    timeZone: 'Asia/Jayapura',
+    uptimeSeconds: 3661,
+    licenseStatus: 'license ok',
+    dbStatus: 'db ok',
+    autoBackupEnabled: false,
+    backupChatId: '',
+    dailyReportEnabled: true,
+    dailyReportHour: 6,
+    dailyReportMinute: 7,
+    expiryReminderEnabled: true,
+    expiryReminderHour: 8,
+    expiryReminderMinute: 9,
+    expiryReminderDaysBefore: 2,
+  });
+
+  assert.match(text, /STATUS BOT & SERVER/);
+  assert.match(text, /Uptime bot: <b>1 jam 1 menit<\/b>/);
+  assert.match(text, /license ok/);
+  assert.match(text, /db ok/);
+  assert.match(text, /BACKUP_CHAT_ID belum di-set/);
+  assert.match(text, /Jam    : <b>06:07<\/b>/);
+  assert.match(text, /Jadwal : <b>08:09<\/b>/);
+  assert.match(text, /Mode   : <b>H-2<\/b>/);
 });
