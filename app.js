@@ -57,6 +57,14 @@ const {
   buildAdminMenuHeader,
   buildAdminMenuKeyboard,
 } = require('./lib/admin-menu');
+const {
+  buildTimezoneStatusText,
+  buildTimezoneKeyboard: buildTimezoneKeyboardMarkup,
+  buildExpiryReminderStatusText,
+  buildExpiryReminderKeyboard: buildExpiryReminderKeyboardMarkup,
+  buildAutoBackupStatusText,
+  buildAutoBackupKeyboard: buildAutoBackupKeyboardMarkup,
+} = require('./lib/admin-system-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -7447,42 +7455,36 @@ bot.action('expiry_reminder_menu', async (ctx) => {
 // ====== ADMIN: TIMEZONE BOT ======
 
 function getTimezoneStatusText() {
-  const nowSample = new Date().toLocaleString('id-ID', {
-    timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  return (
-    '🌐 <b>PENGATURAN TIMEZONE BOT</b>\n\n' +
-    `Timezone saat ini: <b>${TIME_ZONE}</b>\n` +
-    `Waktu sekarang (versi bot): <b>${nowSample}</b>\n\n` +
-    'Timezone ini dipakai untuk:\n' +
-    '• Laporan harian\n' +
-    '• Pengingat expired akun\n' +
-    'ℹ️ Tampilan info lisensi /health\n\n' +
-    'Silakan pilih timezone yang sesuai dengan lokasi kamu.'
-  );
+  return buildTimezoneStatusText({ timeZone: TIME_ZONE });
 }
 
 function buildTimezoneKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        { text: 'WIB (Jakarta)',  callback_data: 'timezone_set_wib' },
-        { text: 'WITA (Makassar)', callback_data: 'timezone_set_wita' },
-      ],
-      [
-        { text: 'WIT (Jayapura)', callback_data: 'timezone_set_wit' },
-      ],
-      [
-        { text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' },
-      ],
-    ],
-  };
+  return buildTimezoneKeyboardMarkup();
+}
+
+function getExpiryReminderStatusText() {
+  return buildExpiryReminderStatusText({
+    enabled: EXPIRY_REMINDER_ENABLED,
+    hour: EXPIRY_REMINDER_HOUR,
+    minute: EXPIRY_REMINDER_MINUTE,
+    daysBefore: EXPIRY_REMINDER_DAYS_BEFORE,
+  });
+}
+
+function buildExpiryReminderKeyboard() {
+  return buildExpiryReminderKeyboardMarkup({ enabled: EXPIRY_REMINDER_ENABLED });
+}
+
+function getAutoBackupStatusText() {
+  return buildAutoBackupStatusText({
+    enabled: AUTO_BACKUP_ENABLED,
+    intervalHours: AUTO_BACKUP_INTERVAL_HOURS,
+    backupChatId: BACKUP_CHAT_ID,
+  });
+}
+
+function buildAutoBackupKeyboard() {
+  return buildAutoBackupKeyboardMarkup({ enabled: AUTO_BACKUP_ENABLED });
 }
 
 // Buka menu timezone
@@ -7495,7 +7497,6 @@ bot.action('timezone_menu', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
 
   try {
-    // editOrReply: edit pesan menu admin, fallback ke reply kalau gagal
     await editOrReply(ctx, getTimezoneStatusText(), {
       parse_mode: 'HTML',
       reply_markup: buildTimezoneKeyboard(),
@@ -7541,8 +7542,7 @@ bot.action('timezone_set_wit', (ctx) =>
   setTimezoneAndRefresh(ctx, 'Asia/Jayapura', 'WIT (Asia/Jayapura)')
 );
 
-
-// ON/OFF
+// ON/OFF pengingat expired
 bot.action('expiry_reminder_toggle', async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
@@ -7635,87 +7635,6 @@ async function setReminderDaysPreset(ctx, value) {
 bot.action('expiry_days_1', (ctx) => setReminderDaysPreset(ctx, 1));
 bot.action('expiry_days_2', (ctx) => setReminderDaysPreset(ctx, 2));
 bot.action('expiry_days_3', (ctx) => setReminderDaysPreset(ctx, 3));
-
-function getExpiryReminderStatusText() {
-  const statusText = EXPIRY_REMINDER_ENABLED ? '🟢 ON' : '🔴 OFF';
-  const hourStr = String(EXPIRY_REMINDER_HOUR).padStart(2, '0');
-  const minuteStr = String(EXPIRY_REMINDER_MINUTE).padStart(2, '0');
-
-  return (
-    '<b>⏰ Pengaturan Pengingat Expired Akun</b>\n\n' +
-    `Status       : <b>${statusText}</b>\n` +
-    `Waktu kirim  : <b>${hourStr}:${minuteStr}</b> (waktu server)\n` +
-    `Hari sebelum : <b>H-${EXPIRY_REMINDER_DAYS_BEFORE}</b>\n\n` +
-    'Bot akan mengirim pesan ke user yang punya akun akan expired pada hari tersebut.'
-  );
-}
-
-function buildExpiryReminderKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: EXPIRY_REMINDER_ENABLED
-            ? '⛔ Matikan Pengingat'
-            : '🔔 Nyalakan Pengingat',
-          callback_data: 'expiry_reminder_toggle',
-        },
-      ],
-      [
-        { text: '➖ Jam -1', callback_data: 'expiry_hour_minus' },
-        { text: '➕ Jam +1', callback_data: 'expiry_hour_plus' },
-      ],
-      [
-        { text: '➖ Menit -5', callback_data: 'expiry_minute_minus' },
-        { text: '➕ Menit +5', callback_data: 'expiry_minute_plus' },
-      ],
-      [
-        { text: 'H-1', callback_data: 'expiry_days_1' },
-        { text: 'H-2', callback_data: 'expiry_days_2' },
-        { text: 'H-3', callback_data: 'expiry_days_3' },
-      ],
-      [
-        { text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' },
-      ],
-    ],
-  };
-}
-
-function getAutoBackupStatusText() {
-  const statusText = AUTO_BACKUP_ENABLED ? '🟢 ON' : '🔴 OFF';
-  return (
-    '<b>💾 Pengaturan Auto Backup Database</b>\n\n' +
-    `Status   : <b>${statusText}</b>\n` +
-    `Interval : <b>${AUTO_BACKUP_INTERVAL_HOURS}</b> jam\n` +
-    `Tujuan   : <code>${BACKUP_CHAT_ID}</code>\n\n` +
-    'Gunakan tombol di bawah untuk mengaktifkan/nonaktifkan dan mengubah interval backup.'
-  );
-}
-
-function buildAutoBackupKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: AUTO_BACKUP_ENABLED ? '⛔ Matikan Auto Backup' : '💾 Nyalakan Auto Backup',
-          callback_data: 'backup_auto_toggle',
-        },
-      ],
-      [
-        { text: '➖ -1 jam', callback_data: 'backup_auto_interval_minus' },
-        { text: '➕ +1 jam', callback_data: 'backup_auto_interval_plus' },
-      ],
-      [
-        { text: '6 jam',  callback_data: 'backup_auto_set_6' },
-        { text: '12 jam', callback_data: 'backup_auto_set_12' },
-        { text: '24 jam', callback_data: 'backup_auto_set_24' },
-      ],
-      [
-        { text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' },
-      ],
-    ],
-  };
-}
 
 // Audit fix HIGH: handler auto-backup sebelumnya pakai `adminId !== MASTER_ID`
 // padahal tombol Auto Backup tampil di Menu Admin untuk SEMUA admin. Akibatnya
