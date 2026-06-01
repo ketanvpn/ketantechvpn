@@ -69,6 +69,15 @@ const {
   buildMyStatsText,
   buildMyStatsKeyboard,
 } = require('./lib/user-stats-menu');
+const {
+  buildTopupQrisPromptText,
+  buildTopupQrisPromptMarkup,
+  buildInvalidTopupNominalText,
+  buildTopupConfirmText,
+  buildTopupConfirmMarkup,
+  buildQrisInvoiceCaption,
+  buildQrisInvoiceKeyboard,
+} = require('./lib/qris-topup-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -3104,22 +3113,16 @@ async function openTopupQrisMenu(ctx) {
   userState[chatId] = { step: 'qris_topup_nominal' };
 
   await ctx.reply(
-    '💳 <b>Topup Saldo Otomatis (QRIS)</b>\n\n' +
-      `Minimal: <b>Rp${QRIS_AUTO_TOPUP_MIN}</b>\n` +
-      `Maksimal: <b>Rp${QRIS_AUTO_TOPUP_MAX}</b>\n\n` +
-      'Silakan kirim nominal topup dalam angka saja.\n' +
-      'Contoh: <code>25000</code>\n\n' +
-      'Tekan tombol <b>❌ Batal</b> untuk membatalkan.',
+    buildTopupQrisPromptText({
+      min: QRIS_AUTO_TOPUP_MIN,
+      max: QRIS_AUTO_TOPUP_MAX,
+    }),
     {
       parse_mode: 'HTML',
-      reply_markup: {
-        keyboard: [[{ text: '❌ Batal' }]],
-        resize_keyboard: true,
-        one_time_keyboard: true
-      }
+      reply_markup: buildTopupQrisPromptMarkup(),
     }
   );
-  
+
 }
 // ===== END SECTION: PAYMENT - UI TOPUP SALDO OTOMATIS (QRIS) ================
 
@@ -10072,26 +10075,14 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
       );
     });
 
-    let caption =
-      `💳 <b>QRIS TOPUP DIBUAT</b>\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `🧾 <b>Invoice</b> : <code>${invoice.invoice_id}</code>\n` +
-      `💰 <b>Nominal</b> : <b>Rp${baseAmount.toLocaleString('id-ID')}</b>\n` +
-      (randomSuffix > 0
-        ? `🔢 <b>Kode unik</b> : <b>${randomSuffix.toString().padStart(3, '0')}</b>\n` +
-          `💵 <b>Total bayar</b> : <b>Rp${billedAmount.toLocaleString('id-ID')}</b>\n`
-        : `💵 <b>Total bayar</b> : <b>Rp${billedAmount.toLocaleString('id-ID')}</b>\n`) +
-      `━━━━━━━━━━━━━━━━\n` +
-      `📲 Scan QR lalu bayar sesuai <b>TOTAL BAYAR</b>\n` +
-      `⏳ <b>Berlaku ${QRIS_PAYMENT_TIMEOUT_MIN} menit</b>\n` +
-      `Saldo masuk otomatis setelah terdeteksi.`;
-
-    const payKb = {
-      inline_keyboard: [
-        [{ text: '🔄 Cek Status', callback_data: `qris_status:${invoice.invoice_id}` }],
-        [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
-      ],
-    };
+    const caption = buildQrisInvoiceCaption({
+      invoiceId: invoice.invoice_id,
+      baseAmount,
+      billedAmount,
+      uniqueSuffix: randomSuffix,
+      timeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
+    });
+    const payKb = buildQrisInvoiceKeyboard(invoice.invoice_id);
 
     await cleanupLoadingMessage();
 
@@ -10157,10 +10148,10 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
 
     if (!baseAmount || baseAmount < QRIS_AUTO_TOPUP_MIN || baseAmount > QRIS_AUTO_TOPUP_MAX) {
       await ctx.reply(
-        `⚠️ Nominal tidak valid.\n\n` +
-          `Minimal: <b>Rp${QRIS_AUTO_TOPUP_MIN.toLocaleString('id-ID')}</b>\n` +
-          `Maksimal: <b>Rp${QRIS_AUTO_TOPUP_MAX.toLocaleString('id-ID')}</b>\n\n` +
-          `Ketik ulang nominal, contoh: <code>25000</code>`,
+        buildInvalidTopupNominalText({
+          min: QRIS_AUTO_TOPUP_MIN,
+          max: QRIS_AUTO_TOPUP_MAX,
+        }),
         { parse_mode: 'HTML' }
       );
       return;
@@ -10179,29 +10170,19 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
     const estimatedSaldo = baseAmount + bonus;
     const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
 
-    const confirmText =
-      '💳 <b>Konfirmasi Topup QRIS</b>\n\n' +
-      `💰 Nominal topup: <b>Rp${baseAmount.toLocaleString('id-ID')}</b>\n` +
-      `💵 Jumlah yang harus dibayar: <b>Rp${payableAmount.toLocaleString('id-ID')}</b>\n` +
-      `🔢 Kode unik QRIS: <b>Rp${previewUniqueSuffix.toLocaleString('id-ID')}</b>\n` +
-      (bonus > 0
-        ? `🎁 Bonus topup: <b>${percent}%</b> ( +Rp${bonus.toLocaleString('id-ID')} )\n`
-        : '🎁 Bonus topup: <b>Tidak ada</b>\n') +
-      `💰 Estimasi saldo masuk: <b>Rp${estimatedSaldo.toLocaleString('id-ID')}</b>\n` +
-      `⏳ Masa berlaku QR: <b>${timeoutMin} menit</b>\n\n` +
-      'ℹ️ Tekan <b>➡️ Lanjut Topup</b> untuk membuat invoice QRIS dengan nominal di atas.\n' +
-      'ℹ️ Tekan <b>❌ Batal</b> jika ingin membatalkan topup.\n\n' +
-      'Pastikan nominal dan jumlah pembayaran sudah benar sebelum melanjutkan.';
+    const confirmText = buildTopupConfirmText({
+      baseAmount,
+      payableAmount,
+      uniqueSuffix: previewUniqueSuffix,
+      bonus,
+      percent,
+      estimatedSaldo,
+      timeoutMin,
+    });
 
     await ctx.reply(confirmText, {
       parse_mode: 'HTML',
-      reply_markup: {
-        remove_keyboard: true,
-        inline_keyboard: [
-          [{ text: '➡️ Lanjut Topup', callback_data: 'qris_topup_confirm_yes' }],
-          [{ text: '❌ Batal', callback_data: 'qris_topup_confirm_cancel' }],
-        ],
-      },
+      reply_markup: buildTopupConfirmMarkup(),
     });
 
     return;
