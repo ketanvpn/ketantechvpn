@@ -115,6 +115,9 @@ const {
   buildEditNamaPromptText,
   buildEditHargaCancelText,
   buildEditHargaSuccessText,
+  buildEditFieldCancelText,
+  buildEditFieldSuccessText,
+  buildEditFieldInputText,
 } = require('./lib/admin-server-menu');
 const {
   buildResellerListText,
@@ -12397,13 +12400,9 @@ async function handleEditField(ctx, userStateData, data, field, fieldName, query
     delete userState[ctx.chat.id];
     try { await ctx.answerCbQuery('⛔ Dibatalkan'); } catch (_) {}
     try {
-      await ctx.editMessageText('⛔ *Edit ' + fieldName + ' dibatalkan.*', {
+      await ctx.editMessageText(buildEditFieldCancelText(fieldName), {
         parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
-          ],
-        },
+        reply_markup: buildServerMenuBackKeyboard(),
       });
     } catch (_) {}
     return;
@@ -12420,17 +12419,15 @@ async function handleEditField(ctx, userStateData, data, field, fieldName, query
     try {
       await updateServerField(userStateData.serverId, currentValue, query);
       ctx.reply(
-        '✅ *' + fieldName + ' berhasil diubah.*\n\n' +
-          '📍 Server: *' + serverName + '*\n' +
-          '• Sebelumnya : ' + fmt(oldValue) + '\n' +
-          '• Sekarang   : *' + fmt(currentValue) + '*',
+        buildEditFieldSuccessText({
+          fieldName,
+          serverName,
+          oldValue: fmt(oldValue),
+          newValue: fmt(currentValue),
+        }),
         {
           parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
-            ],
-          },
+          reply_markup: buildServerMenuBackKeyboard(),
         }
       );
     } catch (err) {
@@ -12452,12 +12449,12 @@ async function handleEditField(ctx, userStateData, data, field, fieldName, query
   userStateData[field] = currentValue;
   const oldValue = userStateData.oldValue;
   const serverName = userStateData.serverName || ('Server #' + userStateData.serverId);
-  const newMessage =
-    '✏️ *Edit ' + fieldName + '*\n\n' +
-    '📍 Server: *' + serverName + '*\n' +
-    '🔢 Nilai sekarang: *' + fmt(oldValue) + '*\n' +
-    '🆕 Input baru: *' + (currentValue ? fmt(currentValue) : fmt(0)) + '*\n\n' +
-    '_Tekan ✅ untuk simpan atau ❌ Batal untuk membatalkan._';
+  const newMessage = buildEditFieldInputText({
+    fieldName,
+    serverName,
+    oldValue: fmt(oldValue),
+    currentValue: currentValue ? fmt(currentValue) : fmt(0),
+  });
   const oldText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || '';
   if (newMessage !== oldText) {
     try {

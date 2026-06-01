@@ -20,6 +20,9 @@ const {
   buildEditNamaPromptText,
   buildEditHargaCancelText,
   buildEditHargaSuccessText,
+  buildEditFieldCancelText,
+  buildEditFieldSuccessText,
+  buildEditFieldInputText,
 } = require('../lib/admin-server-menu');
 
 test('buildAdminServerMenuText: includes server management sections', () => {
@@ -186,4 +189,29 @@ test('edit harga cancel/success builders: render expected messages', () => {
   assert.match(text, /Server: \*SG-1\*/);
   assert.match(text, /Sebelumnya : Rp 15\.000/);
   assert.match(text, /Sekarang   : \*Rp 25\.000\*/);
+});
+
+test('generic edit field builders: render cancel, success, and input preview', () => {
+  assert.equal(buildEditFieldCancelText('Quota'), '⛔ *Edit Quota dibatalkan.*');
+
+  const successText = buildEditFieldSuccessText({
+    fieldName: 'Quota',
+    serverName: 'SG-1',
+    oldValue: '100 GB',
+    newValue: '200 GB',
+  });
+  assert.match(successText, /Quota berhasil diubah/);
+  assert.match(successText, /Server: \*SG-1\*/);
+  assert.match(successText, /Sebelumnya : 100 GB/);
+  assert.match(successText, /Sekarang   : \*200 GB\*/);
+
+  const inputText = buildEditFieldInputText({
+    fieldName: 'Quota',
+    serverName: 'SG-1',
+    oldValue: '100 GB',
+    currentValue: '200 GB',
+  });
+  assert.match(inputText, /Edit Quota/);
+  assert.match(inputText, /Nilai sekarang: \*100 GB\*/);
+  assert.match(inputText, /Input baru: \*200 GB\*/);
 });
