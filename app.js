@@ -110,6 +110,9 @@ const {
   buildEditHargaInputText,
   maskServerAuth,
   buildServerDetailText,
+  buildEditAuthPromptText,
+  buildEditDomainPromptText,
+  buildEditNamaPromptText,
 } = require('./lib/admin-server-menu');
 const {
   buildResellerListText,
@@ -11870,8 +11873,6 @@ bot.action(/edit_auth_(\d+)/, async (ctx) => {
       const currentDomain = row.domain || '-';
       const currentNama = row.nama_server || '-';
 
-      const maskedAuth = maskServerAuth(currentAuth);
-
       userState[ctx.chat.id] = {
         step: 'edit_auth',
         serverId: serverId,
@@ -11881,12 +11882,11 @@ bot.action(/edit_auth_(\d+)/, async (ctx) => {
       };
 
       await ctx.reply(
-        '?? *Edit AUTH Server*\n' +
-          `? Nama   : \`${currentNama}\`\n` +
-          `? Domain : \`${currentDomain}\`\n` +
-          `? Auth   : \`${maskedAuth}\`\n\n` +
-          '?? *Silakan ketik AUTH server baru, lalu kirim sebagai pesan biasa.*\n' +
-          '? Ketik *batal* untuk membatalkan.',
+        buildEditAuthPromptText({
+          currentName: currentNama,
+          currentDomain,
+          currentAuth,
+        }),
         { parse_mode: 'Markdown' }
       );
     }
@@ -11921,10 +11921,7 @@ bot.action(/edit_domain_(\d+)/, async (ctx) => {
     };
 
     await ctx.reply(
-      '?? *Silakan ketik domain server baru, lalu kirim sebagai pesan biasa.*\n' +
-        `?? Domain saat ini: \`${currentDomain}\`\n` +
-        '?? Contoh: `sg1.serverku.com`\n' +
-        '? Ketik *batal* untuk membatalkan.',
+      buildEditDomainPromptText(currentDomain),
       { parse_mode: 'Markdown' }
     );
   });
@@ -11956,9 +11953,7 @@ bot.action(/edit_nama_(\d+)/, async (ctx) => {
     };
 
     await ctx.reply(
-      '✏️ *Silakan ketik nama server baru, lalu kirim sebagai pesan biasa.*\n' +
-      `?? Contoh: \`${currentName}\`\n` +
-      '? Ketik *batal* untuk membatalkan.',
+      buildEditNamaPromptText(currentName),
       { parse_mode: 'Markdown' }
     );
   });

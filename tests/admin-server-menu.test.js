@@ -15,6 +15,9 @@ const {
   buildEditHargaInputText,
   maskServerAuth,
   buildServerDetailText,
+  buildEditAuthPromptText,
+  buildEditDomainPromptText,
+  buildEditNamaPromptText,
 } = require('../lib/admin-server-menu');
 
 test('buildAdminServerMenuText: includes server management sections', () => {
@@ -146,4 +149,25 @@ test('buildServerDetailText: renders masked server detail', () => {
   assert.match(text, /abcd\.\.\.4xyz/);
   assert.match(text, /SG-1/);
   assert.match(text, /Rp 15000/);
+});
+
+test('edit auth/domain/nama prompt builders: render current values', () => {
+  const authText = buildEditAuthPromptText({
+    currentName: 'SG-1',
+    currentDomain: 'sg.example.com',
+    currentAuth: 'abcd1234xyz',
+  });
+  assert.match(authText, /Edit AUTH Server/);
+  assert.match(authText, /SG-1/);
+  assert.match(authText, /sg\.example\.com/);
+  assert.match(authText, /abcd\.\.\.4xyz/);
+
+  const domainText = buildEditDomainPromptText('old.example.com');
+  assert.match(domainText, /domain server baru/);
+  assert.match(domainText, /old\.example\.com/);
+  assert.match(domainText, /sg1\.serverku\.com/);
+
+  const namaText = buildEditNamaPromptText('SG Old');
+  assert.match(namaText, /nama server baru/);
+  assert.match(namaText, /SG Old/);
 });
