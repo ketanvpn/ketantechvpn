@@ -49,6 +49,10 @@ const {
   isCancellableAccountFlowStep,
   isCancelText,
 } = require('./lib/account-flow-state');
+const {
+  buildMainMenuMessage,
+  buildMainMenuKeyboard,
+} = require('./lib/main-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -4222,131 +4226,24 @@ async function sendMainMenu(ctx) {
   // atau API error, dia fallback ke saldo SQLite lokal.
   let saldo = 0;
   let saldoSource = 'lokal';
+  let webLinked = false;
+
   try {
     const v = await getUserSaldo(db, userId);
     saldo = Number(v || 0);
     if (isWebLinkEnabled()) {
       const link = await getUserLinkInfo(userId);
-      if (link && link.web_user_id) saldoSource = 'web';
+      if (link && link.web_user_id) {
+        saldoSource = 'web';
+        webLinked = true;
+      }
     }
   } catch (e) {
     saldo = 0;
     logger.error('Gagal mengambil saldo di sendMainMenu:', e);
   }
 
-  const isReseller = isResellerId(userId);
-
-
-  // Cek apakah user ini admin
-  const isAdmin = ADMIN_IDS.includes(userId);
-
-  // Tentukan status user + badge
-  let userStatus = '👤 Member';
-  if (isAdmin) {
-    userStatus = '👑 Admin';
-  } else if (isReseller) {
-    userStatus = '💎 Reseller';
-  }
-
-  // Susun teks lisensi (kalau EXPIRE_DATE di-set)
-  let licenseInfoText = '';
-  if (EXPIRE_DATE) {
-    const info = getLicenseInfo();
-    if (info) {
-      if (info.daysLeft > 0) {
-        licenseInfoText =
-          `✅ Lisensi aktif sampai: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          `📅 Sisa: <b>${info.daysLeft}</b> hari\n`;
-      } else if (info.daysLeft === 0) {
-        licenseInfoText =
-          `⚠️ Lisensi berakhir: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          '⚠️ Status: <b>HARI INI</b>\n';
-      } else {
-        licenseInfoText =
-          `🔒 Lisensi habis: <b>${info.expire.toLocaleDateString('id-ID')}</b>\n` +
-          `📅 Lewat: <b>${Math.abs(info.daysLeft)}</b> hari lalu\n`;
-      }
-    } else {
-      licenseInfoText = '⚠️ Tidak dapat membaca informasi lisensi.\n';
-    }
-  } else {
-    licenseInfoText = '⚠️ Lisensi bot tidak dibatasi tanggal (lifetime) atau belum diatur.\n';
-  }
-
-  // Teks panel admin (hanya muncul kalau user adalah admin)
-  const commandPanelText = isAdmin ? `
-<code>✨ COMMAND PANEL</code>
-• /start       → Menu Utama
-• /admin       → Menu Admin
-⭐ /helpadmin  → Panel Admin
-
-${licenseInfoText}
-` : '';
-
-  const messageText = `
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-<b>⚡ BOT VPN ${NAMA_STORE} ⚡</b>
-<i>📡 Koneksi cepat, aman, stabil.</i>
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-<code>━━━━━━━ USER INFO ━━━━━━━━━━</code>
-• Nama   : <b>${userName}</b>
-• ID     : <code>${userId}</code>
-• Saldo  : <code>Rp ${Number(saldo).toLocaleString('id-ID')}</code>${saldoSource === 'web' ? ' 🌐' : ''}
-• Status : <code>${userStatus}</code>
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-<code>━━━━━ MENU UTAMA ━━━━━━━━━━━</code>
-Gunakan tombol di bawah ini
-untuk membuat akun, cek akun,
-dan melihat riwayat penjualanmu.
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-<code>━━━━━━━ INFO BOT ━━━━━━━━━━━━</code>
-• Editor  : <b>KETANTECH</b>
-<code>━━━━━━━━━━━━━━━━━━━━━━━━━━━</code>
-
-${commandPanelText}
-`.trim();
-
-  let keyboard = [
-    [
-      { text: '🛍️ Buat Akun', callback_data: 'service_create' },
-      { text: '♻️ Perpanjang Akun', callback_data: 'my_accounts' }
-    ],
-    [
-      { text: '📂 Akun Saya', callback_data: 'my_accounts' },
-      { text: '💰 Cek Saldo', callback_data: 'user_balance' }
-    ],
-    [
-      { text: '💳 TopUp Saldo QRIS', callback_data: 'topupqris_btn' },
-      { text: '🧾 Riwayat Transaksi', callback_data: 'transaction_history:0' }
-    ],
-    [
-      { text: '🆓 Trial Akun', callback_data: 'service_trial' },
-      { text: '🖥️ Status Server', callback_data: 'cek_service' }
-    ],
-    // Menu khusus paket edukasi (vpnbiz reseller). Posisi dibuat jelas untuk
-    // user Telkomsel yang mencari paket Ilmupedia/EDU.
-    [
-      { text: '🎓 Akun EDU / Ilmupedia', callback_data: 'edukasi_menu' }
-    ],
-    [
-      { text: '📈 Statistik & Riwayat Akun', callback_data: 'my_stats:0' },
-      { text: '📘 Panduan Pakai', callback_data: 'vpn_guide' }
-    ],
-    [
-      { text: '❓ Bantuan / Support', callback_data: 'help_user' }
-    ],
-    [
-      { text: '💎 Upgrade ke Reseller (harga murah)', callback_data: 'jadi_reseller' }
-    ]
-  ];
-
-  // Tombol hubungkan ke web (cuma muncul kalau master switch WEB_LINK_ENABLED=true).
-  // Kalau user sudah link, label diganti & ada indicator centang.
-  if (isWebLinkEnabled()) {
-    let webLinkLabel = '🔗 Hubungkan Akun ke Web';
+  if (isWebLinkEnabled() && !webLinked) {
     try {
       const linkRow = await new Promise((resolve) => {
         db.get(
@@ -4355,29 +4252,33 @@ ${commandPanelText}
           (err, row) => resolve(err ? null : row)
         );
       });
-      if (linkRow && linkRow.web_user_id) {
-        webLinkLabel = '✅ Akun Web Terhubung';
-      }
+      webLinked = !!(linkRow && linkRow.web_user_id);
     } catch (e) {
       logger.warn('sendMainMenu: gagal cek status link web: ' + (e && e.message ? e.message : e));
     }
-    keyboard.push([{ text: webLinkLabel, callback_data: 'web_link_menu' }]);
   }
 
+  const isReseller = isResellerId(userId);
+  const isAdmin = ADMIN_IDS.includes(userId);
 
-  // Tambah tombol "Penjualan Saya" khusus reseller
-  if (isReseller) {
-    keyboard.splice(2, 0, [
-      { text: '💵 Penjualan Saya', callback_data: 'sales_summary' }
-    ]);
-  }
+  const messageText = buildMainMenuMessage({
+    storeName: NAMA_STORE,
+    userName,
+    userId,
+    saldo,
+    saldoSource,
+    isAdmin,
+    isReseller,
+    expireDate: EXPIRE_DATE,
+    licenseInfo: EXPIRE_DATE ? getLicenseInfo() : null,
+  });
 
-  // Kalau user sudah reseller atau admin, sembunyikan tombol "Jadi Reseller"
-  if (isReseller || isAdmin) {
-    keyboard = keyboard.filter(row =>
-      !row.some(btn => btn && btn.callback_data === 'jadi_reseller')
-    );
-  }
+  const keyboard = buildMainMenuKeyboard({
+    isReseller,
+    isAdmin,
+    webLinkEnabled: isWebLinkEnabled(),
+    webLinked,
+  });
 
   try {
     await sendCleanMenu(ctx, messageText, {
@@ -4388,7 +4289,6 @@ ${commandPanelText}
     logger.error('Error saat mengirim menu utama:', error);
   }
 }
-
 
 bot.command('hapuslog', async (ctx) => {
 	// Wajib di private chat
