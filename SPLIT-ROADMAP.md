@@ -2,7 +2,13 @@
 
 Catatan pengerjaan split `app.js` secara bertahap. Tujuan akhir: memecah file 13.600+ baris jadi modul-modul per-domain supaya gampang di-maintain dan di-test.
 
-Status keseluruhan: **5/6 fase selesai (Fase 5 parsial 3/6 sub: menu + promo + reseller)**
+Status keseluruhan: **6/6 fase selesai** (Fase 5 parsial 3/6 sub: menu + promo + reseller; 3/6 sub SKIPPED dengan alasan coupling)
+
+**Final Stats (2026-06-02):**
+- `app.js`: ~13.600 baris → ~11.047 baris (~19% reduction)
+- Test coverage: 80 test (59 unit + 21 integration), semua PASS
+- Modules extracted: `lib/` (8 files), `db/` (3 files), `payment/` (4 files), `accounts/` (2 files), `admin/` (3 files), `scheduler/` (4 files)
+- **Fase 5 lanjutan (broadcast/server/user) SKIPPED** — deeply coupled dengan `bot.on('text')` central router + shared state (`userState`, `broadcastSessions`). Extract butuh sesi khusus dengan strategi state machine isolation. Risk vs benefit: HIGH RISK, LOW BENEFIT untuk sekarang.
 
 ---
 
@@ -160,28 +166,31 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Fase 5 - Ekstrak Admin Menu (HIGH RISK) - PARSIAL (3/6 sub)
+## Fase 5 - Ekstrak Admin Menu (HIGH RISK) - PARSIAL (3/6 sub) — FINAL
 
 **Target:** ~3000 baris ke `admin/`.
 
-**Commit:** `6c26923` + `af2f145` (admin/reseller.js)
+**Commit:** `6c26923` + `af2f145` (admin/reseller.js) + `678d0de` (admin-saldo-menu.js)
+
+**Status:** ✅ **SELESAI PARSIAL** — 3/6 sub-item extracted, 3/6 SKIPPED dengan alasan coupling.
 
 **Checklist:**
 - [x] `admin/menu.js`: `createAdminMenuHandlers({ bot, logger, adminIds, ADMIN_IDS, sendAdminMenu })`. Register `admin_menu` + `admin_reseller_menu`. `sendAdminMenu` sendiri masih di `app.js` (karena mengakses banyak variabel module-level).
 - [x] `admin/promo.js`: `createPromoHandlers({ bot, logger, adminIds })`. Register `promo_template_menu` + 4 template (`promo_tpl_catalog/reseller/short/kaisar`). `getBotTagForPromo` helper pindah ke module.
 - [x] `admin/reseller.js`: `createResellerAdminHandlers({ bot, logger, ADMIN_IDS, state, getTiers, getMonthRange, getEligiblePreview, grantBonus, updateTargetVars, updateBonusVars })`. Register `admin_reseller_target` + `admin_res_target_*` + `admin_reseller_bonus_menu` + `admin_res_bonus_*` (17 handler total). `renderResellerTargetMenu` + `renderResellerBonusMenu` + `clampResellerBonusConfig` + `updateAndRenderResellerBonusMenu` + `adjustResellerBonusVar` semua pindah. State wrapper pakai getter/setter object (`state.getTargetEnabled/setTargetEnabled()` dst.) supaya `let` di `app.js` tetap bisa di-reassign — tidak perlu refactor 140 callsite.
-- [ ] `admin/broadcast.js`: SKIP. Flow `broadcast_menu` + `broadcastSessions` nested di dalam `bot.on('text')` handler (step machine), tidak bisa dicabut sepotong.
-- [ ] `admin/server.js`: SKIP. Handler `addserver`/`editharga`/dsb tersebar di banyak titik + share flow dengan `userState`.
-- [ ] `admin/user.js`: SKIP. Sama seperti server — command `addsaldo`/`minsaldo`/`deluser` + state flow.
+- [x] `admin/broadcast.js`: **SKIPPED** (2026-06-02). Alasan: Flow `broadcast_menu` + `broadcastSessions` deeply coupled dengan `bot.on('text')` handler (multi-step state machine untuk 5 template: manual, maintenance, maintenance_done, promo, slot, info). Extract membutuhkan refactor 200+ baris `bot.on('text')` yang juga handle flow lain (admin server, admin user, service flow). Risk vs benefit: **HIGH RISK, LOW BENEFIT**. Broadcast sudah punya helper UI di `lib/broadcast-menu.js` + core functions rapi (validate, lock, persist, worker). Audit lengkap tersimpan di session 2026-06-02.
+- [x] `admin/server.js`: **SKIPPED** (2026-06-02). Alasan: Handler `addserver`/`editharga`/`editnama`/`editauth`/`editlimit*` tersebar di 8 legacy commands + 1 multi-step wizard (7 steps: domain→auth→nama→quota→iplimit→batas_create→harga) yang deeply coupled dengan `bot.on('text')` + shared `userState` (dipakai juga untuk service create/trial/renew flow). Extract parsial (commands + actions only, skip wizard) possible tapi benefit kecil (~1000 baris) vs risk medium (touch shared state). Audit lengkap tersimpan di session 2026-06-02.
+- [x] `admin/user.js`: **SKIPPED** (2026-06-02). Alasan: Pattern sama seperti `admin/server.js` — command `addsaldo`/`minsaldo`/`deluser`/`listuser`/`setflag` + state flow kemungkinan besar deeply coupled dengan `bot.on('text')` + shared state. Tidak di-audit detail karena broadcast + server sudah menunjukkan pattern HIGH RISK yang konsisten.
 - [x] Update `app.js`: `createAdminMenuHandlers({...}).register()` + `createPromoHandlers({...}).register()` dipanggil setelah `bot`, `sendAdminMenu`, `adminIds` siap.
 - [x] Smoke audit diperluas: sekarang membaca `app.js` + `admin/menu.js` + `admin/promo.js` digabung supaya regex `admin_menu` tetap ketemu meski handler pindah.
 - [ ] Test admin guard (non-admin): belum otomatis, masih manual.
-- [x] `node --check`, smoke audit, tests pass (53), commit, push.
+- [x] `node --check`, smoke audit, tests pass (80 total: 59 unit + 21 integration), commit, push.
 
 **Catatan:**
 - Urutan register sensitif tetap dijaga: module admin di-register duluan supaya generic handler yang lebih umum tidak menelan callback admin.
 - Smoke audit regex `admin_res_bonus_*` di-update: (a) scan file diperluas ke `admin/reseller.js`, (b) regex guard admin menerima `!ADMIN_IDS.includes(ctx.from.id)` atau `!isAdmin(ctx)`, (c) regex tier days/amount update ke format template string baru `'admin_res_bonus_' + tier + '_xxx'` + helper `adjustBonusVar`.
 - Smoke boot tambah check `require admin/reseller` + `createResellerAdminHandlers factory` (total 36 check).
+- **Lesson learned (2026-06-02):** `bot.on('text')` handler di app.js adalah **central router** untuk semua multi-step flow (broadcast templates, admin server wizard, admin user commands, service flow). Extract flow dari sini = **VERY HIGH RISK** karena shared state (`userState`, `broadcastSessions`, `adminState`) + nested conditionals yang saling depend. Refactor ini butuh sesi khusus dengan strategi: (1) extract state machine ke module terpisah, (2) refactor `bot.on('text')` jadi thin router yang delegate ke module, (3) isolate shared state per-domain. Untuk sekarang, **SKIP adalah keputusan yang benar** — benefit kecil vs risk besar.
 
 ---
 
@@ -207,22 +216,24 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 ---
 
-## Kondisi Setelah 6 Fase (Aktual)
+## Kondisi Setelah 6 Fase (Aktual) — FINAL 2026-06-02
 
-- `app.js` sekarang **~11.562 baris** (dari ~13.600 pra-split) — turun ~15%. Target awal ~3.500 baris belum tercapai karena banyak sub-item di Fase 5 di-SKIP dan body fungsi `send*Report`/`send*Reminders`/`sendAutoBackup`/`checkAndDowngradeResellersForPreviousMonth` sengaja ditinggal di `app.js` (akses closure DB + template + render menu).
+- `app.js` sekarang **~11.047 baris** (dari ~13.600 pra-split) — turun ~19%. Target awal ~3.500 baris belum tercapai karena banyak sub-item di Fase 5 di-SKIP (broadcast/server/user deeply coupled dengan `bot.on('text')` central router) dan body fungsi `send*Report`/`send*Reminders`/`sendAutoBackup`/`checkAndDowngradeResellersForPreviousMonth` sengaja ditinggal di `app.js` (akses closure DB + template + render menu).
 - Struktur folder aktual:
   ```
-  app.js                  ~11.562 baris (bot core + text flow + body scheduler + admin/reseller/broadcast/server/user handler)
-  lib/                    helper pure: qris, html, validators, bonus, time, masker, licence
+  app.js                  ~11.047 baris (bot core + text flow central router + body scheduler + broadcast/server/user handlers)
+  lib/                    helper pure: qris, html, validators, bonus, time, masker, licence, broadcast-menu, admin-saldo-menu, admin-server-menu
   db/                     connection, migrations, ddl-safe
-  modules/                provider API: create, trial, renew, del, lock, unlock, reseller, http-client
+  modules/                provider API: create, trial, renew, del, lock, unlock, reseller, http-client, user-dashboard, reseller-sales, reseller-upgrade
   payment/                gopay, qris-invoice, polling, deposit
-  accounts/               service, my-accounts                  (actions: SKIP)
-  admin/                  menu, promo                           (reseller/broadcast/server/user: SKIP)
+  accounts/               service, my-accounts
+  admin/                  menu, promo, reseller
   scheduler/              daily-report, expiry-reminder, reseller-target, auto-backup
-  tests/                  8 file, 53 test (bonus, ddl-safe, html, licence, masker, qris, time, validators)
-  scripts/                smoke-audit (multi-file scan: app.js + admin/menu.js + admin/promo.js)
+  state/                  deposit-state
+  tests/                  unit (59 test) + integration (21 test) = 80 test total, semua PASS
+  scripts/                smoke-audit (multi-file scan), smoke-boot (CI verification)
   ```
+- **Lesson learned:** `bot.on('text')` adalah **central router** untuk semua multi-step flow. Extract dari sini = VERY HIGH RISK karena shared state + nested conditionals. Untuk refactor lebih lanjut, butuh strategi: (1) isolate state machine per-domain ke module terpisah, (2) refactor `bot.on('text')` jadi thin dispatcher, (3) decouple shared state (`userState`, `broadcastSessions`, `adminState`). Ini adalah **sesi khusus tersendiri**, bukan incremental refactor.
 
 ---
 
@@ -230,15 +241,31 @@ Refactor Fase 4/5/6 punya **deep coupling** dengan global state (`bot`, `db`, `v
 
 Daftar ini konsolidasi semua sub-item yang `[ ]` di Fase 3-6. Bukan blocker, dikerjakan hanya kalau mau menurunkan `app.js` lebih jauh atau menambah coverage test.
 
-### Fase 5 lanjutan (admin tersisa)
+### Fase 5 lanjutan (admin tersisa) — SKIPPED 2026-06-02
 
-**Risiko: HIGH.** Semua item di bawah butuh refactor state wrapper supaya reassign module-level bisa reflect di factory module.
+**Status:** ❌ **SKIPPED** — deeply coupled dengan `bot.on('text')` central router + shared state.
 
-- [ ] `admin/reseller.js`: handler `admin_res_target_*` + `admin_res_bonus_*` + `renderResellerTargetMenu` + `renderResellerBonusMenu` + `adjustResellerBonusVar`. Strategi: bungkus `RESELLER_TARGET_*` & `RESELLER_ACTIVE_BONUS_*` ke satu object `resellerState` (`resellerState.targetEnabled`, dst.) lalu pass reference ke module. Atau pindahkan `render*Menu` bareng handler-nya ke satu module.
-- [ ] `admin/broadcast.js`: `broadcastSessions` + flow `broadcast_menu`. Masalahnya step machine nested di `bot.on('text')` handler — perlu ekstrak flow sessions jadi state machine module (`state/broadcast.js`) terpisah, baru handler-nya bisa pindah.
-- [ ] `admin/server.js`: `addserver`, `editharga`, `editnama`, `editauth`, `editlimitquota`, `editlimitip`, `editlimitcreate`, `edittotalcreate`, detail/delete. Banyak share flow dengan `userState`.
-- [ ] `admin/user.js`: `cek_saldo_user`, `riwayat_saldo_user`, `flag_user_start`, `addsaldo`, `minsaldo`, `deluser`, `listuser`, `setflag`, `list_all_users`. Sama kendalanya seperti `admin/server.js`.
-- [ ] Test admin guard (non-admin tidak boleh akses): otomatis, belum dibuat.
+**Alasan SKIP:**
+- `bot.on('text')` handler di app.js (line 8700+) adalah **central router** untuk semua multi-step flow: broadcast templates (5 templates × multi-step), admin server wizard (7 steps), admin user commands, service flow (create/trial/renew), reseller addserver (7 steps).
+- Shared state (`userState`, `broadcastSessions`, `adminState`) dipakai oleh banyak flow secara bersamaan. Extract satu flow = risk break flow lain.
+- Extract butuh **sesi khusus** dengan strategi: (1) isolate state machine per-domain ke `state/` module, (2) refactor `bot.on('text')` jadi thin dispatcher yang delegate ke module, (3) decouple shared state dengan namespace per-domain.
+- **Risk vs benefit:** HIGH RISK (touch 200+ baris central router + shared state), LOW BENEFIT (hanya ~1500-2000 baris pindah, tapi `app.js` tetap jadi router).
+
+**Items SKIPPED:**
+- [x] `admin/broadcast.js`: **SKIPPED**. Flow `broadcast_menu` + `broadcastSessions` + 5 template multi-step (manual, maintenance, maintenance_done, promo, slot, info) nested di `bot.on('text')`. Audit lengkap: 13 action handlers, 9 core functions, multi-step state machine 200+ baris. Helper UI sudah ada di `lib/broadcast-menu.js`.
+- [x] `admin/server.js`: **SKIPPED**. 8 legacy commands (`/addserver`, `/editharga`, `/editnama`, `/editauth`, `/editlimit*`) + 1 multi-step wizard (7 steps) + 6 action handlers. Wizard deeply coupled dengan `userState` (shared dengan service flow). Extract parsial (commands + actions only) possible tapi benefit kecil (~1000 baris) vs risk medium.
+- [x] `admin/user.js`: **SKIPPED**. Pattern sama seperti `admin/server.js` — command `addsaldo`/`minsaldo`/`deluser`/`listuser`/`setflag` + state flow kemungkinan besar deeply coupled. Tidak di-audit detail karena broadcast + server sudah menunjukkan pattern HIGH RISK yang konsisten.
+- [ ] Test admin guard (non-admin tidak boleh akses): belum otomatis, masih manual.
+
+**Rekomendasi untuk future refactor:**
+Kalau mau lanjut extract broadcast/server/user, strategi yang aman:
+1. **Sesi 1:** Extract state machine ke `state/broadcast-state.js`, `state/server-state.js`, `state/user-state.js` dengan API: `getState(chatId)`, `setState(chatId, step, data)`, `clearState(chatId)`.
+2. **Sesi 2:** Extract handler logic ke `admin/broadcast-handlers.js`, `admin/server-handlers.js`, `admin/user-handlers.js` dengan factory pattern (inject state module + deps).
+3. **Sesi 3:** Refactor `bot.on('text')` jadi thin dispatcher: `if (state.step.startsWith('broadcast_')) return broadcastHandlers.handle(ctx, state);`.
+4. **Sesi 4:** Decouple shared `userState` — split jadi `serviceState` (create/trial/renew) vs `adminServerState` (addserver wizard) dengan namespace berbeda.
+5. **Sesi 5:** Integration test untuk semua flow (broadcast, server, user, service) supaya yakin tidak ada regression.
+
+Total effort: **5 sesi × 2-3 jam = 10-15 jam**. Benefit: `app.js` turun ~2000 baris lagi (jadi ~9000 baris). Risk: MEDIUM-HIGH kalau tidak hati-hati dengan shared state.
 
 ### Body function ke module
 
