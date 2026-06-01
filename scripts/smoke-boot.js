@@ -53,6 +53,8 @@ check('require lib/audit-logger', () => require('../lib/audit-logger'));
 check('require lib/error-logger', () => require('../lib/error-logger'));
 check('require lib/dashboard-stats', () => require('../lib/dashboard-stats'));
 check('require lib/dashboard-menu', () => require('../lib/dashboard-menu'));
+check('require lib/rate-limiter', () => require('../lib/rate-limiter'));
+check('require lib/rate-limit-middleware', () => require('../lib/rate-limit-middleware'));
 
 check('require db/connection', () => require('../db/connection'));
 check('require db/ddl-safe', () => require('../db/ddl-safe'));
