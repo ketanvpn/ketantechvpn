@@ -97,6 +97,42 @@ const {
   buildHealthLicenseStatus,
   buildHealthText,
 } = require('./lib/admin-status');
+const {
+  buildAdminServerMenuText,
+  buildAdminServerMenuKeyboard,
+} = require('./lib/admin-server-menu');
+const {
+  buildResellerListText,
+  buildMemberListText,
+  buildListResMemberBackKeyboard,
+} = require('./lib/admin-user-list-menu');
+const { buildServerStatusResultText } = require('./lib/server-status-menu');
+const {
+  buildQrisStatusText,
+  buildQrisStatusKeyboard,
+} = require('./lib/qris-status-menu');
+const {
+  buildAdminTrialMenuText,
+  buildAdminTrialMenuKeyboard,
+  buildAdminTrialSaveSuccessText,
+  buildAdminTrialBackKeyboard,
+} = require('./lib/admin-trial-menu');
+const {
+  buildFlowPickServerText,
+  buildFlowPickServerKeyboard,
+  buildFlowConfirmText,
+  buildFlowConfirmKeyboard,
+} = require('./lib/flow-trial-menu');
+const {
+  buildBroadcastTargetText,
+  buildBroadcastTargetKeyboard,
+  buildBroadcastModeText,
+  buildBroadcastModeKeyboard,
+  buildBroadcastCancelKeyboard,
+  buildBroadcastBackToAdminKeyboard,
+  buildBroadcastManualPromptText,
+  buildBroadcastTemplatePromptText,
+} = require('./lib/broadcast-menu');
 
 // Masker otomatis untuk secrets di log (token Telegram, bearer, apikey, password).
 
@@ -6319,32 +6355,11 @@ bot.action('broadcast_menu', async (ctx) => {
 
   broadcastSessions[adminId] = { step: 'choose_target' };
 
-  const text =
-    '📢 <b>Kirim Pengumuman</b>\n\n' +
-    'Silakan pilih target pengumuman:\n' +
-    '• 👥 Semua User\n' +
-    '• 💎‍💸 Reseller\n' +
-    '• 👤 Member (bukan reseller & bukan admin)\n\n' +
-    'Setelah pilih target, kirim teks pengumuman di chat ini.';
-
-  const keyboard = [
-    [
-      { text: '👥 Semua User', callback_data: 'broadcast_target_all' },
-    ],
-    [
-      { text: '💎‍💸 Reseller', callback_data: 'broadcast_target_reseller' },
-      { text: '👤 Member', callback_data: 'broadcast_target_member' },
-    ],
-    [
-      { text: '🔙 Kembali ke Menu Admin', callback_data: 'admin_menu' },
-    ],
-  ];
-
   // Edit pesan menu admin saat tombol "Kirim Pengumuman" diklik supaya tidak
   // numpuk pesan baru. Kalau gagal edit (mis. pesan lama hilang), fallback reply.
-  return editOrReply(ctx, text, {
+  return editOrReply(ctx, buildBroadcastTargetText(), {
     parse_mode: 'HTML',
-    reply_markup: { inline_keyboard: keyboard },
+    reply_markup: buildBroadcastTargetKeyboard(),
   });
 });
 

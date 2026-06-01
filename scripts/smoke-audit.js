@@ -78,6 +78,38 @@ assertRegex(
   'BEGIN IMMEDIATE TRANSACTION belum menangani error begin'
 );
 
+// 7) Guard regresi: helper builder/format yang dipanggil di app.js wajib
+// tersedia (didefinisikan lokal ATAU di-require). Ini menangkap kasus require
+// yang lupa ditambah saat extract UI builder ke lib/ (undefined ReferenceError
+// saat runtime, yang tidak ketangkap node --check maupun unit test lib).
+(() => {
+  const appSrc = fs.readFileSync(APP_PATH, 'utf8');
+  const provided = new Set();
+  let m;
+  const reqDestructure = /const\s*\{([^}]*)\}\s*=\s*require\(/g;
+  while ((m = reqDestructure.exec(appSrc))) {
+    m[1].split(',').forEach((part) => {
+      const seg = part.trim();
+      if (!seg) return;
+      provided.add(seg.includes(':') ? seg.split(':')[1].trim() : seg);
+    });
+  }
+  const reqSingle = /const\s+([A-Za-z0-9_$]+)\s*=\s*require\(/g;
+  while ((m = reqSingle.exec(appSrc))) provided.add(m[1]);
+  const defRe = /\b(?:function\s+|const\s+|let\s+|var\s+)([A-Za-z0-9_$]+)\s*[\(=]/g;
+  while ((m = defRe.exec(appSrc))) provided.add(m[1]);
+  const used = new Set();
+  const useRe = /\b(build[A-Za-z0-9_$]+|format[A-Za-z0-9_$]+|getBroadcastTargetLabel)\s*\(/g;
+  while ((m = useRe.exec(appSrc))) used.add(m[1]);
+  const missing = [...used].filter((n) => !provided.has(n)).sort();
+  if (missing.length) {
+    failures.push(
+      'Helper dipanggil di app.js tapi tidak di-require/didefinisikan: ' +
+        missing.join(', ')
+    );
+  }
+})();
+
 if (failures.length) {
   console.error('SMOKE AUDIT FAILED');
   failures.forEach((f, i) => {
