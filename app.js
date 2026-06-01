@@ -8585,25 +8585,16 @@ bot.action(/^qris_status:(.+)$/i, async (ctx) => {
           return;
         }
 
-        const s = String(row.status || 'pending').toUpperCase();
-        const msg =
-          `🔍 <b>Status QRIS</b>\n` +
-          `━━━━━━━━━━━━━━━━\n` +
-          `Invoice : <code>${invoiceId}</code>\n` +
-          `Status  : <b>${s}</b>\n` +
-          `━━━━━━━━━━━━━━━━\n` +
-          `Catatan: Saldo masuk otomatis saat status <b>PAID</b>.`;
+        const msg = buildQrisStatusText({
+          invoiceId,
+          status: row.status || 'pending',
+        });
 
         // Kalau tombol ditekan dari caption foto, coba edit captionnya
         try {
           await ctx.editMessageCaption(msg, {
             parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔄 Refresh Status', callback_data: `qris_status:${invoiceId}` }],
-                [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
-              ],
-            },
+            reply_markup: buildQrisStatusKeyboard(invoiceId),
           });
         } catch {
           await ctx.answerCbQuery('Tidak bisa edit pesan ini. Buat QRIS baru / buka pesan QR terakhir.', { show_alert: true }).catch(() => {});
