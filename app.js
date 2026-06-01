@@ -113,6 +113,8 @@ const {
   buildEditAuthPromptText,
   buildEditDomainPromptText,
   buildEditNamaPromptText,
+  buildEditHargaCancelText,
+  buildEditHargaSuccessText,
 } = require('./lib/admin-server-menu');
 const {
   buildResellerListText,
@@ -12277,13 +12279,9 @@ async function handleEditHarga(ctx, userStateData, data) {
     delete userState[ctx.chat.id];
     try { await ctx.answerCbQuery('⛔ Dibatalkan'); } catch (_) {}
     try {
-      await ctx.editMessageText('⛔ *Edit harga dibatalkan.*', {
+      await ctx.editMessageText(buildEditHargaCancelText(), {
         parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
-          ],
-        },
+        reply_markup: buildServerMenuBackKeyboard(),
       });
     } catch (_) {}
     return;
@@ -12304,17 +12302,14 @@ async function handleEditHarga(ctx, userStateData, data) {
     try {
       await updateServerField(userStateData.serverId, hargaBaru, 'UPDATE Server SET harga = ? WHERE id = ?');
       ctx.reply(
-        '✅ *Harga server berhasil diubah.*\n\n' +
-          '📍 Server: *' + serverName + '*\n' +
-          '• Sebelumnya : Rp ' + oldHarga.toLocaleString('id-ID') + '\n' +
-          '• Sekarang   : *Rp ' + Number(hargaBaru).toLocaleString('id-ID') + '*',
+        buildEditHargaSuccessText({
+          serverName,
+          oldHarga,
+          newHarga: hargaBaru,
+        }),
         {
           parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔙 Kembali ke Menu Server', callback_data: 'admin_server_menu' }],
-            ],
-          },
+          reply_markup: buildServerMenuBackKeyboard(),
         }
       );
     } catch (err) {

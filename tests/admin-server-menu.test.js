@@ -18,6 +18,8 @@ const {
   buildEditAuthPromptText,
   buildEditDomainPromptText,
   buildEditNamaPromptText,
+  buildEditHargaCancelText,
+  buildEditHargaSuccessText,
 } = require('../lib/admin-server-menu');
 
 test('buildAdminServerMenuText: includes server management sections', () => {
@@ -170,4 +172,18 @@ test('edit auth/domain/nama prompt builders: render current values', () => {
   const namaText = buildEditNamaPromptText('SG Old');
   assert.match(namaText, /nama server baru/);
   assert.match(namaText, /SG Old/);
+});
+
+test('edit harga cancel/success builders: render expected messages', () => {
+  assert.equal(buildEditHargaCancelText(), '⛔ *Edit harga dibatalkan.*');
+
+  const text = buildEditHargaSuccessText({
+    serverName: 'SG-1',
+    oldHarga: 15000,
+    newHarga: 25000,
+  });
+  assert.match(text, /Harga server berhasil diubah/);
+  assert.match(text, /Server: \*SG-1\*/);
+  assert.match(text, /Sebelumnya : Rp 15\.000/);
+  assert.match(text, /Sekarang   : \*Rp 25\.000\*/);
 });
