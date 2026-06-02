@@ -3010,6 +3010,10 @@ async function handleWebLinkToken(ctx, token) {
   });
 }
 
+// === Register Admin Toggle Web Link Handler (harus sebelum bot.action lain) ===
+const registerToggleWebLinkHandler = require('./admin/toggle-weblink-handler');
+registerToggleWebLinkHandler(bot, { sendCleanMenu, MASTER_ID, logger });
+
 // === Handler tombol "🔗 Hubungkan ke Web" di menu utama bot ===
 bot.action('web_link_menu', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
@@ -12617,12 +12621,8 @@ bot.command('toggleweblink', async (ctx) => {
     { parse_mode: 'HTML' }
   );
   
-    logger.info(`Web link feature toggled by ${userId}: ${currentStatus} → ${newStatus}`);
+      logger.info(`Web link feature toggled by ${userId}: ${currentStatus} → ${newStatus}`);
 });
-
-// Register button handler untuk toggle web link
-const registerToggleWebLinkHandler = require('./admin/toggle-weblink-handler');
-registerToggleWebLinkHandler(bot, { sendCleanMenu, MASTER_ID, logger });
 
 
 
