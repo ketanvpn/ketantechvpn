@@ -4113,6 +4113,21 @@ bot.command('admin', async (ctx) => {
 
   await sendAdminMenu(ctx);
 });
+
+// Handler callback untuk button kembali ke admin menu
+bot.action('send_admin_menu', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
+  if (!ctx.from) return;
+  
+  logger.info('Admin menu requested (callback)');
+  
+  if (!adminIds.includes(ctx.from.id)) {
+    return ctx.reply('🚫 Anda tidak memiliki izin untuk mengakses menu admin.');
+  }
+  
+  await sendAdminMenu(ctx);
+});
+
 async function sendMainMenu(ctx) {
   if (!ctx.from) return;
 
