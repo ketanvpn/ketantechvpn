@@ -402,21 +402,19 @@ function getTrialDateKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function getTrialUsageTodayRow(userId) {
-  return new Promise((resolve) => {
-    const today = getTrialDateKey();
-    db.get(
+async function getTrialUsageTodayRow(userId) {
+  const today = getTrialDateKey();
+  try {
+    const row = await dbGet(
+      db,
       'SELECT count FROM trial_usage WHERE user_id = ? AND date = ?',
-      [Number(userId), today],
-      (err, row) => {
-        if (err) {
-          logger.error('⚠️ Gagal baca trial_usage:', err.message || err);
-          return resolve(0);
-        }
-        resolve(row && typeof row.count === 'number' ? row.count : 0);
-      }
+      [Number(userId), today]
     );
-  });
+    return row && typeof row.count === 'number' ? row.count : 0;
+  } catch (err) {
+    logger.error('⚠️ Gagal baca trial_usage:', err.message || err);
+    return 0;
+  }
 }
 
 async function checkTrialAccess(userId) {
@@ -440,51 +438,47 @@ async function getTrialUsageToday(userId) {
 }
 
 async function getCreateUsageToday(userId) {
-  return await new Promise((resolve) => {
-    try {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const startTs = startOfDay.getTime();
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const startTs = startOfDay.getTime();
 
-      db.get(
-        'SELECT COUNT(*) AS cnt FROM accounts WHERE user_id = ? AND created_at >= ?',
-        [userId, startTs],
-        (err, row) => {
-          if (err) {
-            logger.error('❌ Kesalahan saat membaca jumlah akun harian user:', err.message);
-            return resolve(0); // kalau error, anggap 0 biar ga ganggu user baik
-          }
-          const cnt = row && row.cnt ? Number(row.cnt) : 0;
-          resolve(cnt);
-        }
-      );
-    } catch (e) {
-      logger.error('❌ Error di getCreateUsageToday:', e.message || e);
-      resolve(0);
-    }
-  });
+    const row = await dbGet(
+      db,
+      'SELECT COUNT(*) AS cnt FROM accounts WHERE user_id = ? AND created_at >= ?',
+      [userId, startTs]
+    );
+    const cnt = row && row.cnt ? Number(row.cnt) : 0;
+    return cnt;
+  } catch (err) {
+    logger.error('❌ Kesalahan saat membaca jumlah akun harian user:', err.message || err);
+    return 0; // kalau error, anggap 0 biar ga ganggu user baik
+  }
 }
 
 /////////
 async function checkServerAccess(serverId, userId) {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT is_reseller_only FROM Server WHERE id = ?', [serverId], async (err, row) => {
-      if (err) return reject(err);
-      // jika server tidak ada => tolak (caller menangani pesan)
-      if (!row) return resolve({ ok: false, reason: 'not_found' });
-      const flag = row.is_reseller_only === 1 || row.is_reseller_only === '1';
-      if (!flag) return resolve({ ok: true }); // publik
-      // jika reseller-only, cek apakah user terdaftar reseller
-      try {
-        const isR = await isUserReseller(userId);
-        if (isR) return resolve({ ok: true });
-        return resolve({ ok: false, reason: 'reseller_only' });
-      } catch (e) {
-        // fallback: tolak akses
-        return resolve({ ok: false, reason: 'reseller_only' });
-      }
-    });
-  });
+  try {
+    const row = await dbGet(db, 'SELECT is_reseller_only FROM Server WHERE id = ?', [serverId]);
+    
+    // jika server tidak ada => tolak (caller menangani pesan)
+    if (!row) return { ok: false, reason: 'not_found' };
+    
+    const flag = row.is_reseller_only === 1 || row.is_reseller_only === '1';
+    if (!flag) return { ok: true }; // publik
+    
+    // jika reseller-only, cek apakah user terdaftar reseller
+    try {
+      const isR = await isUserReseller(userId);
+      if (isR) return { ok: true };
+      return { ok: false, reason: 'reseller_only' };
+    } catch (e) {
+      // fallback: tolak akses
+      return { ok: false, reason: 'reseller_only' };
+    }
+  } catch (err) {
+    throw err;
+  }
 }
 
 // Atomic increment counter trial lewat SQLite (PK (user_id, date)).
@@ -492,19 +486,16 @@ async function checkServerAccess(serverId, userId) {
 // dari double-click race karena ON CONFLICT DO UPDATE.
 async function saveTrialAccess(userId) {
   const today = getTrialDateKey();
-  return new Promise((resolve) => {
-    db.run(
+  try {
+    await dbRun(
+      db,
       `INSERT INTO trial_usage (user_id, date, count) VALUES (?, ?, 1)
        ON CONFLICT(user_id, date) DO UPDATE SET count = count + 1`,
-      [Number(userId), today],
-      (err) => {
-        if (err) {
-          logger.error('⚠️ Gagal update trial_usage:', err.message || err);
-        }
-        resolve();
-      }
+      [Number(userId), today]
     );
-  });
+  } catch (err) {
+    logger.error('⚠️ Gagal update trial_usage:', err.message || err);
+  }
 }
 // ============================================================================
 // SECTION: PAYMENT CONFIG & QRIS GOPAY AUTOFTBOT
