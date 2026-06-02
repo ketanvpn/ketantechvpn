@@ -1923,9 +1923,7 @@ async function renderConfirm(ctx) {
   const { serverId, username } = st.payload;
   const trialCfg = await getTrialConfig();
 
-  const srow = await new Promise((resolve)=> {
-    db.get(`SELECT nama_server FROM Server WHERE id=?`, [serverId], (e, r) => resolve(r || null));
-  });
+  const srow = await dbGet(db, `SELECT nama_server FROM Server WHERE id=?`, [serverId]);
 
   const msg = buildFlowConfirmText({
     type: st.type,
@@ -2456,18 +2454,18 @@ logger.info(
 
 // Helper: ambil status link (web_user_id) untuk user telegram.
 // Dipanggil oleh accountService dan getEffectiveBalance.
-function getUserLinkInfo(userId) {
-  return new Promise((resolve) => {
-    db.get(
+async function getUserLinkInfo(userId) {
+  try {
+    const row = await dbGet(
+      db,
       'SELECT web_user_id, web_linked_at FROM users WHERE user_id = ?',
-      [Number(userId)],
-      (err, row) => {
-        if (err) return resolve(null);
-        if (!row || !row.web_user_id) return resolve(null);
-        resolve(row);
-      }
+      [Number(userId)]
     );
-  });
+    if (!row || !row.web_user_id) return null;
+    return row;
+  } catch (err) {
+    return null;
+  }
 }
 
 // --- Fase 4 split: account service (accounts/service.js)
@@ -2812,24 +2810,23 @@ bot.command(['start', 'menu'], async (ctx) => {
   }
 
   const userId = ctx.from.id;
-  db.get('SELECT * FROM users WHERE user_id = ?', [userId], (err, row) => {
-    if (err) {
-      logger.error('Kesalahan saat memeriksa user_id:', err.message);
-      return;
-    }
-
+  
+  try {
+    const row = await dbGet(db, 'SELECT * FROM users WHERE user_id = ?', [userId]);
+    
     if (row) {
       logger.info(`User ID ${userId} sudah ada di database`);
     } else {
-      db.run('INSERT INTO users (user_id) VALUES (?)', [userId], (err) => {
-        if (err) {
-          logger.error('Kesalahan saat menyimpan user_id:', err.message);
-        } else {
-          logger.info(`User ID ${userId} berhasil disimpan`);
-        }
-      });
+      try {
+        await dbRun(db, 'INSERT INTO users (user_id) VALUES (?)', [userId]);
+        logger.info(`User ID ${userId} berhasil disimpan`);
+      } catch (err) {
+        logger.error('Kesalahan saat menyimpan user_id:', err.message);
+      }
     }
-  });
+  } catch (err) {
+    logger.error('Kesalahan saat memeriksa user_id:', err.message);
+  }
 
   // Deep link dari web: /start link_<token>
   // Web punya tombol "Hubungkan ke Telegram" yang generate URL
@@ -3294,12 +3291,7 @@ bot.command('health', async (ctx) => {
   // Cek database
   let dbStatus = '❌ Gagal cek database';
   try {
-    const row = await new Promise((resolve, reject) => {
-      db.get('SELECT 1 AS ok', [], (err, row) => {
-        if (err) return reject(err);
-        resolve(row);
-      });
-    });
+    const row = await dbGet(db, 'SELECT 1 AS ok', []);
 
     if (row && row.ok === 1) {
       dbStatus = '✅ Terhubung & bisa query';
@@ -3656,16 +3648,14 @@ bot.command('addsaldo', async (ctx) => {
         db.get('SELECT saldo FROM users WHERE user_id = ?', [targetId], (e, r) => e ? reject(e) : resolve(r));
       });
 
-      if (!row) {
+            if (!row) {
         return ctx.reply(`❌ User dengan ID ${targetId} tidak ditemukan di database.`);
       }
       const oldSaldo = Number(row.saldo || 0);
       const newSaldo = oldSaldo + totalCredit;
 
       // Update saldo user
-      await new Promise((resolve, reject) => {
-        db.run('UPDATE users SET saldo = ? WHERE user_id = ?', [newSaldo, targetId], (err2) => err2 ? reject(err2) : resolve());
-      });
+      await dbRun(db, 'UPDATE users SET saldo = ? WHERE user_id = ?', [newSaldo, targetId]);
 
       // === CATAT TRANSAKSI SALDO ===
       try {
@@ -3938,40 +3928,36 @@ bot.command('deluser', async (ctx) => {
   }
 
   // Cek apakah user ada di tabel users
-  db.get('SELECT * FROM users WHERE user_id = ?', [targetId], (err, row) => {
-    if (err) {
-      logger.error('❌ Kesalahan saat memeriksa user_id di /deluser:', err.message);
-      return ctx.reply('❌ Terjadi kesalahan saat memeriksa user.');
-    }
+  try {
+    const row = await dbGet(db, 'SELECT * FROM users WHERE user_id = ?', [targetId]);
 
     if (!row) {
       return ctx.reply(`⚠️ User dengan ID ${targetId} tidak ditemukan di database.`);
     }
 
     // Hapus dari tabel users
-    db.run('DELETE FROM users WHERE user_id = ?', [targetId], (err2) => {
-      if (err2) {
-        logger.error('❌ Gagal menghapus user di /deluser:', err2.message);
-        return ctx.reply('❌ Gagal menghapus user dari database.');
-      }
+    await dbRun(db, 'DELETE FROM users WHERE user_id = ?', [targetId]);
+    
+    logger.info(`ℹ️ User ${targetId} dihapus dari tabel users oleh admin ${ctx.from.id}`);
 
-      logger.info(`ℹ️ User ${targetId} dihapus dari tabel users oleh admin ${ctx.from.id}`);
-
-         // Setelah berhasil hapus dari users, hapus juga dari daftar reseller (cache + file)
-      try {
-        const removed = removeResellerIdFromCache(targetId);
-        if (removed) {
-          logger.info(`ℹ️ User ${targetId} juga dihapus dari daftar reseller (cache + ressel.db)`);
-        }
-      } catch (e) {
-        logger.error('⚠️ Gagal mengupdate resellerCache di /deluser:', e.message || e);
+    // Setelah berhasil hapus dari users, hapus juga dari daftar reseller (cache + file)
+    try {
+      const removed = removeResellerIdFromCache(targetId);
+      if (removed) {
+        logger.info(`ℹ️ User ${targetId} juga dihapus dari daftar reseller (cache + ressel.db)`);
       }
-      ctx.reply(
-        `✅ User dengan ID <code>${targetId}</code> berhasil dihapus dari database.`,
-        { parse_mode: 'HTML' }
-      );
-    });
-  });
+    } catch (e) {
+      logger.error('⚠️ Gagal mengupdate resellerCache di /deluser:', e.message || e);
+    }
+    
+    ctx.reply(
+      `✅ User dengan ID <code>${targetId}</code> berhasil dihapus dari database.`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (err) {
+    logger.error('❌ Kesalahan saat memeriksa/menghapus user_id di /deluser:', err.message);
+    return ctx.reply('❌ Terjadi kesalahan saat menghapus user.');
+  }
 });
 
 // Command: /listuser
@@ -3985,53 +3971,43 @@ bot.command('listuser', async (ctx) => {
 }
 
   // Hitung total user
-  db.get('SELECT COUNT(*) AS total FROM users', [], (err, row) => {
-    if (err) {
-      logger.error('Gagal menghitung total user:', err.message);
-      return ctx.reply('❌ Terjadi kesalahan saat mengambil data user.');
-    }
-
+  try {
+    const row = await dbGet(db, 'SELECT COUNT(*) AS total FROM users', []);
     const totalUser = row ? row.total : 0;
 
     // Ambil 10 user terakhir (berdasarkan id)
-    db.all(
-      'SELECT user_id, saldo FROM users ORDER BY id DESC LIMIT 10',
-      [],
-      (err2, rows) => {
-        if (err2) {
-          logger.error('Gagal mengambil daftar user:', err2.message);
-          return ctx.reply('❌ Terjadi kesalahan saat mengambil daftar user.');
-        }
+    const rows = await dbAll(db, 'SELECT user_id, saldo FROM users ORDER BY id DESC LIMIT 10', []);
 
-        // Hitung total reseller dari modul reseller
-        let totalReseller = 0;
-        try {
-          const resList = listResellersSync();
-          if (Array.isArray(resList)) {
-            totalReseller = resList.length;
-          }
-        } catch (e) {
-          logger.error('Gagal mengambil daftar reseller:', e.message);
-        }
-
-        let msg = '<b>STATISTIK USER</b>\n\n';
-        msg += `Total user terdaftar : <b>${totalUser}</b>\n`;
-        msg += `Total reseller       : <b>${totalReseller}</b>\n\n`;
-
-        if (!rows || rows.length === 0) {
-          msg += 'Belum ada user di database.';
-        } else {
-          msg += '10 user terakhir di tabel:\n';
-          rows.forEach((u, i) => {
-            const saldo = Number(u.saldo || 0).toLocaleString('id-ID');
-            msg += `${i + 1}. <code>${u.user_id}</code> → Saldo: Rp${saldo}\n`;
-          });
-        }
-
-        ctx.reply(msg, { parse_mode: 'HTML' });
+    // Hitung total reseller dari modul reseller
+    let totalReseller = 0;
+    try {
+      const resList = listResellersSync();
+      if (Array.isArray(resList)) {
+        totalReseller = resList.length;
       }
-    );
-  });
+    } catch (e) {
+      logger.error('Gagal mengambil daftar reseller:', e.message);
+    }
+
+    let msg = '<b>STATISTIK USER</b>\n\n';
+    msg += `Total user terdaftar : <b>${totalUser}</b>\n`;
+    msg += `Total reseller       : <b>${totalReseller}</b>\n\n`;
+
+    if (!rows || rows.length === 0) {
+      msg += 'Belum ada user di database.';
+    } else {
+      msg += '10 user terakhir di tabel:\n';
+      rows.forEach((u, i) => {
+        const saldo = Number(u.saldo || 0).toLocaleString('id-ID');
+        msg += `${i + 1}. <code>${u.user_id}</code> → Saldo: Rp${saldo}\n`;
+      });
+    }
+
+    ctx.reply(msg, { parse_mode: 'HTML' });
+  } catch (err) {
+    logger.error('Gagal mengambil data user:', err.message);
+    return ctx.reply('❌ Terjadi kesalahan saat mengambil data user.');
+  }
 });
 
 // Command: /setflag
