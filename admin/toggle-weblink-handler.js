@@ -40,10 +40,41 @@ module.exports = function registerToggleWebLinkHandler(bot, deps) {
     const currentStatus = isWebLinkEnabled();
     const newStatus = !currentStatus;
     
-    console.log('[toggle-weblink-handler] Toggle:', currentStatus, '→', newStatus);
+        console.log('[toggle-weblink-handler] Toggle:', currentStatus, '→', newStatus);
     
-    // Update env variable (runtime only)
+    // Update env variable (runtime + persist ke file)
     process.env.WEB_LINK_ENABLED = newStatus ? 'true' : 'false';
+    
+    // Update .env file agar persist setelah restart
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const envPath = path.join(__dirname, '..', '.env');
+      
+      let envContent = '';
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf8');
+      }
+      
+      const newValue = newStatus ? 'true' : 'false';
+      const envKey = 'WEB_LINK_ENABLED';
+      
+      if (envContent.includes(envKey)) {
+        // Update existing key
+        envContent = envContent.replace(
+          new RegExp(`^${envKey}=.*$`, 'm'),
+          `${envKey}=${newValue}`
+        );
+      } else {
+        // Add new key
+        envContent += `\n${envKey}=${newValue}\n`;
+      }
+      
+      fs.writeFileSync(envPath, envContent, 'utf8');
+      console.log('[toggle-weblink-handler] .env file updated:', envKey, '=', newValue);
+    } catch (err) {
+      console.error('[toggle-weblink-handler] Failed to update .env file:', err.message);
+    }
     
     await sendCleanMenu(ctx,
       `🔧 <b>Web Link Feature</b>\n\n` +
