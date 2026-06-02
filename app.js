@@ -2945,9 +2945,10 @@ async function handleWebLinkToken(ctx, token) {
         amount: localSaldo,
         description: 'Migrasi saldo Bot Telegram saat link akun',
         refId: 'migrate_telegram_' + userId,
-      });
-        if (creditRes && creditRes.ok) {
-          migratedAmount = creditRes.applied ? localSaldo : 0;
+            });
+        if (creditRes && creditRes.ok && creditRes.applied) {
+          // Credit BENAR-BENAR sukses (bukan duplicate)
+          migratedAmount = localSaldo;
           // Zero-kan saldo lokal HANYA setelah credit ke web sukses, dan
           // catat di tabel transactions supaya audit trail jelas.
           await dbRun(db, 'UPDATE users SET saldo = 0 WHERE user_id = ?', [userId]);
@@ -2962,7 +2963,11 @@ async function handleWebLinkToken(ctx, token) {
           } catch (e) {
             logger.warn('Gagal catat tx migration ke transactions: ' + (e.message || e));
           }
-          logger.info('Saldo bot ' + localSaldo + ' di-migrate ke web user ' + webUser.id + ' (telegramId ' + userId + ')');
+                    logger.info('Saldo bot ' + localSaldo + ' di-migrate ke web user ' + webUser.id + ' (telegramId ' + userId + ')');
+        } else if (creditRes && creditRes.ok && creditRes.applied === false) {
+          // Duplicate refId - saldo sudah ter-migrate sebelumnya, skip reset
+          migrateError = 'Saldo sudah pernah di-migrate sebelumnya (duplicate refId)';
+          logger.warn('Migrate skip: ' + migrateError);
         } else {
           migrateError = 'Web tidak ack credit (response.ok = false)';
           logger.error('Migrate saldo gagal: ' + migrateError);
