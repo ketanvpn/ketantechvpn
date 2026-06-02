@@ -11,6 +11,7 @@ const winston = require('winston');
 const { createConnection } = require('./db/connection');
 const { createDdlHelpers } = require('./db/ddl-safe');
 const { runMigrations } = require('./db/migrations');
+const { dbGet, dbRun, dbAll } = require('./lib/db-async');
 
 const { maskLogMessage, maskToken } = require('./lib/masker');
 const {
