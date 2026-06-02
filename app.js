@@ -2917,7 +2917,7 @@ async function handleWebLinkToken(ctx, token) {
     logger.error('Gagal simpan web_user_id: ' + (err.message || err));
   }
 
-  // === Migrate saldo SQLite -> web (sekali, saat first link) ===
+    // === Migrate saldo SQLite -> web (sekali, saat first link) ===
   // OPSI 1 (per pilihan user): saldo lokal SQLite di-transfer ke saldo web,
   // lalu saldo SQLite di-set ke 0 supaya tidak ada double-counting. Dari titik
   // ini bot pakai saldo web sebagai single source of truth.
@@ -2925,24 +2925,27 @@ async function handleWebLinkToken(ctx, token) {
   // kalau bot ulangi proses link untuk user yang sama, tidak akan double-credit.
   let migratedAmount = 0;
   let migrateError = null;
-  const wasLinked = existing && existing.web_user_id;
-  if (!wasLinked) {
-    // Cuma migrate saat FIRST link, bukan saat re-link.
-    const localSaldo = await new Promise((resolve) => {
-      db.get(
-        'SELECT saldo FROM users WHERE user_id = ?',
-        [userId],
-        (err, row) => resolve(err ? 0 : Number(row?.saldo || 0))
-      );
-    });
-    if (localSaldo > 0) {
-      try {
-        const creditRes = await webApiClient.creditBalance({
-          telegramId: userId,
-          amount: localSaldo,
-          description: 'Migrasi saldo Bot Telegram saat link akun',
-          refId: 'migrate_telegram_' + userId,
-        });
+  
+  // Ambil saldo lokal bot
+  const localSaldo = await new Promise((resolve) => {
+    db.get(
+      'SELECT saldo FROM users WHERE user_id = ?',
+      [userId],
+      (err, row) => resolve(err ? 0 : Number(row?.saldo || 0))
+    );
+  });
+  
+  // Migrate HANYA jika saldo lokal > 0 (idempotent via refId di web)
+  // Tidak peduli wasLinked atau tidak — selama saldo bot > 0, migrate.
+  // Web API akan reject duplicate refId otomatis (applied=false).
+  if (localSaldo > 0) {
+    try {
+      const creditRes = await webApiClient.creditBalance({
+        telegramId: userId,
+        amount: localSaldo,
+        description: 'Migrasi saldo Bot Telegram saat link akun',
+        refId: 'migrate_telegram_' + userId,
+      });
         if (creditRes && creditRes.ok) {
           migratedAmount = creditRes.applied ? localSaldo : 0;
           // Zero-kan saldo lokal HANYA setelah credit ke web sukses, dan
@@ -2965,11 +2968,10 @@ async function handleWebLinkToken(ctx, token) {
           logger.error('Migrate saldo gagal: ' + migrateError);
         }
       } catch (e) {
-        migrateError = e.message || String(e);
+                migrateError = e.message || String(e);
         logger.error('Gagal migrate saldo SQLite ke web: ' + migrateError);
       }
     }
-  }
 
   // Ambil saldo web TERBARU setelah migrate (kalau migrate sukses, web sudah
   // bertambah; kalau gagal, fallback ke balance dari verifyLinkToken response).
