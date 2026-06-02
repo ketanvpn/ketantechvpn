@@ -5012,19 +5012,15 @@ bot.command('editnama', async (ctx) => {
 });
 
 bot.action(/edit_domain_(\d+)/, async (ctx) => {
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+    if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
     return ctx.reply('🚫 *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   }
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit domain server dengan ID: ${serverId}`);
 
   // Ambil domain sekarang dari database
-  db.get('SELECT domain FROM Server WHERE id = ?', [serverId], async (err, row) => {
-    if (err) {
-      logger.error('Kesalahan saat mengambil data server untuk edit domain:', err.message);
-      await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
-      return;
-    }
+  try {
+    const row = await dbGet(db, 'SELECT domain FROM Server WHERE id = ?', [serverId]);
 
     if (!row) {
       await ctx.reply('⚠️ Server tidak ditemukan.');
@@ -5046,7 +5042,10 @@ bot.action(/edit_domain_(\d+)/, async (ctx) => {
         'ℹ️ Ketik *batal* untuk membatalkan.',
       { parse_mode: 'Markdown' }
     );
-  });
+  } catch (err) {
+    logger.error('Kesalahan saat mengambil data server untuk edit domain:', err.message);
+    await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
+  }
 });
 
 
@@ -7434,54 +7433,54 @@ bot.action('monitor_panel', async (ctx) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-    // ======= RINGKASAN PENGGUNA =======
-    const totalUsers = await new Promise((resolve) => {
-      db.get('SELECT COUNT(*) AS count FROM users', [], (err, row) => {
-        if (err) {
-          logger.error('Gagal menghitung total users:', err.message);
-          return resolve(0);
-        }
-        resolve(row ? row.count : 0);
-      });
-    });
+        // ======= RINGKASAN PENGGUNA =======
+    const totalUsers = await (async () => {
+      try {
+        const row = await dbGet(db, 'SELECT COUNT(*) AS count FROM users', []);
+        return row ? row.count : 0;
+      } catch (err) {
+        logger.error('Gagal menghitung total users:', err.message);
+        return 0;
+      }
+    })();
 
     // ======= RINGKASAN AKUN =======
     const [totalAccounts, totalActiveAccounts, totalExpiredAccounts] = await Promise.all([
-      new Promise((resolve) => {
-        db.get('SELECT COUNT(*) AS count FROM accounts', [], (err, row) => {
-          if (err) {
-            logger.error('Gagal menghitung total accounts:', err.message);
-            return resolve(0);
-          }
-          resolve(row ? row.count : 0);
-        });
-      }),
-      new Promise((resolve) => {
-        db.get(
-          'SELECT COUNT(*) AS count FROM accounts WHERE expires_at IS NULL OR expires_at > ?',
-          [nowTs],
-          (err, row) => {
-            if (err) {
-              logger.error('Gagal menghitung akun aktif:', err.message);
-              return resolve(0);
-            }
-            resolve(row ? row.count : 0);
-          }
-        );
-      }),
-      new Promise((resolve) => {
-        db.get(
-          'SELECT COUNT(*) AS count FROM accounts WHERE expires_at IS NOT NULL AND expires_at <= ?',
-          [nowTs],
-          (err, row) => {
-            if (err) {
-              logger.error('Gagal menghitung akun expired:', err.message);
-              return resolve(0);
-            }
-            resolve(row ? row.count : 0);
-          }
-        );
-      }),
+      (async () => {
+        try {
+          const row = await dbGet(db, 'SELECT COUNT(*) AS count FROM accounts', []);
+          return row ? row.count : 0;
+        } catch (err) {
+          logger.error('Gagal menghitung total accounts:', err.message);
+          return 0;
+        }
+      })(),
+      (async () => {
+        try {
+          const row = await dbGet(
+            db,
+            'SELECT COUNT(*) AS count FROM accounts WHERE expires_at IS NULL OR expires_at > ?',
+            [nowTs]
+          );
+          return row ? row.count : 0;
+        } catch (err) {
+          logger.error('Gagal menghitung akun aktif:', err.message);
+          return 0;
+        }
+      })(),
+      (async () => {
+        try {
+          const row = await dbGet(
+            db,
+                        'SELECT COUNT(*) AS count FROM accounts WHERE expires_at IS NOT NULL AND expires_at <= ?',
+            [nowTs]
+          );
+          return row ? row.count : 0;
+        } catch (err) {
+          logger.error('Gagal menghitung akun expired:', err.message);
+          return 0;
+        }
+      })(),
     ]);
 
     // ======= BACA DAFTAR RESELLER DARI ressel.db =======
