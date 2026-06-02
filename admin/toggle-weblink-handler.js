@@ -53,10 +53,10 @@ module.exports = function registerToggleWebLinkHandler(bot, deps) {
       `<code>WEB_LINK_ENABLED=${newStatus ? 'true' : 'false'}</code>`,
       { 
         parse_mode: 'HTML',
-        reply_markup: {
+                reply_markup: {
           inline_keyboard: [
             [{ text: '🔄 Toggle Lagi', callback_data: 'admin_toggle_weblink' }],
-            [{ text: '🔙 Kembali ke Admin Menu', callback_data: 'admin' }]
+            [{ text: '🔙 Kembali ke Admin Menu', callback_data: 'send_admin_menu' }]
           ]
         }
       }
