@@ -1,5 +1,14 @@
 // Admin button handler untuk toggle web link
-module.exports = function registerToggleWebLinkHandler(bot, { isWebLinkEnabled, sendCleanMenu, MASTER_ID, logger }) {
+module.exports = function registerToggleWebLinkHandler(bot, deps) {
+  const { sendCleanMenu, MASTER_ID, logger } = deps;
+  
+  // Import function isWebLinkEnabled dari app context
+  function isWebLinkEnabled() {
+    const flag = process.env.WEB_LINK_ENABLED;
+    if (flag === undefined || flag === null || flag === '') return false;
+    return String(flag).toLowerCase() === 'true';
+  }
+
   bot.action('admin_toggle_weblink', async (ctx) => {
     await ctx.answerCbQuery().catch(() => {});
     if (!ctx.from) return;

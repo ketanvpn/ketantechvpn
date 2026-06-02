@@ -12622,7 +12622,7 @@ bot.command('toggleweblink', async (ctx) => {
 
 // Register button handler untuk toggle web link
 const registerToggleWebLinkHandler = require('./admin/toggle-weblink-handler');
-registerToggleWebLinkHandler(bot, { isWebLinkEnabled, sendCleanMenu, MASTER_ID, logger });
+registerToggleWebLinkHandler(bot, { sendCleanMenu, MASTER_ID, logger });
 
 
 
