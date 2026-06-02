@@ -1901,16 +1901,17 @@ async function renderPickServer(ctx) {
   const st = getFlow(userId); if (!st) return;
 
   try {
-    db.all(`SELECT id, nama_server FROM Server ORDER BY id ASC`, [], async (err, rows) => {
-      if (err || !rows || rows.length === 0) {
-        return showErrorOnMenu(ctx, 'Server tidak tersedia.');
-      }
-      await sendCleanMenu(ctx,
-        buildFlowPickServerText(st),
-        { parse_mode:'HTML', reply_markup: buildFlowPickServerKeyboard(rows) }
-      );
-    });
-  } catch {
+    const rows = await dbAll(db, `SELECT id, nama_server FROM Server ORDER BY id ASC`, []);
+    
+    if (!rows || rows.length === 0) {
+      return showErrorOnMenu(ctx, 'Server tidak tersedia.');
+    }
+    
+    await sendCleanMenu(ctx,
+      buildFlowPickServerText(st),
+      { parse_mode:'HTML', reply_markup: buildFlowPickServerKeyboard(rows) }
+    );
+  } catch (err) {
     return showErrorOnMenu(ctx, 'Gagal memuat daftar server.');
   }
 }
@@ -2856,20 +2857,14 @@ async function handleWebLinkToken(ctx, token) {
   const userId = ctx.from.id;
   if (!token || token.length < 8) {
     return ctx.reply(
-      '⚠️ Token koneksi tidak valid.\n' +
+            '⚠️ Token koneksi tidak valid.\n' +
       'Silakan klik ulang link dari halaman <b>Hubungkan ke Telegram</b> di web.',
       { parse_mode: 'HTML' }
     );
   }
 
   // Cek dulu kalau user ini sudah punya web_user_id sebelumnya
-  const existing = await new Promise((resolve) => {
-    db.get(
-      'SELECT web_user_id FROM users WHERE user_id = ?',
-      [userId],
-      (err, row) => resolve(err ? null : row)
-    );
-  });
+  const existing = await dbGet(db, 'SELECT web_user_id FROM users WHERE user_id = ?', [userId]);
 
   await ctx.reply('⏳ Sedang menghubungkan akun ke web...', { parse_mode: 'HTML' });
 
@@ -2909,23 +2904,17 @@ async function handleWebLinkToken(ctx, token) {
   }
 
   // Simpan web_user_id ke DB bot. Pastikan baris user ada dulu.
-  await new Promise((resolve) => {
-    db.run(
-      'INSERT OR IGNORE INTO users (user_id) VALUES (?)',
-      [userId],
-      () => resolve()
-    );
-  });
-  await new Promise((resolve) => {
-    db.run(
+  await dbRun(db, 'INSERT OR IGNORE INTO users (user_id) VALUES (?)', [userId]);
+  
+  try {
+    await dbRun(
+      db,
       'UPDATE users SET web_user_id = ?, web_linked_at = ? WHERE user_id = ?',
-      [Number(webUser.id), Date.now(), userId],
-      (err) => {
-        if (err) logger.error('Gagal simpan web_user_id: ' + (err.message || err));
-        resolve();
-      }
+      [Number(webUser.id), Date.now(), userId]
     );
-  });
+  } catch (err) {
+    logger.error('Gagal simpan web_user_id: ' + (err.message || err));
+  }
 
   // === Migrate saldo SQLite -> web (sekali, saat first link) ===
   // OPSI 1 (per pilihan user): saldo lokal SQLite di-transfer ke saldo web,
@@ -2957,13 +2946,8 @@ async function handleWebLinkToken(ctx, token) {
           migratedAmount = creditRes.applied ? localSaldo : 0;
           // Zero-kan saldo lokal HANYA setelah credit ke web sukses, dan
           // catat di tabel transactions supaya audit trail jelas.
-          await new Promise((resolve) => {
-            db.run(
-              'UPDATE users SET saldo = 0 WHERE user_id = ?',
-              [userId],
-              () => resolve()
-            );
-          });
+          await dbRun(db, 'UPDATE users SET saldo = 0 WHERE user_id = ?', [userId]);
+          
           try {
             recordSaldoTransaction(
               userId,
@@ -3078,13 +3062,11 @@ bot.action('web_link_unlink', async (ctx) => {
   }
 
   // Hapus link di sisi bot
-  await new Promise((resolve) => {
-    db.run(
-      'UPDATE users SET web_user_id = NULL, web_linked_at = NULL WHERE user_id = ?',
-      [userId],
-      () => resolve()
-    );
-  });
+  await dbRun(
+    db,
+    'UPDATE users SET web_user_id = NULL, web_linked_at = NULL WHERE user_id = ?',
+    [userId]
+  );
 
   await sendCleanMenu(ctx, buildWebUnlinkSuccessText(), {
     parse_mode: 'HTML',
