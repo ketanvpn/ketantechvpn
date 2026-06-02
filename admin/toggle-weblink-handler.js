@@ -58,7 +58,7 @@ module.exports = function registerToggleWebLinkHandler(bot, deps) {
     }
   }
 
-  // Handler untuk MASUK ke menu toggle (tidak toggle langsung)
+    // Handler untuk MASUK ke menu toggle (tidak toggle langsung)
   bot.action('admin_toggle_weblink', async (ctx) => {
     console.log('[toggle-weblink-handler] Menu opened by:', ctx.from?.id);
     
@@ -75,29 +75,28 @@ module.exports = function registerToggleWebLinkHandler(bot, deps) {
     
     console.log('[toggle-weblink-handler] Current status:', currentStatus);
     
-    // Tampilkan menu dengan status (TIDAK TOGGLE)
+    // Tampilkan menu toggle switch style
     await sendCleanMenu(ctx,
       `🔧 <b>Web Link Feature</b>\n\n` +
-      `Status saat ini: ${currentStatus ? '✅ <b>Enabled</b>' : '❌ <b>Disabled</b>'}\n\n` +
-      `${currentStatus ? '✅ User bisa link akun ke web' : '❌ Menu link disembunyikan dari user'}\n\n` +
-      `Pilih aksi:`,
+      `Status: ${currentStatus ? '✅ <b>ON</b>' : '❌ <b>OFF</b>'}\n\n` +
+      `${currentStatus ? 'User bisa link akun ke web.' : 'Menu link disembunyikan dari user.'}`,
       { 
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
             currentStatus 
-              ? [{ text: '❌ Disable Web Link', callback_data: 'admin_toggle_disable' }]
-              : [{ text: '✅ Enable Web Link', callback_data: 'admin_toggle_enable' }],
-            [{ text: '🔙 Kembali ke Admin Menu', callback_data: 'send_admin_menu' }]
+              ? [{ text: '🔴 Matikan', callback_data: 'admin_toggle_disable' }]
+              : [{ text: '🟢 Nyalakan', callback_data: 'admin_toggle_enable' }],
+            [{ text: '🔙 Kembali', callback_data: 'send_admin_menu' }]
           ]
         }
       }
     );
   });
   
-  // Handler untuk ENABLE (toggle actual)
+    // Handler untuk ENABLE (toggle actual)
   bot.action('admin_toggle_enable', async (ctx) => {
-    await ctx.answerCbQuery().catch(() => {});
+    await ctx.answerCbQuery('✅ Web Link dinyalakan').catch(() => {});
     if (!ctx.from || ctx.from.id !== MASTER_ID) return;
     
     console.log('[toggle-weblink-handler] Enable by:', ctx.from.id);
@@ -106,28 +105,31 @@ module.exports = function registerToggleWebLinkHandler(bot, deps) {
     process.env.WEB_LINK_ENABLED = 'true';
     const success = updateEnvFile(true);
     
+    logger.info(`Web link enabled by ${ctx.from.id}`);
+    
+    // Langsung balik ke menu toggle (refresh status)
+    const currentStatus = isWebLinkEnabled();
     await sendCleanMenu(ctx,
-      `✅ <b>Web Link Enabled</b>\n\n` +
-      `User sekarang bisa link akun ke web.\n` +
-      `Menu link akan muncul di menu utama.\n\n` +
-      (success ? '✅ Perubahan disimpan ke .env file' : '⚠️ Gagal simpan ke .env file'),
+      `🔧 <b>Web Link Feature</b>\n\n` +
+      `Status: ${currentStatus ? '✅ <b>ON</b>' : '❌ <b>OFF</b>'}\n\n` +
+      `${currentStatus ? 'User bisa link akun ke web.' : 'Menu link disembunyikan dari user.'}`,
       { 
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🔙 Kembali ke Menu Toggle', callback_data: 'admin_toggle_weblink' }],
-            [{ text: '🔙 Kembali ke Admin Menu', callback_data: 'send_admin_menu' }]
+            currentStatus 
+              ? [{ text: '🔴 Matikan', callback_data: 'admin_toggle_disable' }]
+              : [{ text: '🟢 Nyalakan', callback_data: 'admin_toggle_enable' }],
+            [{ text: '🔙 Kembali', callback_data: 'send_admin_menu' }]
           ]
         }
       }
     );
-    
-    logger.info(`Web link enabled by ${ctx.from.id}`);
   });
   
   // Handler untuk DISABLE (toggle actual)
   bot.action('admin_toggle_disable', async (ctx) => {
-    await ctx.answerCbQuery().catch(() => {});
+    await ctx.answerCbQuery('❌ Web Link dimatikan').catch(() => {});
     if (!ctx.from || ctx.from.id !== MASTER_ID) return;
     
     console.log('[toggle-weblink-handler] Disable by:', ctx.from.id);
@@ -136,23 +138,26 @@ module.exports = function registerToggleWebLinkHandler(bot, deps) {
     process.env.WEB_LINK_ENABLED = 'false';
     const success = updateEnvFile(false);
     
+    logger.info(`Web link disabled by ${ctx.from.id}`);
+    
+    // Langsung balik ke menu toggle (refresh status)
+    const currentStatus = isWebLinkEnabled();
     await sendCleanMenu(ctx,
-      `❌ <b>Web Link Disabled</b>\n\n` +
-      `Menu link disembunyikan dari user.\n` +
-      `User tidak bisa link akun ke web.\n\n` +
-      (success ? '✅ Perubahan disimpan ke .env file' : '⚠️ Gagal simpan ke .env file'),
+      `🔧 <b>Web Link Feature</b>\n\n` +
+      `Status: ${currentStatus ? '✅ <b>ON</b>' : '❌ <b>OFF</b>'}\n\n` +
+      `${currentStatus ? 'User bisa link akun ke web.' : 'Menu link disembunyikan dari user.'}`,
       { 
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🔙 Kembali ke Menu Toggle', callback_data: 'admin_toggle_weblink' }],
-            [{ text: '🔙 Kembali ke Admin Menu', callback_data: 'send_admin_menu' }]
+            currentStatus 
+              ? [{ text: '🔴 Matikan', callback_data: 'admin_toggle_disable' }]
+              : [{ text: '🟢 Nyalakan', callback_data: 'admin_toggle_enable' }],
+            [{ text: '🔙 Kembali', callback_data: 'send_admin_menu' }]
           ]
         }
       }
     );
-    
-    logger.info(`Web link disabled by ${ctx.from.id}`);
   });
   
   console.log('[toggle-weblink-handler] Handler registered successfully');
