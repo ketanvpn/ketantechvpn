@@ -3018,13 +3018,11 @@ bot.action('web_link_menu', async (ctx) => {
   const webDomain = getWebDomain() || 'https://ketantech.my.id';
 
   // Cek apakah user sudah punya web_user_id
-  const row = await new Promise((resolve) => {
-    db.get(
-      'SELECT web_user_id, web_linked_at FROM users WHERE user_id = ?',
-      [userId],
-      (err, r) => resolve(err ? null : r)
-    );
-  });
+  const row = await dbGet(
+    db,
+    'SELECT web_user_id, web_linked_at FROM users WHERE user_id = ?',
+    [userId]
+  ).catch(() => null);
 
   if (row && row.web_user_id) {
     // Sudah link → tampilkan info + opsi unlink
