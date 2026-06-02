@@ -12617,8 +12617,12 @@ bot.command('toggleweblink', async (ctx) => {
     { parse_mode: 'HTML' }
   );
   
-  logger.info(`Web link feature toggled by ${userId}: ${currentStatus} → ${newStatus}`);
+    logger.info(`Web link feature toggled by ${userId}: ${currentStatus} → ${newStatus}`);
 });
+
+// Register button handler untuk toggle web link
+const registerToggleWebLinkHandler = require('./admin/toggle-weblink-handler');
+registerToggleWebLinkHandler(bot, { isWebLinkEnabled, sendCleanMenu, MASTER_ID, logger });
 
 
 
